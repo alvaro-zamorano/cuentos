@@ -36,6 +36,11 @@ export default function Landing() {
             </a>
           </div>
           <p className="mt-3 text-sm text-ink-soft">Hoy: el cuento de cumpleaños. Pronto: Navidad, primera bici, hermanito nuevo…</p>
+          <p className="mt-2 text-sm">
+            <Link href="/gratis" className="font-bold underline">
+              Descarga gratis un cuento de ejemplo en PDF
+            </Link>
+          </p>
         </div>
         <div className="card overflow-hidden p-0">
           <Scene scene="mesa-tarta" traits={demoTraits} expression="sorpresa" companion={{ kind: "perro", name: "Toby" }} special="dinosaurios" age={5} className="w-full" />
