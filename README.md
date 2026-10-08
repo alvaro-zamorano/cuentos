@@ -55,7 +55,7 @@ NEXT_PUBLIC_DRY_RUN_PAYMENT=1 npm run build
 npm test            # Playwright: arranca next start en :3017 y recorre Clásico, Ilustrado dry-run, /gratis y legales
 ```
 
-Los tests simulan `/api/books` y `/api/jobs` en el navegador (sin Supabase) y funcionan con o sin las anclas JPG. `.github/workflows/ci.yml` ejecuta en cada PR `npm ci`, `npm run lint`, `npm run build`, `npx playwright install --with-deps chromium` y `npm test`. `web/package-lock.json` está en el repo (sin campos `resolved`; `npm ci` verificado con él).
+Los tests simulan `/api/books` y `/api/jobs` en el navegador (sin Supabase) y funcionan con o sin las anclas JPG. `.github/workflows/ci.yml` ejecuta en cada PR `npm ci`, `npm run lint`, `npm run build`, `npx playwright install --with-deps chromium` y `npm test`. **El workflow no está en la rama**: la integración de GitHub del agente no tiene permiso `workflows` (403 al crear el árbol); va en `cuentos-brief2-binarios.zip` para añadirlo desde local. `web/package-lock.json` está en el repo (sin campos `resolved` ni `integrity`: versiones fijadas, hashes no; `npm ci` verificado con él. Para añadir los hashes, `npm install` en local y commit del lockfile).
 
 ## Analítica
 
@@ -107,5 +107,5 @@ npx tsx scripts/avatar-sheet.tsx > avatares.html   # hoja de contacto de todos l
 2. Montar esas 12 escenas en la plantilla → `public/lead-magnet/cumpleanos.pdf` → **primera pieza pública** (reel con el cuento impreso en casa).
 3. Desplegar `web/` en Vercel (rama + PR, nunca a main directo) con `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `JOBS_API_SECRET`; probar `/api/books` real.
 4. Huecos del catálogo: peinados en 3D, papercraft y acuarela; conjuntos en acuarela (ver `assets/manifest.json` → `huecos`). Mientras tanto la hoja usa recortes «provisionales» de otro estilo.
-5. Subir `web/public/styles/*.jpg` (6 anclas, ~0,9 MB) desde la máquina de Álvaro: no entran por la API de ficheros de texto.
+5. Subir desde la máquina de Álvaro `web/public/styles/*.jpg` (6 anclas, ~0,9 MB) y `.github/workflows/ci.yml` (están en `cuentos-brief2-binarios.zip`): no entran por la API que usa el agente.
 6. Revisión legal de las tres páginas y relleno de los huecos entre corchetes; banner de cookies antes de activar Clarity.
