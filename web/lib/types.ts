@@ -71,6 +71,27 @@ export interface Hero {
   traits: Traits;
 }
 
+/** Página de la edición ilustrada. En dry-run, `variant` elige una composición determinista. */
+export interface IllustratedPage {
+  variant: number;
+}
+
+/** Estado de la edición ilustrada (Fase 2). Persiste en localStorage y en cuentos_books.draft. */
+export interface Illustration {
+  /** Pago simulado hecho (solo existe con NEXT_PUBLIC_DRY_RUN_PAYMENT=1). */
+  paid: boolean;
+  /** Declaración del comprador aceptada en el paso de pago. */
+  buyerDeclaration: boolean;
+  sheetApproved: boolean;
+  /** Huella de los rasgos con los que se aprobó la hoja; si cambian, la hoja y las páginas se invalidan. */
+  sheetKey?: string;
+  /** Job `sheet` creado en Supabase (si lo hay). */
+  sheetJobId?: string;
+  /** Huella (hoja + acompañante) con la que se ilustraron las páginas. */
+  pagesKey?: string;
+  pages: Record<number, IllustratedPage>;
+}
+
 export interface Draft {
   hero: Hero;
   occasionId: OccasionId;
@@ -79,6 +100,9 @@ export interface Draft {
   edition: Edition;
   textOverrides: Record<number, string>;
   email?: string;
+  /** Estilo de la edición ilustrada (se elige después del pago, PRD §6). */
+  styleId?: StyleId;
+  illustration?: Illustration;
   updatedAt: number;
 }
 
