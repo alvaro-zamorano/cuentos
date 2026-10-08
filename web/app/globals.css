@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  --cream: #fff8ec;
+  --paper: #ffffff;
+  --ink: #2b2118;
+  --ink-soft: #6b5a4a;
+  --coral: #e4573d;
+  --coral-dark: #b93f2a;
+  --sun: #f6c445;
+  --leaf: #5aa469;
+  --sky: #4a86c9;
+  --lilac: #9b7fd0;
+  --line: #ecdcc3;
+}
+
+@theme inline {
+  --color-cream: var(--cream);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-coral: var(--coral);
+  --color-coral-dark: var(--coral-dark);
+  --color-sun: var(--sun);
+  --color-leaf: var(--leaf);
+  --color-sky: var(--sky);
+  --color-lilac: var(--lilac);
+  --color-line: var(--line);
+  --font-sans: "Nunito", "Avenir Next Rounded", "Segoe UI", ui-rounded, system-ui, sans-serif;
+  --font-story: "Georgia", "Iowan Old Style", "Times New Roman", serif;
+}
+
+html {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+body {
+  min-height: 100%;
+}
+
+.btn-primary,
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-bold transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
+}
+.btn-primary {
+  @apply bg-coral text-white shadow-[0_6px_0_var(--coral-dark)] hover:translate-y-[1px] hover:shadow-[0_5px_0_var(--coral-dark)];
+}
+.btn-ghost {
+  @apply bg-white text-ink border-2 border-line hover:border-ink/30;
+}
+.card {
+  @apply rounded-3xl bg-paper border-2 border-line p-5 shadow-[0_4px_0_var(--line)];
+}
+.chip {
+  @apply rounded-full border-2 border-line bg-white px-4 py-2 text-sm font-bold text-ink-soft transition hover:border-ink/40;
+}
+.chip-on {
+  @apply border-ink bg-ink text-white;
+}
+.swatch {
+  @apply h-9 w-9 rounded-full border-2 border-white shadow-[0_0_0_2px_var(--line)] transition;
+}
+.swatch-on {
+  @apply shadow-[0_0_0_3px_var(--ink)];
+}
+
+/* ---------- Impresión (A4 apaisado, 3 mm de sangrado) ---------- */
+@page {
+  size: A4 landscape;
+  margin: 0;
+}
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .sheet {
+    width: 297mm;
+    height: 210mm;
+    page-break-after: always;
+    break-after: page;
+    overflow: hidden;
+  }
+}
+.sheet {
+  width: 297mm;
+  height: 210mm;
+  background: #fff;
+}
