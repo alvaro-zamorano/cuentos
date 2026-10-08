@@ -92,3 +92,14 @@ body {
   height: 210mm;
   background: #fff;
 }
+
+/* ---------- Páginas legales ---------- */
+.legal h2 {
+  @apply mt-4 text-xl font-black;
+}
+.legal ul {
+  @apply list-disc pl-6;
+}
+.legal li {
+  @apply mt-1;
+}

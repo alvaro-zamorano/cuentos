@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { EMAIL_RE, asEdition } from "@/lib/validate";
 
+const SOURCES = ["cuentos-web", "gratis"];
+
 /**
  * Captura de email (lead magnet).
  * - Upsert en cuentos_leads (email + edición únicos) si hay Supabase configurado.
@@ -9,7 +11,7 @@ import { EMAIL_RE, asEdition } from "@/lib/validate";
  * Nunca bloquea la descarga: si falla la persistencia responde ok con stored=false.
  */
 export async function POST(req: Request) {
-  let body: { email?: string; marketing?: boolean; edition?: string; consent?: boolean };
+  let body: { email?: string; marketing?: boolean; edition?: string; consent?: boolean; source?: string };
   try {
     body = await req.json();
   } catch {
@@ -19,7 +21,7 @@ export async function POST(req: Request) {
   if (!EMAIL_RE.test(email)) return NextResponse.json({ ok: false, error: "email" }, { status: 400 });
   if (!body.consent) return NextResponse.json({ ok: false, error: "consent" }, { status: 400 });
 
-  const lead = { email, marketing: !!body.marketing, edition: asEdition(body.edition), source: "cuentos-web" };
+  const lead = { email, marketing: !!body.marketing, edition: asEdition(body.edition), source: SOURCES.includes(body.source ?? "") ? body.source! : "cuentos-web" };
 
   let stored = false;
   const db = supabaseAdmin();
