@@ -216,3 +216,30 @@ test("Páginas legales enlazadas desde el footer", async ({ page }) => {
   await page.goto("/condiciones");
   await expect(page.getByText("art. 103.c)")).toBeVisible();
 });
+
+test("Cookies: Clarity solo tras aceptar (si el build lleva NEXT_PUBLIC_CLARITY_ID)", async ({ page }) => {
+  await page.goto("/");
+  const banner = page.getByTestId("cookie-consent");
+  if ((await banner.count()) === 0) {
+    // build sin identificador de Clarity: no hay nada que consentir y no se carga nada
+    await expect(page.locator("#ms-clarity")).toHaveCount(0);
+    return;
+  }
+  await expect(banner).toBeVisible();
+  await page.getByTestId("cookie-reject").click();
+  await expect(banner).toHaveCount(0);
+  await expect(page.locator("#ms-clarity")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("cookie-consent")).toHaveCount(0);
+  await page.evaluate(() => localStorage.removeItem("cuentos:consent:analytics"));
+  await page.reload();
+  await page.getByTestId("cookie-accept").click();
+  await expect(page.locator("#ms-clarity")).toHaveCount(1);
+});
+
+test("Constructor: vista clásica y vista ilustrada con los mismos rasgos", async ({ page }) => {
+  await page.goto("/crear");
+  await expect(page.getByTestId("builder-previews")).toBeVisible();
+  await expect(page.getByTestId("builder-painted").locator("image[data-piece=head]")).toHaveCount(1);
+  await expect(page.getByTestId("builder-painted").locator("image[data-piece=body]")).toHaveCount(1);
+});

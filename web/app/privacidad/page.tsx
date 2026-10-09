@@ -39,7 +39,11 @@ export default function Privacidad() {
           Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla separada y opcional (consentimiento, art. 21 LSSI). Puedes retirarlo
           en cualquier momento desde el propio email o escribiéndonos.
         </li>
-        <li>Medición de uso de la web (Microsoft Clarity) en forma agregada: <Pending>base legal y banner de cookies</Pending>.</li>
+        <li>
+          Medición de uso de la web (Microsoft Clarity) en forma agregada: <strong>solo si lo aceptas</strong> en el aviso de cookies
+          (consentimiento, art. 22.2 LSSI). Si lo rechazas, no se carga y no se instala ninguna cookie de medición. Puedes cambiar tu elección
+          borrando los datos de este sitio en tu navegador.
+        </li>
       </ul>
 
       <h2>5. Cuánto tiempo</h2>
