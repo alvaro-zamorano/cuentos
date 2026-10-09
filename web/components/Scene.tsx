@@ -1,7 +1,12 @@
+"use client";
+
 import { Avatar } from "./Avatar";
+import { ContactShadow, FinishDefs, FinishOverlay, useFinishId } from "./Finish";
+import { PaintedCompanion, PaintedFigure } from "./PaintedFigure";
+import { companionFor, figureFor, isFigure } from "@/lib/pieces";
 import { Companion } from "./Companion";
 import { SPECIALS } from "@/lib/traits";
-import type { Companion as CompanionT, Expression, SceneId, SpecialId, Traits } from "@/lib/types";
+import type { Companion as CompanionT, Expression, SceneId, SpecialId, StyleId, Traits } from "@/lib/types";
 
 /**
  * Escena en modo Clásico: composición vectorial determinista.
@@ -15,6 +20,8 @@ export function Scene({
   special,
   age,
   className,
+  finish = true,
+  style,
 }: {
   scene: SceneId;
   traits: Traits;
@@ -23,22 +30,66 @@ export function Scene({
   special: SpecialId;
   age: number;
   className?: string;
+  finish?: boolean;
+  /** Estilo con piezas pintadas (p. ej. "gouache"). Sin él, dibuja el avatar vectorial. */
+  style?: StyleId;
 }) {
   const emoji = SPECIALS.find((s) => s.id === special)?.emoji ?? "⭐";
+  const fid = useFinishId();
+  const painted = style ? figureFor(style, traits) : null;
+  const paintedComp = style ? companionFor(style, companion) : null;
   const hero = (x: number, y: number, s = 0.78, flip = false) => (
-    <g transform={`translate(${x} ${y}) scale(${s})`}>
-      <Avatar traits={traits} expression={expression} size={200} flip={flip} />
-    </g>
+    <>
+      {finish && <ContactShadow id={fid} cx={x + 100 * s} cy={y + 274 * s} rx={70 * s} ry={10 * s} />}
+      {painted ? (
+        <PaintedFigure
+          spec={painted}
+          x={x + 100 * s}
+          y={y + 276 * s}
+          height={290 * s}
+          flip={flip}
+          fallback={
+            <g transform={`translate(${x} ${y}) scale(${s})`}>
+              <Avatar traits={traits} expression={expression} size={200} flip={flip} />
+            </g>
+          }
+        />
+      ) : (
+        <g transform={`translate(${x} ${y}) scale(${s})`}>
+          <Avatar traits={traits} expression={expression} size={200} flip={flip} />
+        </g>
+      )}
+    </>
   );
   const comp = (x: number, y: number, s = 0.74) =>
     companion ? (
-      <g transform={`translate(${x} ${y}) scale(${s})`}>
-        <Companion companion={companion} size={200} />
-      </g>
+      <>
+        {finish && <ContactShadow id={fid} cx={x + 100 * s} cy={y + 274 * s} rx={75 * s} ry={10 * s} />}
+        {paintedComp ? (
+          <PaintedCompanion
+            spec={paintedComp}
+            x={x + 100 * s}
+            y={!isFigure(paintedComp) && paintedComp.bust ? 406 : y + 276 * s}
+            height={isFigure(paintedComp) ? 260 * s : paintedComp.bust ? 300 * s : 200 * s}
+            flip={x > 300}
+            fallback={
+              <g transform={`translate(${x} ${y}) scale(${s})`}>
+                <Companion companion={companion} size={200} />
+              </g>
+            }
+          />
+        ) : (
+          <g transform={`translate(${x} ${y}) scale(${s})`}>
+            <Companion companion={companion} size={200} />
+          </g>
+        )}
+      </>
     ) : null;
 
   return (
     <svg viewBox="0 0 600 400" className={className} role="img" aria-label={`Escena: ${scene}`}>
+      {finish && <FinishDefs id={fid} seed={7 + scene.length} />}
+      <g filter={finish ? `url(#${fid}-rough)` : undefined}>
       {scene === "cama-manana" && (
         <>
           <Room wall="#fde9c9" floor="#d9a97a" />
@@ -155,6 +206,8 @@ export function Scene({
           {hero(170, 170, 0.62)}
         </>
       )}
+      </g>
+      {finish && <FinishOverlay id={fid} />}
     </svg>
   );
 }
@@ -165,8 +218,21 @@ function Room({ wall, floor }: { wall: string; floor: string }) {
   return (
     <>
       <rect width="600" height="400" fill={wall} />
+      <rect width="600" height="300" fill="url(#roomShade)" />
+      <g stroke="#000" strokeWidth="10" opacity="0.045">
+        <path d="M60 0 V296 M180 0 V296 M300 0 V296 M420 0 V296 M540 0 V296" />
+      </g>
       <rect y="300" width="600" height="100" fill={floor} />
-      <rect y="296" width="600" height="8" fill="rgba(0,0,0,0.08)" />
+      <g stroke="#000" strokeWidth="1.5" opacity="0.18">
+        <path d="M0 330 H600 M0 365 H600 M120 300 V400 M300 300 V400 M470 300 V400" />
+      </g>
+      <rect y="296" width="600" height="8" fill="rgba(0,0,0,0.12)" />
+      <defs>
+        <linearGradient id="roomShade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.25" />
+          <stop offset="1" stopColor="#6b4a2a" stopOpacity="0.12" />
+        </linearGradient>
+      </defs>
     </>
   );
 }
@@ -175,7 +241,15 @@ function Outdoor({ sky, grass }: { sky: string; grass: string }) {
   return (
     <>
       <rect width="600" height="400" fill={sky} />
+      <rect width="600" height="400" fill="url(#skyShade)" />
       <ellipse cx="300" cy="400" rx="420" ry="130" fill={grass} />
+      <ellipse cx="300" cy="420" rx="420" ry="110" fill="#000" opacity="0.07" />
+      <defs>
+        <linearGradient id="skyShade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.0" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0.35" />
+        </linearGradient>
+      </defs>
       <ellipse cx="120" cy="90" rx="50" ry="22" fill="#fff" opacity="0.9" />
       <ellipse cx="400" cy="60" rx="60" ry="24" fill="#fff" opacity="0.9" />
     </>

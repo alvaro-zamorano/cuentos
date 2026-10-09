@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Scene } from "@/components/Scene";
+import { DEFAULT_PAINTED_STYLE } from "@/lib/pieces";
 import { Avatar } from "@/components/Avatar";
 import { DEFAULT_TRAITS } from "@/lib/traits";
 
@@ -43,7 +44,7 @@ export default function Landing() {
           </p>
         </div>
         <div className="card overflow-hidden p-0">
-          <Scene scene="mesa-tarta" traits={demoTraits} expression="sorpresa" companion={{ kind: "perro", name: "Toby" }} special="dinosaurios" age={5} className="w-full" />
+          <Scene style={DEFAULT_PAINTED_STYLE} scene="mesa-tarta" traits={demoTraits} expression="sorpresa" companion={{ kind: "perro", name: "Toby" }} special="dinosaurios" age={5} className="w-full" />
           <p className="px-5 py-4 font-story text-[17px] leading-snug">
             Y en la mesa estaba la tarta. Enorme, con mucha nata y exactamente 5 velas encendidas, una por cada año de Lucas.
           </p>
