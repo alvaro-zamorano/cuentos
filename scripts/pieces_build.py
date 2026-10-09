@@ -4,6 +4,9 @@ Fabrica las piezas de la marioneta pintada a partir del catálogo (web/public/ca
   - cabezas: bust de pelo recortado por la barbilla → pieces/<estilo>/heads/<pelo>.png (piel y pelo base; recolor en cliente, lib/recolor.ts)
   - cuerpos: conjunto sin cabeza (cuello visible) → pieces/<estilo>/bodies/<conjunto>.png
   - pieces.json: geometría (barbilla, centro, anchos) para que el compositor alinee cabeza y cuerpo.
+Assets nuevos (opcionales, carpeta assets/raw/<estilo>/, no versionada; ver docs/ASSETS.md):
+  - backgrounds/<escena>.(png|jpg|webp) → pieces/<estilo>/backgrounds/<escena>.jpg (1200×800) + colocación de scripts/backgrounds_layout.json
+  - poses/<pose>/<prenda>.png (figura entera, fondo blanco) → pieces/<estilo>/poses/<pose>/<prenda>.png (sin cabeza, misma geometría que bodies)
 Recolor de piel: desplaza tono/luminosidad de los píxeles "piel" hacia el tono objetivo conservando el sombreado.
 Uso: python3 scripts/pieces_build.py [estilo]   (por defecto gouache)
 """
@@ -15,6 +18,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STYLE = sys.argv[1] if len(sys.argv) > 1 else "gouache"
 CAT = os.path.join(ROOT, "web", "public", "catalog", STYLE)
 OUT = os.path.join(ROOT, "web", "public", "pieces", STYLE)
+RAW = os.path.join(ROOT, "assets", "raw", STYLE)
+SCENES = ["cama-manana", "ventana", "desayuno", "puerta-regalo", "salon-globos", "nube-deseo", "parque", "jardin-juego", "mesa-tarta", "velas", "abrir-regalo", "cama-noche"]
+BG_W, BG_H = 1200, 800
 
 SKINS = {  # mismo orden e ids que web/lib/traits.ts
     "muy-clara": "#fde6d6", "clara": "#f4cfae", "melocoton": "#ebbd94", "media": "#d9a070",
@@ -54,9 +60,10 @@ def skin_mask(a):
     al = a[..., 3]
     mx = np.maximum(np.maximum(r, g), b); mn = np.minimum(np.minimum(r, g), b)
     sat = (mx - mn) / np.maximum(mx, 1)
-    hue_ok = (r > g) & (g > b) & (r - b > 50) & (r - b < 140) & (r - g > 24) & (g - b < 58)
-    light = (r > 185) & (g > 130) & (b > 90)
-    return hue_ok & light & (sat > 0.26) & (sat < 0.62) & (al > 0)
+    # misma máscara que web/lib/recolor.ts (isSkin): tono 8–34°, saturación 0.3–0.8, valor ≥ 0.62
+    d = np.maximum(mx - mn, 1)
+    hue = np.where(mx == r, 60 * (g - b) / d, 999)
+    return (mx == r) & (hue >= 8) & (hue <= 34) & (sat >= 0.3) & (sat <= 0.8) & (mx >= 158) & (al > 0)
 
 
 HAIRS = {"castano": None, "negro": "#2b2118", "rubio": "#e8c470", "pelirrojo": "#d2602c", "caoba": "#8c3b2e"}
@@ -138,6 +145,24 @@ def build_heads():
         # recorte: solo la cabeza (hasta la barbilla + 6 px) con desvanecido en el borde inferior
         head = im.crop((0, 0, im.width, min(im.height, chin + 6)))
         ha = np.array(head)
+        # ropa del bust original (cuello amarillo del chubasquero y camiseta azul oscura) que asoma bajo la barbilla:
+        # en el tercio inferior se borran esos colores (ni piel ni pelo) y 1 px alrededor
+        hr, hg, hb = ha[..., 0].astype(int), ha[..., 1].astype(int), ha[..., 2].astype(int)
+        hmx = np.maximum(np.maximum(hr, hg), hb); hmn = np.minimum(np.minimum(hr, hg), hb)
+        hsat = (hmx - hmn) / np.maximum(hmx, 1)
+        garment = (
+            ((hr > 200) & (hg > 160) & (hb < 120) & (hg - hb > 70))  # amarillo
+            | ((hb > hr + 10) & (hg < 110) & (hr < 60))  # azul oscuro
+            | ((hr > 225) & (hg > 215) & (hb > 190) & (hsat < 0.2))  # forro blanco/crema
+            | ((hr > 200) & (hg > 170) & (hb < 170) & (hg - hb > 40) & (hr - hg < 50))  # amarillo pálido del borde
+        )
+        ochre = (hr > 150) & (hg > 120) & (hb < 80) & (hg - hb > 70) & (hr - hg < 95)  # amarillo en sombra (no es pelo castaño)
+        garment |= ochre
+        garment[: int(ha.shape[0] * 0.62)] = False
+        dil = garment.copy()
+        dil[1:] |= garment[:-1]; dil[:-1] |= garment[1:]; dil[:, 1:] |= garment[:, :-1]; dil[:, :-1] |= garment[:, 1:]
+        keep = skin_mask(ha) | (hair_mask(ha) & ~ochre)
+        ha[..., 3] = np.where(dil & ~keep, 0, ha[..., 3])
         fade = np.ones(ha.shape[0]); fade[-10:] = np.linspace(1, 0, 10)
         ha[..., 3] = (ha[..., 3] * fade[:, None]).astype(np.uint8)
         head = Image.fromarray(ha, "RGBA")
@@ -151,6 +176,25 @@ def build_heads():
     return heads
 
 
+def headless(im):
+    """Figura entera (fondo ya transparente) → cuerpo sin cabeza + geometría (barbilla, cara)."""
+    sm = skin_mask(np.array(im))
+    # cara: zona de piel en el tercio superior
+    top = sm[: int(im.height * 0.45)]
+    cols = np.where(top.sum(axis=0) > 3)[0]
+    rows = np.where(top.sum(axis=1) > 3)[0]
+    face_w = int(cols.max() - cols.min()) if len(cols) else int(im.width * 0.5)
+    face_cx = int((cols.max() + cols.min()) / 2) if len(cols) else im.width // 2
+    chin = int(rows.max()) if len(rows) else int(im.height * 0.37)
+    head_top = chin - 10  # cuello y arranque de la barbilla; por encima va la cabeza nueva (si se deja más barbilla, asoma bajo la cabeza nueva)
+    ia = np.array(im)
+    ia[:head_top, :, 3] = 0
+    fade = np.linspace(0, 1, 8)
+    ia[head_top:head_top + 8, :, 3] = (ia[head_top:head_top + 8, :, 3] * fade[:, None]).astype(np.uint8)
+    body = Image.fromarray(ia, "RGBA")
+    return body, {"w": im.width, "h": im.height, "chin": head_top, "faceW": face_w, "faceCx": face_cx}
+
+
 def build_bodies():
     bodies = {}
     src = os.path.join(CAT, "outfit")
@@ -159,24 +203,62 @@ def build_bodies():
         if not f.endswith(".png"):
             continue
         bid = f[:-4]
-        im = cutout(Image.open(os.path.join(src, f)))
-        sm = skin_mask(np.array(im))
-        # cara: zona de piel en el tercio superior
-        top = sm[: int(im.height * 0.45)]
-        cols = np.where(top.sum(axis=0) > 3)[0]
-        rows = np.where(top.sum(axis=1) > 3)[0]
-        face_w = int(cols.max() - cols.min()) if len(cols) else int(im.width * 0.5)
-        face_cx = int((cols.max() + cols.min()) / 2) if len(cols) else im.width // 2
-        chin = int(rows.max()) if len(rows) else int(im.height * 0.37)
-        head_top = chin - 26  # barbilla visible; por encima va la cabeza nueva
-        ia = np.array(im)
-        ia[:head_top, :, 3] = 0
-        fade = np.linspace(0, 1, 8)
-        ia[head_top:head_top + 8, :, 3] = (ia[head_top:head_top + 8, :, 3] * fade[:, None]).astype(np.uint8)
-        headless = Image.fromarray(ia, "RGBA")
-        headless.save(os.path.join(OUT, "bodies", f"{bid}.png"), optimize=True)
-        bodies[bid] = {"w": im.width, "h": im.height, "chin": head_top, "faceW": face_w, "faceCx": face_cx}
+        body, geom = headless(cutout(Image.open(os.path.join(src, f))))
+        body.save(os.path.join(OUT, "bodies", f"{bid}.png"), optimize=True)
+        bodies[bid] = geom
     return bodies
+
+
+def build_poses(bodies):
+    """assets/raw/<estilo>/poses/<pose>/<prenda>.png → pieces/<estilo>/poses/<pose>/<prenda>.png. Solo prendas conocidas."""
+    src = os.path.join(RAW, "poses")
+    poses = {}
+    if not os.path.isdir(src):
+        return poses
+    for pose in sorted(os.listdir(src)):
+        pdir = os.path.join(src, pose)
+        if not os.path.isdir(pdir):
+            continue
+        for f in sorted(os.listdir(pdir)):
+            if not f.lower().endswith(".png"):
+                continue
+            bid = f[:-4]
+            if bid not in bodies:
+                print(f"  aviso: poses/{pose}/{f} no es una prenda conocida ({', '.join(bodies)}); ignorado")
+                continue
+            body, geom = headless(cutout(Image.open(os.path.join(pdir, f))))
+            os.makedirs(os.path.join(OUT, "poses", pose), exist_ok=True)
+            body.save(os.path.join(OUT, "poses", pose, f"{bid}.png"), optimize=True)
+            poses.setdefault(pose, {})[bid] = geom
+    return poses
+
+
+def build_backgrounds():
+    """assets/raw/<estilo>/backgrounds/<escena>.* → pieces/<estilo>/backgrounds/<escena>.jpg (1200×800, recorte centrado a 3:2)."""
+    src = os.path.join(RAW, "backgrounds")
+    out = {}
+    if not os.path.isdir(src):
+        return out
+    with open(os.path.join(ROOT, "scripts", "backgrounds_layout.json")) as fh:
+        layout = json.load(fh)
+    for f in sorted(os.listdir(src)):
+        sid, ext = os.path.splitext(f)
+        if ext.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+            continue
+        if sid not in SCENES:
+            print(f"  aviso: backgrounds/{f} no es una escena conocida ({', '.join(SCENES)}); ignorado")
+            continue
+        im = Image.open(os.path.join(src, f)).convert("RGB")
+        w, h = im.size
+        if w / h > BG_W / BG_H:
+            nw = int(h * BG_W / BG_H); x0 = (w - nw) // 2; im = im.crop((x0, 0, x0 + nw, h))
+        else:
+            nh = int(w * BG_H / BG_W); y0 = (h - nh) // 2; im = im.crop((0, y0, w, y0 + nh))
+        im = im.resize((BG_W, BG_H), Image.LANCZOS)
+        os.makedirs(os.path.join(OUT, "backgrounds"), exist_ok=True)
+        im.save(os.path.join(OUT, "backgrounds", f"{sid}.jpg"), quality=82, optimize=True, progressive=True)
+        out[sid] = {"w": BG_W, "h": BG_H, **layout[sid]}
+    return out
 
 
 def copy_dir(cat, out):
@@ -202,6 +284,13 @@ if __name__ == "__main__":
         "skins": list(SKINS.keys()),
         "hairColors": list(HAIRS.keys()),
     }
+    poses = build_poses(manifest["bodies"])
+    if poses:
+        manifest["poses"] = poses
+    backgrounds = build_backgrounds()
+    if backgrounds:
+        manifest["backgrounds"] = backgrounds
+    print(f"poses: {sum(len(v) for v in poses.values())} · fondos: {len(backgrounds)}")
     with open(os.path.join(OUT, "pieces.json"), "w") as fh:
         json.dump(manifest, fh, ensure_ascii=False, indent=1)
     n = sum(len(files) for _, _, files in os.walk(OUT))

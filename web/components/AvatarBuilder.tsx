@@ -1,20 +1,41 @@
 "use client";
 
 import { Avatar } from "./Avatar";
+import { PaintedStanding } from "./PaintedFigure";
+import { DEFAULT_PAINTED_STYLE, figureFor } from "@/lib/pieces";
 import { ACCESSORIES, EYES, EYE_SHAPES, GARMENTS, GLASSES, HAIR_COLORS, HAIR_SHAPES, OUTFITS, SKINS, normalizeTraits, randomTraits } from "@/lib/traits";
 import type { Traits } from "@/lib/types";
 
 export function AvatarBuilder({ traits: raw, onChange, compact = false }: { traits: Traits; onChange: (t: Traits) => void; compact?: boolean }) {
   const traits = normalizeTraits(raw);
+  const painted = figureFor(DEFAULT_PAINTED_STYLE, traits);
+  const vector = <Avatar traits={traits} expression="feliz" size={compact ? 104 : 148} />;
   return (
-    <div className={`grid gap-6 ${compact ? "" : "md:grid-cols-[200px_1fr]"}`}>
-      <div className="flex items-center gap-4 md:flex-col md:items-start">
-        <div className="rounded-[8px] border border-line bg-card p-2">
-          <Avatar traits={traits} expression="feliz" size={compact ? 104 : 148} />
+    <div className={`grid gap-6 ${compact ? "" : "md:grid-cols-[220px_1fr]"}`}>
+      <div className="flex items-start gap-4 md:flex-col md:items-stretch">
+        {/* Las dos ediciones con los mismos rasgos: clásica (vectorial) e ilustrada (pintada). */}
+        <div className="grid grid-cols-2 gap-2" data-testid="builder-previews">
+          <figure className="flex flex-col items-center rounded-[8px] border border-line bg-card p-2">
+            <div className="flex h-[112px] w-full items-end justify-center md:h-[156px]">{vector}</div>
+            <figcaption className="mt-1 text-[11px] leading-none text-ink-soft">Clásico</figcaption>
+          </figure>
+          <figure className="flex flex-col items-center rounded-[8px] border border-line bg-paper p-2" data-testid="builder-painted">
+            <div className="flex h-[112px] w-full items-end justify-center md:h-[156px]">
+              {painted ? <PaintedStanding spec={painted} className="h-full w-full" fallback={vector} /> : vector}
+            </div>
+            <figcaption className="mt-1 text-[11px] leading-none text-ink-soft">Ilustrado</figcaption>
+          </figure>
         </div>
-        <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(randomTraits())}>
-          Aleatorio
-        </button>
+        <div className="flex flex-col items-start gap-2">
+          <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(randomTraits())}>
+            Aleatorio
+          </button>
+          {!compact && painted && (
+            <p className="max-w-[30ch] text-[11px] leading-snug text-ink-soft">
+              La edición ilustrada toma pelo, piel y prenda; ojos, gafas, color de ropa y accesorio se ven en la clásica.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-5">

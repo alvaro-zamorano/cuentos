@@ -3,7 +3,7 @@
 import { Avatar } from "./Avatar";
 import { ContactShadow, FinishDefs, FinishOverlay, useFinishId } from "./Finish";
 import { PaintedCompanion, PaintedFigure } from "./PaintedFigure";
-import { companionFor, figureFor, isFigure } from "@/lib/pieces";
+import { SCENE_POSE, backgroundFor, companionFor, figureFor, isFigure } from "@/lib/pieces";
 import { Companion } from "./Companion";
 import { SPECIALS } from "@/lib/traits";
 import type { Companion as CompanionT, Expression, SceneId, SpecialId, StyleId, Traits } from "@/lib/types";
@@ -39,8 +39,9 @@ export function Scene({
 }) {
   const emoji = SPECIALS.find((s) => s.id === special)?.emoji ?? "⭐";
   const fid = useFinishId();
-  const painted = style ? figureFor(style, traits) : null;
+  const painted = style ? figureFor(style, traits, SCENE_POSE[scene]) : null;
   const paintedComp = style ? companionFor(style, companion) : null;
+  const bg = backgroundFor(style, scene);
   const hero = (x: number, y: number, s = 0.78, flip = false) => (
     <>
       {finish && <ContactShadow id={fid} cx={x + 100 * s} cy={y + 274 * s} rx={70 * s} ry={10 * s} />}
@@ -64,6 +65,11 @@ export function Scene({
       )}
     </>
   );
+  /** Igual que hero(), pero por el punto de apoyo: (fx, fy) = centro de los pies y línea del suelo; h = altura en unidades de escena. */
+  const heroAt = (fx: number, fy: number, h: number, flip = false) => {
+    const s = h / 290;
+    return hero(fx - 100 * s, fy - 276 * s, s, flip);
+  };
   const comp = (x: number, y: number, s = 0.74) =>
     companion ? (
       <>
@@ -88,6 +94,32 @@ export function Scene({
         )}
       </>
     ) : null;
+  const compAt = (fx: number, fy: number, h: number) => {
+    const s = h / 260;
+    return comp(fx - 100 * s, fy - 276 * s, s);
+  };
+
+  if (bg && style) {
+    // Fondo pintado (imagen) + superposiciones vectoriales que dependen de los datos + figuras.
+    const g = bg.ground;
+    return (
+      <svg viewBox="0 0 600 400" className={className} role="img" aria-label={`Escena: ${scene}`} data-painted-bg={scene}>
+        {finish && <FinishDefs id={fid} seed={7 + scene.length + variant * 13} />}
+        <g transform={variant % 2 === 1 ? "translate(600 0) scale(-1 1)" : undefined}>
+          <g filter={finish ? `url(#${fid}-rough)` : undefined}>
+            <image href={`/pieces/${style}/backgrounds/${scene}.jpg`} width="600" height="400" preserveAspectRatio="xMidYMid slice" />
+            <g filter={finish ? `url(#${fid}-paint)` : undefined}>
+              {bg.candles && <Candles x={bg.candles.x} y={bg.candles.y} span={bg.candles.span} scale={bg.candles.scale} smoke={bg.candles.smoke} candles={age} />}
+              {bg.thought && <Thought x={bg.thought.x} y={bg.thought.y} emoji={emoji} />}
+              {bg.comp && compAt(bg.comp.x, bg.comp.ground ?? g, bg.comp.h)}
+              {heroAt(bg.hero.x, g, bg.hero.h, bg.hero.flip)}
+            </g>
+          </g>
+        </g>
+        {finish && <FinishOverlay id={fid} />}
+      </svg>
+    );
+  }
 
   return (
     <svg viewBox="0 0 600 400" className={className} role="img" aria-label={`Escena: ${scene}`}>
@@ -519,18 +551,27 @@ function Paper({ x, y }: { x: number; y: number }) {
 }
 
 function Cake({ x, y, candles, scale = 1, smoke = false }: { x: number; y: number; candles: number; scale?: number; smoke?: boolean }) {
-  const n = Math.max(1, Math.min(10, candles));
-  const spacing = 110 / Math.max(1, n - 1);
   return (
     <g transform={`translate(${x} ${y}) scale(${scale})`}>
       <rect x="-80" y="0" width="160" height="60" rx="14" fill="#f6c0c8" />
       <rect x="-80" y="0" width="160" height="18" rx="9" fill="#fff" />
       <rect x="-60" y="-34" width="120" height="40" rx="12" fill="#f6c0c8" />
       <rect x="-60" y="-34" width="120" height="14" rx="7" fill="#fff" />
+      <Candles x={0} y={-34} span={110} candles={candles} smoke={smoke} />
+    </g>
+  );
+}
+
+/** Fila de velas (tantas como años). (x, y) = centro de la base; `span` = anchura total que ocupan. */
+function Candles({ x, y, span, candles, scale = 1, smoke = false }: { x: number; y: number; span: number; candles: number; scale?: number; smoke?: boolean }) {
+  const n = Math.max(1, Math.min(10, candles));
+  const spacing = span / Math.max(1, n - 1);
+  return (
+    <g transform={`translate(${x} ${y}) scale(${scale})`}>
       {Array.from({ length: n }).map((_, i) => {
-        const cx = n === 1 ? 0 : -55 + i * spacing;
+        const cx = n === 1 ? 0 : -span / 2 + i * spacing;
         return (
-          <g key={i} transform={`translate(${cx} -34)`}>
+          <g key={i} transform={`translate(${cx} 0)`}>
             <rect x="-4" y="-24" width="8" height="24" rx="2" fill={["#4a86c9", "#e4573d", "#5aa469", "#9b7fd0"][i % 4]} />
             {smoke ? (
               <path d="M0 -26 q-6 -10 0 -20 q6 -10 0 -20" stroke="#aab" strokeWidth="2" fill="none" />
