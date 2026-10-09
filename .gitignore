@@ -1,0 +1,10 @@
+node_modules/
+.next/
+.env
+.env.local
+.DS_Store
+assets/raw/
+*.zip
+capturas/
+__pycache__/
+web/tests/_scratch_*
