@@ -51,25 +51,30 @@ async function createClassic(page: Page) {
   await page.goto("/crear");
   await page.getByPlaceholder("Lucas, Vera, Mateo…").fill("Vera");
   await page.getByRole("combobox").selectOption("6");
-  await page.getByRole("button", { name: "Seguir" }).click();
+  // los rasgos iniciales son aleatorios: se fijan pelo y ropa para comprobar la hoja de personaje
+  await page.getByRole("button", { name: "Rizos cortos" }).click();
+  await page.getByRole("button", { name: "Jersey" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByRole("heading", { name: "El mundo de Vera" })).toBeVisible();
   await page.getByRole("button", { name: "Su perro" }).click();
   await page.getByPlaceholder("Toby").fill("Toby");
   await page.getByRole("button", { name: /Dinosaurios/ }).click();
-  await page.getByRole("button", { name: "Seguir" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByTestId("page-12")).toBeVisible();
   const first = page.getByLabel("Texto de la página 1", { exact: true });
   await first.fill("Vera se despertó antes que nadie.");
   await expect(page.getByRole("button", { name: "Volver al texto original" })).toBeVisible();
-  await page.getByRole("button", { name: "Me gusta, a imprimir" }).click();
-  await expect(page.getByRole("heading", { name: "¿Cómo lo quieres?" })).toBeVisible();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Elige la edición" })).toBeVisible();
+  // registro adulto: nada de «peque» ni exclamaciones en la interfaz
+  await expect(page.getByText(/\bpeques?\b/i)).toHaveCount(0);
 }
 
 test("Clásico: de /crear al PDF de 13 hojas", async ({ page, context }) => {
   await createClassic(page);
   await page.getByPlaceholder("tu@email.com").fill("prueba@example.com");
   await page.getByRole("checkbox").first().check();
-  const [tab] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Abrir el PDF para imprimir" }).click()]);
+  const [tab] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Descargar PDF" }).click()]);
   await expect(page.getByTestId("book-link")).toContainText("/crear?b=testbook01");
 
   await tab.waitForLoadState();
@@ -86,30 +91,39 @@ test("Clásico: de /crear al PDF de 13 hojas", async ({ page, context }) => {
 
 test("Ilustrado en dry-run: pago simulado, estilo, hoja, progreso, preview y PDF", async ({ page }) => {
   await createClassic(page);
-  await page.getByRole("button", { name: /Ilustrado · PDF/ }).click();
+  await page.getByRole("radio", { name: /Ilustrado · PDF/ }).click();
   await page.getByTestId("go-illustrated").click();
 
-  // pago simulado, claramente etiquetado
-  await expect(page.getByRole("note")).toContainText("PAGO SIMULADO");
+  // pago de prueba, etiquetado con sobriedad
+  await expect(page.getByRole("note")).toContainText("Pago de prueba — sin cargo");
+  await expect(page.getByText("14,90 €").filter({ visible: true })).toHaveCount(1);
   await expect(page.getByTestId("simulate-payment")).toBeDisabled();
   await page.getByTestId("buyer-declaration").check();
   await page.getByTestId("simulate-payment").click();
 
-  // estilo: las 6 anclas
+  // estilo: las 6 anclas; solo gouache tiene piezas pintadas
   await expect(page.getByRole("heading", { name: "Elige el estilo" })).toBeVisible();
   for (const id of ["3d", "flat", "gouache", "papercraft", "lapiz", "acuarela"]) await expect(page.getByTestId(`style-${id}`)).toBeVisible();
+  await expect(page.getByTestId("style-gouache")).toContainText("Disponible");
+  await expect(page.getByTestId("style-acuarela")).toContainText("Próximamente");
   // con las anclas presentes se ven las imágenes; sin ellas, un degradado con el nombre del estilo
   const anchors = await page.request.get("/styles/flat.jpg");
   if (anchors.ok()) await expect(page.getByTestId("style-fallback")).toHaveCount(0);
   else await expect(page.getByTestId("style-fallback")).toHaveCount(6);
-  await page.getByTestId("style-acuarela").click();
 
-  // hoja de personaje: acuarela no tiene pelo ni ropa → provisional
+  // un estilo «Próximamente» se puede elegir para avisar, pero se pinta en gouache
+  await page.getByTestId("style-acuarela").click();
+  await expect(page.getByTestId("style-pending-choice")).toContainText("Acuarela estará disponible próximamente");
+  await page.getByRole("button", { name: /Continuar en gouache/ }).click();
   await expect(page.getByRole("heading", { name: "Así va a ser Vera" })).toBeVisible();
-  await expect(page.getByTestId("sheet-hair")).toHaveAttribute("data-provisional", "1");
-  await expect(page.getByTestId("sheet-outfit")).toHaveAttribute("data-provisional", "1");
-  await expect(page.getByTestId("sheet-skin")).toHaveAttribute("data-provisional", "0");
-  await expect(page.getByText("provisional").first()).toBeVisible();
+  await expect(page.getByTestId("character-sheet").getByTestId("style-pending")).toContainText("vista en gouache");
+
+  // hoja de personaje: tres vistas con la figura pintada y la ficha de rasgos
+  for (const id of ["sheet-front", "sheet-mirror", "sheet-head"]) await expect(page.getByTestId(id)).toBeVisible();
+  await expect(page.getByTestId("sheet-front").locator("image[data-piece=body]")).toHaveCount(1);
+  await expect(page.getByTestId("sheet-head").locator("image[data-piece=head]")).toHaveCount(1);
+  await expect(page.getByTestId("sheet-hair")).toContainText("Rizos cortos");
+  await expect(page.getByTestId("sheet-outfit")).toContainText("Jersey");
 
   // Cambiar rasgos vuelve al paso 1; al volver la hoja sigue pendiente
   await page.getByTestId("change-traits").click();
@@ -117,19 +131,20 @@ test("Ilustrado en dry-run: pago simulado, estilo, hoja, progreso, preview y PDF
   await page.goto("/ilustrado");
   await expect(page.getByRole("heading", { name: "Así va a ser Vera" })).toBeVisible();
 
-  // cambiar a un estilo sin huecos
+  // cambiar a un estilo disponible
   await page.getByRole("button", { name: "Otro estilo" }).click();
-  await page.getByTestId("style-flat").click();
-  await expect(page.getByTestId("sheet-hair")).toHaveAttribute("data-provisional", "0");
+  await page.getByTestId("style-gouache").click();
+  await expect(page.getByTestId("character-sheet").getByTestId("style-pending")).toHaveCount(0);
   await page.getByTestId("approve-sheet").click();
 
-  // progreso: 12 casillas
+  // progreso: 12 casillas, sin avisos de demostración
   await expect(page.getByTestId("progress-grid").locator("[data-testid^=slot-]")).toHaveCount(12);
-  await expect(page.getByText("Vista previa de demostración: las ilustraciones finales se generan tras el pago").first()).toBeVisible();
+  await expect(page.getByText(/demostración/i)).toHaveCount(0);
 
-  // preview ilustrado
-  await expect(page.getByTestId("dry-run-notice")).toBeVisible({ timeout: 20_000 });
+  // preview ilustrado: escenas pintadas
+  await expect(page.getByTestId("illustrated-pdf")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("illustrated-scene")).toHaveCount(12);
+  await expect(page.getByTestId("illustrated-scene").first()).toHaveAttribute("data-painted-style", "gouache");
   const scene3 = page.getByTestId("page-3").getByTestId("illustrated-scene");
   await expect(scene3).toHaveAttribute("data-variant", "0");
   await page.getByTestId("regen-3").click();
@@ -157,7 +172,7 @@ test("Ilustrado en dry-run: pago simulado, estilo, hoja, progreso, preview y PDF
 test("Ilustrado sin terminar: /libro?edition=illustrated no imprime", async ({ page }) => {
   await createClassic(page);
   await page.goto("/libro?edition=illustrated&print=1");
-  await expect(page.getByText("Este cuento aún no tiene la edición ilustrada terminada.")).toBeVisible();
+  await expect(page.getByText("La edición ilustrada de este cuento aún no está terminada.")).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __prints: number }).__prints)).toBe(0);
 });
 
@@ -165,12 +180,24 @@ test("Lead magnet /gratis abre el cuento demo", async ({ page, context }) => {
   await page.goto("/gratis");
   await page.getByPlaceholder("tu@email.com").fill("demo@example.com");
   await page.getByRole("checkbox").first().check();
-  const [tab] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Descargar en PDF" }).click()]);
+  const [tab] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Descargar PDF" }).click()]);
   await expect(page.getByTestId("gratis-ok")).toBeVisible();
   await tab.waitForLoadState();
   await expect(tab.locator("section.sheet")).toHaveCount(13);
   await expect(tab.getByRole("heading", { level: 1 })).toContainText("Lucas");
   await expect(tab.getByText("Toby").first()).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+});
+
+test("Landing: estructura editorial y SEO", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveTitle(/Cuento personalizado/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Un libro escrito y pintado para un solo lector.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  for (const h of ["Cómo se hace", "Una doble página", "Ediciones", "Cómo lo hacemos", "Preguntas"]) await expect(page.getByRole("heading", { name: h, level: 2 })).toBeVisible();
+  await expect(page.getByText("14,90 €").first()).toBeVisible();
+  await expect(page.getByText("desde 39,90 €").first()).toBeVisible();
+  await expect(page.getByText(/\bpeques?\b/i)).toHaveCount(0);
   expect(consoleErrors).toEqual([]);
 });
 
