@@ -22,6 +22,7 @@ export function Scene({
   className,
   finish = true,
   style,
+  variant = 0,
 }: {
   scene: SceneId;
   traits: Traits;
@@ -33,6 +34,8 @@ export function Scene({
   finish?: boolean;
   /** Estilo con piezas pintadas (p. ej. "gouache"). Sin él, dibuja el avatar vectorial. */
   style?: StyleId;
+  /** Versión de la página (edición ilustrada, «Otra versión»): las impares van en espejo y cada una cambia la textura. */
+  variant?: number;
 }) {
   const emoji = SPECIALS.find((s) => s.id === special)?.emoji ?? "⭐";
   const fid = useFinishId();
@@ -88,8 +91,10 @@ export function Scene({
 
   return (
     <svg viewBox="0 0 600 400" className={className} role="img" aria-label={`Escena: ${scene}`}>
-      {finish && <FinishDefs id={fid} seed={7 + scene.length} />}
+      {finish && <FinishDefs id={fid} seed={7 + scene.length + variant * 13} />}
+      <g transform={variant % 2 === 1 ? "translate(600 0) scale(-1 1)" : undefined}>
       <g filter={finish ? `url(#${fid}-rough)` : undefined}>
+      <g filter={finish ? `url(#${fid}-paint)` : undefined}>
       {scene === "cama-manana" && (
         <>
           <Room wall="#fde9c9" floor="#d9a97a" />
@@ -176,7 +181,7 @@ export function Scene({
           <Garland y={40} />
           <Table x={300} y={250} w={340} />
           <Cake x={300} y={200} candles={age} />
-          {hero(90, 150, 0.74)}
+          {hero(24, 150, 0.74)}
           {comp(430, 160, 0.7)}
         </>
       )}
@@ -207,6 +212,8 @@ export function Scene({
         </>
       )}
       </g>
+      </g>
+      </g>
       {finish && <FinishOverlay id={fid} />}
     </svg>
   );
@@ -219,7 +226,7 @@ function Room({ wall, floor }: { wall: string; floor: string }) {
     <>
       <rect width="600" height="400" fill={wall} />
       <rect width="600" height="300" fill="url(#roomShade)" />
-      <g stroke="#000" strokeWidth="10" opacity="0.045">
+      <g stroke="#000" strokeWidth="10" opacity="0.03">
         <path d="M60 0 V296 M180 0 V296 M300 0 V296 M420 0 V296 M540 0 V296" />
       </g>
       <rect y="300" width="600" height="100" fill={floor} />

@@ -54,41 +54,44 @@ export function EmailForm({
   };
 
   return (
-    <form onSubmit={submit} className="grid gap-3">
-      <input
-        type="email"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="tu@email.com"
-        aria-label="Email"
-        className="rounded-2xl border-2 border-line bg-cream px-4 py-3 font-bold outline-none focus:border-ink"
-      />
-      <label className="flex items-start gap-2 text-sm text-ink-soft">
-        <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1" />
+    <form onSubmit={submit} className="grid max-w-xl gap-4">
+      <label className="grid gap-1">
+        <span className="field-label">Email</span>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="tu@email.com"
+          autoComplete="email"
+          className="input"
+        />
+      </label>
+      <label className="flex items-start gap-3 text-sm leading-relaxed text-ink-soft">
+        <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />
         <span>
-          Soy madre, padre o tutor del peque, o cuento con su autorización para crear este cuento. Acepto que el cuento se guarde 30
-          días para poder recuperarlo con un enlace; después se borra. He leído la{" "}
-          <Link href="/privacidad" target="_blank" className="underline">
+          Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Acepto que el cuento se guarde 30 días para poder
+          recuperarlo con un enlace; después se borra. He leído la{" "}
+          <Link href="/privacidad" target="_blank" className="link">
             política de privacidad
           </Link>{" "}
           y las{" "}
-          <Link href="/condiciones" target="_blank" className="underline">
+          <Link href="/condiciones" target="_blank" className="link">
             condiciones
           </Link>
           .
         </span>
       </label>
-      <label className="flex items-start gap-2 text-sm text-ink-soft">
-        <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-1" />
-        <span>Quiero que me aviséis de nuevas ocasiones y ediciones (opcional, puedes darte de baja cuando quieras).</span>
+      <label className="flex items-start gap-3 text-sm leading-relaxed text-ink-soft">
+        <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />
+        <span>Quiero recibir avisos de nuevas ocasiones y ediciones. Opcional; puedes darte de baja cuando quieras.</span>
       </label>
-      <button type="submit" className="btn-primary" disabled={status === "sending"}>
-        {submitLabel}
+      <button type="submit" className="btn-primary justify-self-start" disabled={status === "sending"}>
+        {status === "sending" ? "Enviando…" : submitLabel}
       </button>
       {status === "ok" && successMessage}
       {status === "ok" && children}
-      {status === "error" && <p className="text-sm font-bold text-coral">No se ha podido guardar el email. Prueba otra vez.</p>}
+      {status === "error" && <p className="text-sm text-[#8a2a1c]">No se ha podido guardar el email. Comprueba la conexión e inténtalo de nuevo.</p>}
     </form>
   );
 }

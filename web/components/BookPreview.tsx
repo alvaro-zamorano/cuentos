@@ -23,11 +23,11 @@ export function BookPreview({
   return (
     <>
       {book.pages.map((p) => (
-        <article key={p.n} className="card grid gap-3 overflow-hidden p-0 md:grid-cols-[3fr_2fr]" data-testid={`page-${p.n}`}>
-          <div className="relative">{renderImage(p)}</div>
-          <div className="flex flex-col gap-2 p-4">
+        <article key={p.n} className="grid overflow-hidden rounded-[8px] border border-line bg-card md:grid-cols-[3fr_2fr]" data-testid={`page-${p.n}`}>
+          <div className="relative border-b border-line md:border-b-0 md:border-r">{renderImage(p)}</div>
+          <div className="flex flex-col gap-2 p-4 md:p-5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-black text-ink-soft">Página {p.n}</span>
+              <span className="text-xs text-ink-soft">Página {p.n}</span>
               {renderActions?.(p)}
             </div>
             <textarea
@@ -36,12 +36,12 @@ export function BookPreview({
               aria-label={`Texto de la página ${p.n}`}
               maxLength={draft.hero.age <= 4 ? 120 : 360}
               onChange={(e) => update({ textOverrides: { ...draft.textOverrides, [p.n]: e.target.value } })}
-              className="min-h-28 w-full resize-none rounded-2xl border-2 border-transparent bg-cream p-3 font-story text-[17px] leading-snug outline-none focus:border-ink"
+              className="story min-h-32 w-full flex-1 resize-none rounded-[4px] border border-transparent bg-paper/60 p-3 text-[18px] leading-[1.5] text-ink outline-none transition-colors hover:border-line focus:border-ink/40 focus:bg-white"
             />
             {draft.textOverrides[p.n] !== undefined && (
               <button
                 type="button"
-                className="self-start text-xs font-bold text-ink-soft underline"
+                className="self-start text-xs text-ink-soft underline underline-offset-2 hover:text-ink"
                 onClick={() => {
                   const next = { ...draft.textOverrides };
                   delete next[p.n];

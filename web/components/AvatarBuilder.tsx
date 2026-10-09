@@ -7,17 +7,17 @@ import type { Traits } from "@/lib/types";
 export function AvatarBuilder({ traits: raw, onChange, compact = false }: { traits: Traits; onChange: (t: Traits) => void; compact?: boolean }) {
   const traits = normalizeTraits(raw);
   return (
-    <div className={`grid gap-5 ${compact ? "" : "md:grid-cols-[220px_1fr]"}`}>
-      <div className="flex flex-col items-center gap-3">
-        <div className="rounded-3xl bg-white p-3 border-2 border-line">
-          <Avatar traits={traits} expression="feliz" size={compact ? 120 : 180} />
+    <div className={`grid gap-6 ${compact ? "" : "md:grid-cols-[200px_1fr]"}`}>
+      <div className="flex items-center gap-4 md:flex-col md:items-start">
+        <div className="rounded-[8px] border border-line bg-card p-2">
+          <Avatar traits={traits} expression="feliz" size={compact ? 104 : 148} />
         </div>
-        <button type="button" className="btn-ghost px-4 py-2 text-sm" onClick={() => onChange(randomTraits())}>
-          🎲 Sorpréndeme
+        <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(randomTraits())}>
+          Aleatorio
         </button>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-5">
         <Field label="Pelo">
           <div className="flex flex-wrap gap-2">
             {HAIR_SHAPES.map((h) => (
@@ -31,7 +31,7 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
               </button>
             ))}
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2.5">
             {HAIR_COLORS.map((c) => (
               <button
                 key={c.id}
@@ -47,7 +47,7 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
         </Field>
 
         <Field label="Piel">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             {SKINS.map((s) => (
               <button
                 key={s.id}
@@ -70,7 +70,7 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
               </button>
             ))}
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2.5">
             {EYES.map((e) => (
               <button
                 key={e.id}
@@ -103,7 +103,7 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
               </button>
             ))}
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2.5">
             {OUTFITS.map((o) => (
               <button
                 key={o.id}
@@ -135,7 +135,7 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-black uppercase tracking-wide text-ink-soft">{label}</div>
+      <div className="field-label mb-2">{label}</div>
       {children}
     </div>
   );
