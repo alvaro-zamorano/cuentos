@@ -26,6 +26,15 @@ export function FinishDefs({ id, seed = 7 }: { id: string; seed?: number }) {
         <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="1" seed={seed + 2} result="g" />
         <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.12 0" />
       </filter>
+      <filter id={`${id}-paint`} x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="4" seed={seed + 3} result="noise" />
+        <feDiffuseLighting in="noise" lightingColor="#fff" surfaceScale="1.3" result="light">
+          <feDistantLight azimuth="45" elevation="62" />
+        </feDiffuseLighting>
+        <feComposite in="light" in2="SourceGraphic" operator="in" result="lightc" />
+        <feBlend in="SourceGraphic" in2="lightc" mode="multiply" result="mult" />
+        <feComposite in="mult" in2="SourceGraphic" operator="arithmetic" k1="0" k2="0.72" k3="0.28" k4="0" />
+      </filter>
       <filter id={`${id}-soft`} x="-20%" y="-20%" width="140%" height="160%">
         <feGaussianBlur stdDeviation="6" />
       </filter>

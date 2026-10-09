@@ -1,9 +1,11 @@
 /**
- * Recolor de piel y pelo en el navegador (canvas). Mismas máscaras que scripts/pieces_build.py.
- * Las piezas base del catálogo llevan piel melocotón (#f3c9a6) y pelo castaño (#7a4a26);
+ * Recolor de piel y pelo en el navegador (canvas).
+ * Las piezas gouache llevan piel melocotón saturada (mediana medida en las piezas: #fda465) y pelo castaño (#7a4a26);
  * aquí se desplazan tono, saturación y luminosidad conservando el sombreado.
+ * La máscara de piel es por tono/saturación (HSV): la de scripts/pieces_build.py dejaba sin detectar la cara
+ * (g−b > 58) y marcaba como piel las camisas crema; con pieles oscuras salían caras claras y cuerpos a manchas.
  */
-const BASE_SKIN = "#f3c9a6";
+const BASE_SKIN = "#fda465";
 const BASE_HAIR = "#7a4a26";
 
 function hex2rgb(h: string): [number, number, number] {
@@ -40,17 +42,31 @@ function hls2rgb(h: number, l: number, s: number): [number, number, number] {
 }
 
 function isSkin(r: number, g: number, b: number, a: number): boolean {
-  if (a === 0) return false;
+  if (a < 8) return false;
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-  const sat = (mx - mn) / Math.max(mx, 1);
-  return r > g && g > b && r - b > 50 && r - b < 140 && r - g > 24 && g - b < 58 && r > 185 && g > 130 && b > 90 && sat > 0.26 && sat < 0.62;
+  if (mx !== r || mx === mn) return false;
+  const v = mx / 255;
+  const s = (mx - mn) / mx;
+  const hue = (60 * (g - b)) / (mx - mn); // r es el máximo: tono en grados entre −60 y 60
+  // incluye la piel en sombra (más saturada y rojiza) y el rubor de las mejillas; excluye pelo pelirrojo (s > 0.8) y castaño (v < 0.62)
+  return hue >= 8 && hue <= 34 && s >= 0.3 && s <= 0.8 && v >= 0.62;
+}
+
+/** Piel inequívoca (núcleo de la máscara): se usa para no tratar como pelo los tonos de piel. */
+function isSkinCore(r: number, g: number, b: number, a: number): boolean {
+  if (a < 8) return false;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  if (mx !== r || mx === mn) return false;
+  const hue = (60 * (g - b)) / (mx - mn);
+  const s = (mx - mn) / mx;
+  return hue >= 15 && hue <= 32 && s >= 0.36 && s <= 0.68 && mx / 255 >= 0.78;
 }
 
 function isHair(r: number, g: number, b: number, a: number): boolean {
   if (a === 0) return false;
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
   const sat = (mx - mn) / Math.max(mx, 1);
-  return r > g && g >= b && r < 200 && r - b > 30 && sat > 0.35 && !isSkin(r, g, b, a);
+  return r > g && g >= b && r < 200 && r - b > 30 && sat > 0.35 && !isSkinCore(r, g, b, a);
 }
 
 export interface RecolorOpts {

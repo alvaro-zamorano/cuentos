@@ -67,7 +67,8 @@ export function figureFor(style: StyleId, traits: Traits | undefined): FigureSpe
     head,
     headScale,
     headX: body.faceCx - head.faceCx * headScale,
-    headY: body.chin - head.chin * headScale + 4,
+    // +7: el degradado inferior de la cabeza se solapa con la parte ya opaca del cuello (si no, queda una línea clara)
+    headY: body.chin - head.chin * headScale + 7,
   };
 }
 
