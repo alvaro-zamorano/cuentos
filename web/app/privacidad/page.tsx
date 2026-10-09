@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage, Pending } from "@/components/LegalPage";
 
-export const metadata: Metadata = { title: "Política de privacidad · cuentos" };
+export const metadata: Metadata = { title: "Política de privacidad" };
 
 export default function Privacidad() {
   return (
-    <LegalPage title="Política de privacidad" updated="8 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="9 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
         Responsable del tratamiento: <Pending>nombre y apellidos o razón social</Pending>, NIF <Pending>NIF</Pending>, domicilio{" "}
@@ -27,8 +27,8 @@ export default function Privacidad() {
 
       <h2>3. Declaración de quien crea el cuento</h2>
       <p>
-        Para descargar o comprar un cuento, la persona usuaria declara que es madre, padre o tutor legal del menor, o que cuenta con su
-        autorización para facilitar sus datos con esta finalidad. La casilla es obligatoria.
+        Para descargar o comprar un cuento, quien lo crea marca una casilla obligatoria: «Declaro ser madre, padre o tutor legal del menor, o
+        contar con su autorización».
       </p>
 
       <h2>4. Para qué y con qué base</h2>
@@ -67,7 +67,7 @@ export default function Privacidad() {
       </p>
 
       <p className="text-sm text-ink-soft">
-        Ver también las <Link href="/condiciones" className="underline">condiciones</Link> y el <Link href="/aviso-legal" className="underline">aviso legal</Link>.
+        Ver también las <Link href="/condiciones" className="link">condiciones</Link> y el <Link href="/aviso-legal" className="link">aviso legal</Link>.
       </p>
     </LegalPage>
   );

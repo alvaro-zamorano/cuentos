@@ -4,15 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { BookPreview } from "@/components/BookPreview";
 import { CharacterSheet } from "@/components/CharacterSheet";
-import { IllustratedScene } from "@/components/IllustratedScene";
+import { IllustratedScene, paintedStyleFor, pendingStyleNotice } from "@/components/IllustratedScene";
+import { SiteHeader } from "@/components/SiteHeader";
 import { StyleImage } from "@/components/StyleImage";
 import { getDraft, setDraft, useDraft } from "@/lib/draftStore";
 import { saveBook, storedBookId, syncBook } from "@/lib/bookSync";
 import { DRY_RUN_PAYMENT } from "@/lib/flags";
 import { STYLES, getStyle } from "@/lib/generation/styles";
+import { piecesFor } from "@/lib/pieces";
+import { PRICE_ILLUSTRATED } from "@/lib/pricing";
 import {
-  DRY_RUN_NOTICE,
-  dryRunIllustratePage,
+  illustratePage,
   getIllustration,
   pagesKey,
   sheetIsValid,
@@ -40,8 +42,9 @@ export default function IlustradoPage() {
   if (!draft.hero.name.trim())
     return (
       <Shell>
-        <p className="text-lg font-bold">Primero crea el cuento: con el nombre basta.</p>
-        <Link href="/crear" className="btn-primary mt-4 self-start">
+        <h1 className="display text-[34px]">Primero, el cuento</h1>
+        <p className="text-ink-soft">Para empezar basta con el nombre del protagonista.</p>
+        <Link href="/crear" className="btn-primary self-start">
           Crear el cuento
         </Link>
       </Shell>
@@ -76,7 +79,7 @@ function Flow({ draft }: { draft: Draft }) {
   return (
     <Shell>
       <Steps view={view} onGo={(v) => setOverride(v)} derived={derived} />
-      {view === "estilo" && <StylePicker draft={draft} onPicked={() => setOverride(null)} />}
+      {view === "estilo" && <StylePicker draft={draft} onPicked={() => setOverride(null)} onPendingPicked={() => setOverride("estilo")} />}
       {view === "hoja" && draft.styleId && <SheetStep draft={draft} styleId={draft.styleId} onBack={() => setOverride("estilo")} onApproved={() => setOverride(null)} />}
       {view === "progreso" && draft.styleId && <ProgressStep draft={draft} styleId={draft.styleId} />}
       {view === "preview" && draft.styleId && <PreviewStep draft={draft} styleId={draft.styleId} onChangeStyle={() => setOverride("estilo")} />}
@@ -87,15 +90,12 @@ function Flow({ draft }: { draft: Draft }) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex-1">
-      <header className="mx-auto flex max-w-4xl items-center justify-between px-5 py-4">
-        <Link href="/" className="text-lg font-black tracking-tight">
-          cuentos<span className="text-coral">.</span>
-        </Link>
-        <Link href="/crear?paso=3" className="text-sm font-bold text-ink-soft underline">
+      <SiteHeader>
+        <Link href="/crear?paso=3" className="text-sm text-ink-soft underline underline-offset-2 hover:text-ink">
           Volver al cuento
         </Link>
-      </header>
-      <section className="mx-auto flex max-w-4xl flex-col gap-5 px-5 pb-16">{children}</section>
+      </SiteHeader>
+      <section className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pb-20 pt-2 sm:px-6">{children}</section>
     </main>
   );
 }
@@ -103,10 +103,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 function NotAvailable() {
   return (
     <Shell>
-      <h1 className="text-3xl font-black">La edición ilustrada llega pronto</h1>
-      <p className="text-ink-soft">Mientras tanto, el cuento clásico es gratis y se imprime en casa.</p>
+      <h1 className="display text-[34px] md:text-[44px]">Edición ilustrada</h1>
+      <p className="max-w-[60ch] text-ink-soft">Disponible próximamente. La edición clásica es gratuita y se imprime en casa.</p>
       <Link href="/crear" className="btn-primary self-start">
-        Crear el cuento clásico
+        Crear la edición clásica
       </Link>
     </Shell>
   );
@@ -116,28 +116,36 @@ function Steps({ view, derived, onGo }: { view: View; derived: View; onGo: (v: V
   const items: { v: View; label: string }[] = [
     { v: "estilo", label: "Estilo" },
     { v: "hoja", label: "Personaje" },
-    { v: "progreso", label: "Ilustrando" },
-    { v: "preview", label: "Tu libro" },
+    { v: "progreso", label: "Pintado" },
+    { v: "preview", label: "El libro" },
   ];
   const order = items.map((i) => i.v);
   return (
-    <ol className="flex flex-wrap gap-1 text-xs font-bold text-ink-soft">
-      {items.map((it, i) => {
-        const reachable = i <= order.indexOf(derived) && it.v !== "progreso";
-        return (
-          <li key={it.v}>
-            <button
-              type="button"
-              disabled={!reachable || it.v === view}
-              onClick={() => onGo(it.v)}
-              className={`rounded-full px-3 py-1 ${it.v === view ? "bg-ink text-white" : reachable ? "border border-line bg-white" : "opacity-50"}`}
-            >
-              {i + 1}. {it.label}
-            </button>
-          </li>
-        );
-      })}
-    </ol>
+    <nav aria-label="Pasos de la edición ilustrada">
+      <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line pb-3 text-[13px] text-ink-soft">
+        {items.map((it, i) => {
+          const reachable = i <= order.indexOf(derived) && it.v !== "progreso";
+          return (
+            <li key={it.v} className="flex items-center gap-2">
+              {i > 0 && (
+                <span aria-hidden className="text-ink-soft/50">
+                  ·
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={!reachable || it.v === view}
+                aria-current={it.v === view ? "step" : undefined}
+                onClick={() => onGo(it.v)}
+                className={`py-1 ${it.v === view ? "font-medium text-ink" : reachable ? "hover:text-ink hover:underline" : "text-ink-soft/60"}`}
+              >
+                <span className="tabular-nums">{i + 1}</span> {it.label}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }
 
@@ -147,21 +155,33 @@ function SimulatedPayment() {
   const [declared, setDeclared] = useState(false);
   return (
     <Shell>
-      <div className="rounded-2xl border-2 border-dashed border-coral bg-white px-4 py-3 text-sm font-black text-coral" role="note">
-        PAGO SIMULADO · modo demostración · no se cobra nada ni se piden datos de pago
-      </div>
-      <h1 className="text-3xl font-black">Edición ilustrada</h1>
-      <div className="card grid gap-3">
-        <p className="text-ink-soft">
-          En la versión real aquí iría el pago con Stripe. En esta demo el botón solo marca el pedido como «pagado» en tu navegador para que
-          puedas ver el resto del proceso: elegir estilo, aprobar la hoja de personaje y ver el libro ilustrado.
+      <p className="notice" role="note">
+        Pago de prueba — sin cargo. No se piden datos de pago.
+      </p>
+      <div>
+        <h1 className="display text-[34px] md:text-[44px]">Edición ilustrada</h1>
+        <p className="mt-2 max-w-[60ch] text-ink-soft">
+          Después del pago eliges el estilo, apruebas la hoja de personaje y se pinta el libro página a página. Puedes pedir otra versión de cada
+          página y seguir cambiando el texto.
         </p>
-        <label className="flex items-start gap-2 text-sm text-ink-soft">
-          <input type="checkbox" checked={declared} onChange={(e) => setDeclared(e.target.checked)} className="mt-1" data-testid="buyer-declaration" />
+      </div>
+      <div className="grid gap-5 rounded-[8px] border border-line bg-card p-5">
+        <div className="flex items-baseline justify-between gap-4 border-b border-line pb-4">
+          <span className="font-display text-lg font-medium">Ilustrado · PDF</span>
+          <span className="font-display text-xl">{PRICE_ILLUSTRATED}</span>
+        </div>
+        <label className="flex items-start gap-3 text-sm leading-relaxed text-ink-soft">
+          <input
+            type="checkbox"
+            checked={declared}
+            onChange={(e) => setDeclared(e.target.checked)}
+            className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]"
+            data-testid="buyer-declaration"
+          />
           <span>
-            Declaro que soy madre, padre o tutor del peque, o que cuento con su autorización. Sé que un libro personalizado no admite desistimiento
+            Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Sé que un libro personalizado no admite desistimiento
             (art. 103.c TRLGDCU). Ver{" "}
-            <Link href="/condiciones" target="_blank" className="underline">
+            <Link href="/condiciones" target="_blank" className="link">
               condiciones
             </Link>
             .
@@ -178,7 +198,7 @@ function SimulatedPayment() {
             void saveBook(getDraft());
           }}
         >
-          Simular pago (0 €)
+          Confirmar pago de prueba
         </button>
       </div>
     </Shell>
@@ -187,37 +207,53 @@ function SimulatedPayment() {
 
 /* --------------------------------- estilo --------------------------------- */
 
-function StylePicker({ draft, onPicked }: { draft: Draft; onPicked: () => void }) {
+function StylePicker({ draft, onPicked, onPendingPicked }: { draft: Draft; onPicked: () => void; onPendingPicked: () => void }) {
+  const chosen = draft.styleId ? getStyle(draft.styleId) : undefined;
+  const chosenPending = !!draft.styleId && !piecesFor(draft.styleId);
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-6">
       <div>
-        <h1 className="text-3xl font-black">Elige el estilo</h1>
-        <p className="text-ink-soft">Así se verán las doce páginas. Si cambias de estilo después, la hoja de personaje se vuelve a aprobar.</p>
+        <h1 className="display text-[34px] md:text-[44px]">Elige el estilo</h1>
+        <p className="mt-2 max-w-[60ch] text-ink-soft">Así se pintarán las doce páginas. Si cambias de estilo después, la hoja de personaje se vuelve a aprobar.</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {STYLES.map((s) => {
           const on = draft.styleId === s.id;
+          const available = !!piecesFor(s.id);
           return (
             <button
               key={s.id}
               type="button"
               data-testid={`style-${s.id}`}
+              data-available={available ? "1" : "0"}
               aria-pressed={on}
               onClick={() => {
                 setDraft((d) => ({ ...d, styleId: s.id }));
-                onPicked();
+                if (available) onPicked();
+                else onPendingPicked();
               }}
-              className={`card overflow-hidden p-0 text-left transition ${on ? "border-ink shadow-[0_4px_0_var(--ink)]" : ""}`}
+              className={`overflow-hidden rounded-[8px] border bg-card text-left transition-colors ${on ? "border-ink shadow-[inset_0_0_0_1px_var(--ink)]" : "border-line hover:border-ink/40"}`}
             >
-              <StyleImage styleId={s.id} className="aspect-[3/2] w-full object-cover" />
-              <div className="flex items-center justify-between px-4 py-3">
-                <span className="font-black">{s.label}</span>
-                {on && <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-black text-white">Elegido</span>}
+              <StyleImage styleId={s.id} className={`aspect-[3/2] w-full object-cover ${available ? "" : "opacity-60 grayscale-[35%]"}`} />
+              <div className="grid gap-0.5 px-3 py-2.5">
+                <span className="text-[15px] font-medium text-ink">{s.label}</span>
+                <span className={`text-xs ${available ? "text-accent" : "text-ink-soft"}`}>{available ? "Disponible" : "Próximamente"}</span>
               </div>
             </button>
           );
         })}
       </div>
+      {chosenPending && chosen && (
+        <div className="notice grid gap-3" data-testid="style-pending-choice">
+          <p>
+            {chosen.label} estará disponible próximamente. Hemos anotado tu preferencia. Mientras tanto, la hoja de personaje y las páginas se
+            pintan en {getStyle(paintedStyleFor(chosen.id))?.label.toLowerCase()}.
+          </p>
+          <button type="button" className="btn-ghost btn-sm justify-self-start" onClick={onPicked}>
+            Continuar en {getStyle(paintedStyleFor(chosen.id))?.label.toLowerCase()}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -251,12 +287,11 @@ function SheetStep({ draft, styleId, onBack, onApproved }: { draft: Draft; style
     onApproved();
   };
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-6">
       <div>
-        <h1 className="text-3xl font-black">Así va a ser {name}</h1>
-        <p className="text-ink-soft">Esta hoja es la referencia de todas las páginas. Si algo no encaja, cambia los rasgos antes de seguir.</p>
+        <h1 className="display text-[34px] md:text-[44px]">Así va a ser {name}</h1>
+        <p className="mt-2 max-w-[60ch] text-ink-soft">Esta hoja es la referencia de las doce páginas. Si algo no encaja, cambia los rasgos antes de aprobarla.</p>
       </div>
-      <p className="rounded-2xl bg-sun/30 px-4 py-2 text-sm font-bold">{DRY_RUN_NOTICE}.</p>
       <CharacterSheet styleId={styleId} traits={draft.hero.traits} name={name} />
       <div className="flex flex-wrap gap-3">
         <button type="button" className="btn-primary" onClick={approve} disabled={busy} data-testid="approve-sheet">
@@ -291,7 +326,7 @@ function ProgressStep({ draft, styleId }: { draft: Draft; styleId: StyleId }) {
       for (let n = 1; n <= 12; n++) {
         if (validPages(getDraft())[n]) continue;
         try {
-          const r = await dryRunIllustratePage(styleId, n, 0, ctrl.signal);
+          const r = await illustratePage(styleId, n, 0, ctrl.signal);
           patchIllustration((ill) => ({ pages: { ...ill.pages, [n]: { variant: r.variant } } }));
         } catch {
           return;
@@ -305,28 +340,25 @@ function ProgressStep({ draft, styleId }: { draft: Draft; styleId: StyleId }) {
   }, [styleId]);
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-6">
       <div>
-        <h1 className="text-3xl font-black">Ilustrando el cuento de {draft.hero.name.trim()}</h1>
-        <p className="text-ink-soft" data-testid="progress-count">
+        <h1 className="display text-[34px] md:text-[44px]">Pintando el cuento de {draft.hero.name.trim()}</h1>
+        <p className="mt-2 text-ink-soft" data-testid="progress-count" aria-live="polite">
           {doneCount} de 12 páginas
         </p>
       </div>
-      <p className="rounded-2xl bg-sun/30 px-4 py-2 text-sm font-bold">{DRY_RUN_NOTICE}.</p>
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4" data-testid="progress-grid">
-        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-          <div key={n} className="overflow-hidden rounded-2xl border-2 border-line bg-white" data-testid={`slot-${n}`} data-done={done[n] ? "1" : "0"}>
-            {done[n] ? (
-              <IllustratedScene
-                styleId={styleId}
-                n={n}
-                variant={done[n].variant}
-                traits={draft.hero.traits}
-                companion={book.pages[n - 1]?.withCompanion ? draft.companion : undefined}
-              />
+      <div className="h-px w-full bg-line" aria-hidden>
+        <div className="h-px bg-ink transition-[width] duration-300" style={{ width: `${(doneCount / 12) * 100}%` }} />
+      </div>
+      {paintedStyleFor(styleId) !== styleId && <p className="text-sm text-ink-soft">{pendingStyleNotice()}.</p>}
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3" data-testid="progress-grid">
+        {book.pages.map((p) => (
+          <div key={p.n} className="overflow-hidden rounded-[4px] border border-line bg-card" data-testid={`slot-${p.n}`} data-done={done[p.n] ? "1" : "0"}>
+            {done[p.n] ? (
+              <IllustratedScene styleId={styleId} page={p} variant={done[p.n].variant} draft={draft} showNotice={false} />
             ) : (
-              <div className="flex aspect-[3/2] items-center justify-center text-sm font-black text-ink-soft">
-                <span className="animate-pulse">{n}</span>
+              <div className="flex aspect-[3/2] items-center justify-center bg-paper text-sm text-ink-soft/70">
+                <span className="tabular-nums">{p.n}</span>
               </div>
             )}
           </div>
@@ -347,30 +379,27 @@ function PreviewStep({ draft, styleId, onChangeStyle }: { draft: Draft; styleId:
   const regenerate = async (n: number) => {
     const next = ((pages[n]?.variant ?? 0) + 1) % VARIANTS;
     setBusy((b) => ({ ...b, [n]: true }));
-    await dryRunIllustratePage(styleId, n, next);
+    await illustratePage(styleId, n, next);
     patchIllustration((ill) => ({ pages: { ...ill.pages, [n]: { variant: next } } }));
     setBusy((b) => ({ ...b, [n]: false }));
   };
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-6">
       <div>
-        <h1 className="text-3xl font-black">{book.title}</h1>
-        <p className="text-ink-soft">
-          Estilo {getStyle(styleId)?.label}. Toca cualquier texto para cambiarlo; «Otra versión» cambia la ilustración de esa página.
+        <h1 className="display text-[34px] md:text-[44px]">{book.title}</h1>
+        <p className="mt-2 max-w-[60ch] text-ink-soft">
+          Estilo {getStyle(styleId)?.label.toLowerCase()}. Puedes cambiar cualquier texto; «Otra versión» vuelve a pintar esa página.
         </p>
       </div>
-      <p className="rounded-2xl bg-sun/30 px-4 py-2 text-sm font-bold" data-testid="dry-run-notice">
-        {DRY_RUN_NOTICE}.
-      </p>
-      <div className="card flex flex-wrap items-center justify-between gap-3">
-        <span className="font-bold">13 hojas A4 apaisadas, con las ilustraciones.</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-line py-4">
+        <span className="text-sm text-ink-soft">13 hojas A4 apaisadas, portada incluida.</span>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn-ghost px-4 py-2 text-sm" onClick={onChangeStyle}>
+          <button type="button" className="btn-ghost btn-sm" onClick={onChangeStyle}>
             Cambiar estilo
           </button>
-          <a href="/libro?edition=illustrated&print=1" target="_blank" className="btn-primary px-4 py-2 text-sm" data-testid="illustrated-pdf">
-            Descargar PDF ilustrado
+          <a href="/libro?edition=illustrated&print=1" target="_blank" className="btn-primary btn-sm" data-testid="illustrated-pdf">
+            Descargar PDF
           </a>
         </div>
       </div>
@@ -379,24 +408,17 @@ function PreviewStep({ draft, styleId, onChangeStyle }: { draft: Draft; styleId:
         draft={draft}
         update={update}
         renderImage={(p) => (
-          <IllustratedScene
-            styleId={styleId}
-            n={p.n}
-            variant={pages[p.n]?.variant ?? 0}
-            traits={draft.hero.traits}
-            companion={p.withCompanion ? draft.companion : undefined}
-            className={busy[p.n] ? "opacity-50" : ""}
-          />
+          <IllustratedScene styleId={styleId} page={p} variant={pages[p.n]?.variant ?? 0} draft={draft} className={busy[p.n] ? "opacity-50" : ""} />
         )}
         renderActions={(p) => (
           <button
             type="button"
-            className="text-xs font-bold text-ink-soft underline disabled:opacity-40"
+            className="text-xs text-ink-soft underline underline-offset-2 hover:text-ink disabled:opacity-40"
             disabled={busy[p.n]}
             data-testid={`regen-${p.n}`}
             onClick={() => regenerate(p.n)}
           >
-            {busy[p.n] ? "Generando…" : "Otra versión"}
+            {busy[p.n] ? "Pintando…" : "Otra versión"}
           </button>
         )}
       />

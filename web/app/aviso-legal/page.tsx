@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage, Pending } from "@/components/LegalPage";
 
-export const metadata: Metadata = { title: "Aviso legal · cuentos" };
+export const metadata: Metadata = { title: "Aviso legal" };
 
 export default function AvisoLegal() {
   return (
-    <LegalPage title="Aviso legal" updated="8 de octubre de 2026">
+    <LegalPage title="Aviso legal" updated="9 de octubre de 2026">
       <h2>1. Titular (art. 10 LSSI)</h2>
       <ul>
         <li>Titular: <Pending>nombre y apellidos o razón social</Pending></li>
@@ -29,7 +29,7 @@ export default function AvisoLegal() {
       <p>Trabajamos para que la web funcione sin interrupciones, pero no podemos garantizarlo en todo momento.</p>
 
       <p className="text-sm text-ink-soft">
-        Ver también la <Link href="/privacidad" className="underline">política de privacidad</Link> y las <Link href="/condiciones" className="underline">condiciones</Link>.
+        Ver también la <Link href="/privacidad" className="link">política de privacidad</Link> y las <Link href="/condiciones" className="link">condiciones</Link>.
       </p>
     </LegalPage>
   );

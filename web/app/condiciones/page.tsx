@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage, Pending } from "@/components/LegalPage";
 
-export const metadata: Metadata = { title: "Condiciones · cuentos" };
+export const metadata: Metadata = { title: "Condiciones" };
 
 export default function Condiciones() {
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="8 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="9 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
         <Pending>nombre o razón social</Pending>, NIF <Pending>NIF</Pending>, <Pending>dirección</Pending>, <Pending>email de contacto</Pending>. Datos completos en el{" "}
-        <Link href="/aviso-legal" className="underline">aviso legal</Link>.
+        <Link href="/aviso-legal" className="link">aviso legal</Link>.
       </p>
 
       <h2>2. Qué ofrecemos</h2>
@@ -21,8 +21,8 @@ export default function Condiciones() {
 
       <h2>3. Declaración de quien compra</h2>
       <p>
-        Al crear o comprar un cuento declaras que eres madre, padre o tutor legal del menor protagonista, o que cuentas con su autorización
-        para usar su nombre y rasgos con esta finalidad.
+        Antes de descargar o pagar, marcas una casilla obligatoria: «Declaro ser madre, padre o tutor legal del menor, o contar con su
+        autorización». La autorización cubre el uso de su nombre y sus rasgos para crear el cuento.
       </p>
 
       <h2>4. Precio e impuestos</h2>
@@ -54,7 +54,7 @@ export default function Condiciones() {
       <h2>8. Datos personales</h2>
       <p>
         Los datos del cuento se borran a los 30 días salvo que pidas conservarlo. Detalle en la{" "}
-        <Link href="/privacidad" className="underline">política de privacidad</Link>.
+        <Link href="/privacidad" className="link">política de privacidad</Link>.
       </p>
 
       <h2>9. Ley aplicable</h2>
