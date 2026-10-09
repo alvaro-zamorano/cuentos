@@ -7,12 +7,12 @@ export function GratisForm() {
     <EmailForm
       edition="classic"
       source="gratis"
-      submitLabel="Descargar en PDF"
+      submitLabel="Descargar PDF"
       openUrl="/libro?demo=1&print=1"
       successMessage={
-        <p className="text-sm font-bold text-leaf" data-testid="gratis-ok">
-          Se ha abierto el cuento en una pestaña nueva. Si no,{" "}
-          <a className="underline" href="/libro?demo=1&print=1" target="_blank">
+        <p className="text-sm text-ink" data-testid="gratis-ok">
+          El cuento se ha abierto en una pestaña nueva. Si no aparece,{" "}
+          <a className="link" href="/libro?demo=1&print=1" target="_blank">
             ábrelo aquí
           </a>
           .

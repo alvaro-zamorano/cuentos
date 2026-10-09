@@ -1,72 +1,123 @@
 @import "tailwindcss";
 
+/*
+ * Sistema editorial. Papel y tinta; un único acento (verde botella) reservado a CTA y enlaces.
+ * coral/sun/leaf/sky/lilac ya no son colores de interfaz: siguen en lib/traits.ts para la ropa del avatar
+ * y en las escenas, pero no aquí.
+ */
 :root {
-  --cream: #fff8ec;
-  --paper: #ffffff;
-  --ink: #2b2118;
-  --ink-soft: #6b5a4a;
-  --coral: #e4573d;
-  --coral-dark: #b93f2a;
-  --sun: #f6c445;
-  --leaf: #5aa469;
-  --sky: #4a86c9;
-  --lilac: #9b7fd0;
-  --line: #ecdcc3;
+  --paper: #f7f3ec;
+  --paper-deep: #efe8dc;
+  --card: #ffffff;
+  --ink: #1f1a17;
+  --ink-soft: #5c534b;
+  --line: #e4dcd0;
+  --accent: #1f4d3a;
+  --accent-deep: #163a2b;
 }
 
 @theme inline {
-  --color-cream: var(--cream);
   --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-card: var(--card);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
-  --color-coral: var(--coral);
-  --color-coral-dark: var(--coral-dark);
-  --color-sun: var(--sun);
-  --color-leaf: var(--leaf);
-  --color-sky: var(--sky);
-  --color-lilac: var(--lilac);
   --color-line: var(--line);
-  --font-sans: "Nunito", "Avenir Next Rounded", "Segoe UI", ui-rounded, system-ui, sans-serif;
-  --font-story: "Georgia", "Iowan Old Style", "Times New Roman", serif;
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --font-sans: var(--font-ui), "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-display: var(--font-serif), "Iowan Old Style", Georgia, serif;
+  --font-story: var(--font-serif), "Iowan Old Style", Georgia, serif;
 }
 
 html {
-  background: var(--cream);
+  background: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
+  font-feature-settings: "kern", "liga";
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   min-height: 100%;
+  background: var(--paper);
+}
+
+/* Titulares: serif de óptica grande, sin negritas pesadas. */
+.display {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 96;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.08;
+}
+.story {
+  font-family: var(--font-story);
+  font-variation-settings: "opsz" 18;
+  font-weight: 400;
+}
+
+.link {
+  @apply text-accent underline decoration-1 underline-offset-[3px] hover:decoration-2;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn-primary,
 .btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-bold transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-[6px] px-5 text-[15px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-40;
 }
 .btn-primary {
-  @apply bg-coral text-white shadow-[0_6px_0_var(--coral-dark)] hover:translate-y-[1px] hover:shadow-[0_5px_0_var(--coral-dark)];
+  @apply bg-accent text-white hover:bg-accent-deep;
 }
 .btn-ghost {
-  @apply bg-white text-ink border-2 border-line hover:border-ink/30;
+  @apply border border-ink/25 bg-transparent text-ink hover:border-ink;
 }
-.card {
-  @apply rounded-3xl bg-paper border-2 border-line p-5 shadow-[0_4px_0_var(--line)];
-}
-.chip {
-  @apply rounded-full border-2 border-line bg-white px-4 py-2 text-sm font-bold text-ink-soft transition hover:border-ink/40;
-}
-.chip-on {
-  @apply border-ink bg-ink text-white;
-}
-.swatch {
-  @apply h-9 w-9 rounded-full border-2 border-white shadow-[0_0_0_2px_var(--line)] transition;
-}
-.swatch-on {
-  @apply shadow-[0_0_0_3px_var(--ink)];
+.btn-sm {
+  @apply min-h-9 px-3.5 text-sm;
 }
 
-/* ---------- Impresión (A4 apaisado, 3 mm de sangrado) ---------- */
+.card {
+  @apply rounded-[8px] border border-line bg-card p-5;
+}
+
+/* Selector segmentado: discreto, borde fino; el elegido se marca con borde de tinta. */
+.chip {
+  @apply inline-flex min-h-10 items-center rounded-[6px] border border-line bg-card px-3.5 text-sm text-ink-soft transition-colors hover:border-ink/40 hover:text-ink;
+}
+.chip-on {
+  @apply border-ink text-ink shadow-[inset_0_0_0_1px_var(--ink)];
+}
+
+.swatch {
+  @apply h-8 w-8 rounded-full border border-black/10 transition-shadow;
+}
+.swatch-on {
+  @apply shadow-[0_0_0_2px_var(--paper),0_0_0_3.5px_var(--ink)];
+}
+
+.field-label {
+  @apply text-sm text-ink-soft;
+}
+.input {
+  @apply w-full rounded-none border-0 border-b border-ink/30 bg-transparent px-0 py-2 text-lg text-ink outline-none transition-colors placeholder:text-ink-soft/60 focus:border-ink focus-visible:outline-none;
+}
+select.input {
+  @apply cursor-pointer appearance-none pr-6;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%), linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position: calc(100% - 9px) 55%, calc(100% - 4px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.notice {
+  @apply rounded-[6px] border border-line bg-card px-4 py-3 text-sm text-ink-soft;
+}
+
+/* ---------- Impresión (A4 apaisado) ---------- */
 @page {
   size: A4 landscape;
   margin: 0;
@@ -79,6 +130,9 @@ body {
   .no-print {
     display: none !important;
   }
+  .sheets {
+    zoom: 1 !important;
+  }
   .sheet {
     width: 297mm;
     height: 210mm;
@@ -90,16 +144,26 @@ body {
 .sheet {
   width: 297mm;
   height: 210mm;
-  background: #fff;
+  background: #fbf8f2;
+  color: var(--ink);
 }
 
 /* ---------- Páginas legales ---------- */
 .legal h2 {
-  @apply mt-4 text-xl font-black;
+  @apply mt-6 font-display text-xl font-medium;
 }
 .legal ul {
-  @apply list-disc pl-6;
+  @apply list-disc pl-5;
 }
 .legal li {
   @apply mt-1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
