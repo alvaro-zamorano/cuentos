@@ -1,0 +1,232 @@
+{
+ "style": "gouache",
+ "heads": {
+  "afro": {
+   "w": 424,
+   "h": 316,
+   "chin": 310,
+   "faceW": 257,
+   "faceCx": 164
+  },
+  "coleta": {
+   "w": 509,
+   "h": 310,
+   "chin": 304,
+   "faceW": 431,
+   "faceCx": 254
+  },
+  "corto": {
+   "w": 367,
+   "h": 308,
+   "chin": 302,
+   "faceW": 283,
+   "faceCx": 183
+  },
+  "flequillo": {
+   "w": 410,
+   "h": 308,
+   "chin": 302,
+   "faceW": 351,
+   "faceCx": 202
+  },
+  "melena": {
+   "w": 414,
+   "h": 317,
+   "chin": 311,
+   "faceW": 313,
+   "faceCx": 204
+  },
+  "mono": {
+   "w": 322,
+   "h": 317,
+   "chin": 311,
+   "faceW": 266,
+   "faceCx": 160
+  },
+  "ondulado": {
+   "w": 440,
+   "h": 311,
+   "chin": 305,
+   "faceW": 379,
+   "faceCx": 219
+  },
+  "rapado": {
+   "w": 325,
+   "h": 300,
+   "chin": 294,
+   "faceW": 270,
+   "faceCx": 162
+  },
+  "rizos-largos": {
+   "w": 480,
+   "h": 314,
+   "chin": 308,
+   "faceW": 410,
+   "faceCx": 241
+  },
+  "rizos-media": {
+   "w": 448,
+   "h": 310,
+   "chin": 304,
+   "faceW": 382,
+   "faceCx": 222
+  },
+  "rizos": {
+   "w": 367,
+   "h": 309,
+   "chin": 303,
+   "faceW": 302,
+   "faceCx": 186
+  },
+  "trenzas": {
+   "w": 427,
+   "h": 292,
+   "chin": 286,
+   "faceW": 300,
+   "faceCx": 213
+  }
+ },
+ "bodies": {
+  "chubasquero": {
+   "w": 230,
+   "h": 400,
+   "chin": 141,
+   "faceW": 130,
+   "faceCx": 106
+  },
+  "jersey": {
+   "w": 223,
+   "h": 400,
+   "chin": 139,
+   "faceW": 131,
+   "faceCx": 105
+  },
+  "marinera": {
+   "w": 221,
+   "h": 400,
+   "chin": 153,
+   "faceW": 135,
+   "faceCx": 101
+  },
+  "peto": {
+   "w": 220,
+   "h": 400,
+   "chin": 153,
+   "faceW": 132,
+   "faceCx": 101
+  },
+  "pijama": {
+   "w": 226,
+   "h": 400,
+   "chin": 151,
+   "faceW": 123,
+   "faceCx": 108
+  },
+  "plumifero": {
+   "w": 240,
+   "h": 400,
+   "chin": 147,
+   "faceW": 136,
+   "faceCx": 114
+  },
+  "verano": {
+   "w": 238,
+   "h": 400,
+   "chin": 139,
+   "faceW": 121,
+   "faceCx": 110
+  },
+  "vestido": {
+   "w": 234,
+   "h": 400,
+   "chin": 140,
+   "faceW": 106,
+   "faceCx": 120
+  }
+ },
+ "pets": {
+  "atigrado": {
+   "w": 326,
+   "h": 400
+  },
+  "blanquinegro": {
+   "w": 311,
+   "h": 400
+  },
+  "cobaya": {
+   "w": 442,
+   "h": 400
+  },
+  "conejo": {
+   "w": 291,
+   "h": 400
+  },
+  "corgi": {
+   "w": 339,
+   "h": 400
+  },
+  "golden": {
+   "w": 325,
+   "h": 400
+  },
+  "manchado": {
+   "w": 339,
+   "h": 400
+  },
+  "periquito": {
+   "w": 402,
+   "h": 400
+  }
+ },
+ "grandparents": {
+  "abuela-gafas": {
+   "w": 355,
+   "h": 400
+  },
+  "abuela-mono": {
+   "w": 313,
+   "h": 400
+  },
+  "abuela-ondas": {
+   "w": 335,
+   "h": 400
+  },
+  "abuela-rizos": {
+   "w": 340,
+   "h": 400
+  },
+  "abuelo-barba": {
+   "w": 357,
+   "h": 400
+  },
+  "abuelo-calvo": {
+   "w": 357,
+   "h": 400
+  },
+  "abuelo-gafas": {
+   "w": 332,
+   "h": 400
+  },
+  "abuelo-gris": {
+   "w": 344,
+   "h": 400
+  }
+ },
+ "skins": [
+  "muy-clara",
+  "clara",
+  "melocoton",
+  "media",
+  "tostada",
+  "morena",
+  "morena-oscura",
+  "oscura"
+ ],
+ "hairColors": [
+  "castano",
+  "negro",
+  "rubio",
+  "pelirrojo",
+  "caoba"
+ ]
+}
