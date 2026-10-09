@@ -40,11 +40,11 @@ export function FinishDefs({ id, seed = 7 }: { id: string; seed?: number }) {
       </filter>
       <radialGradient id={`${id}-light`} cx="0.3" cy="0.15" r="0.9">
         <stop offset="0" stopColor="#fff5d6" stopOpacity="0.55" />
-        <stop offset="1" stopColor="#5a3a2a" stopOpacity="0.18" />
+        <stop offset="1" stopColor="#5a3a2a" stopOpacity="0.10" />
       </radialGradient>
       <radialGradient id={`${id}-vig`} cx="0.5" cy="0.5" r="0.75">
         <stop offset="0.6" stopColor="#000" stopOpacity="0" />
-        <stop offset="1" stopColor="#3a2416" stopOpacity="0.35" />
+        <stop offset="1" stopColor="#3a2416" stopOpacity="0.22" />
       </radialGradient>
     </defs>
   );
@@ -55,7 +55,7 @@ export function FinishOverlay({ id, w = 600, h = 400 }: { id: string; w?: number
   return (
     <g pointerEvents="none">
       <rect width={w} height={h} fill={`url(#${id}-light)`} style={{ mixBlendMode: "multiply" }} />
-      <rect width={w} height={h} filter={`url(#${id}-paper)`} style={{ mixBlendMode: "multiply" }} opacity="0.9" />
+      <rect width={w} height={h} filter={`url(#${id}-paper)`} style={{ mixBlendMode: "multiply" }} opacity="0.75" />
       <rect width={w} height={h} filter={`url(#${id}-grain)`} style={{ mixBlendMode: "overlay" }} />
       <rect width={w} height={h} fill={`url(#${id}-vig)`} />
     </g>

@@ -3,39 +3,71 @@
 import { Avatar } from "./Avatar";
 import { PaintedStanding } from "./PaintedFigure";
 import { DEFAULT_PAINTED_STYLE, figureFor } from "@/lib/pieces";
-import { ACCESSORIES, EYES, EYE_SHAPES, GARMENTS, GLASSES, HAIR_COLORS, HAIR_SHAPES, OUTFITS, SKINS, normalizeTraits, randomTraits } from "@/lib/traits";
+import {
+  ACCESSORIES,
+  EYES,
+  EYE_SHAPES,
+  GARMENTS,
+  GLASSES,
+  HAIR_COLORS,
+  HAIR_SHAPES,
+  OUTFITS,
+  SKINS,
+  normalizeTraits,
+  randomTraits,
+} from "@/lib/traits";
 import type { Traits } from "@/lib/types";
 
-export function AvatarBuilder({ traits: raw, onChange, compact = false }: { traits: Traits; onChange: (t: Traits) => void; compact?: boolean }) {
+export function AvatarBuilder({
+  traits: raw,
+  onChange,
+  compact = false,
+}: {
+  traits: Traits;
+  onChange: (t: Traits) => void;
+  compact?: boolean;
+}) {
   const traits = normalizeTraits(raw);
   const painted = figureFor(DEFAULT_PAINTED_STYLE, traits);
-  const vector = <Avatar traits={traits} expression="feliz" size={compact ? 104 : 148} />;
+  const vector = (
+    <Avatar traits={traits} expression="feliz" size={compact ? 104 : 148} />
+  );
+  // Con piezas pintadas, el libro solo refleja pelo, piel y prenda: los demás rasgos no se ofrecen.
+  const paintedOnly = !!painted;
   return (
     <div className={`grid gap-6 ${compact ? "" : "md:grid-cols-[220px_1fr]"}`}>
       <div className="flex items-start gap-4 md:flex-col md:items-stretch">
-        {/* Las dos ediciones con los mismos rasgos: clásica (vectorial) e ilustrada (pintada). */}
-        <div className="grid grid-cols-2 gap-2" data-testid="builder-previews">
-          <figure className="flex flex-col items-center rounded-[8px] border border-line bg-card p-2">
-            <div className="flex h-[112px] w-full items-end justify-center md:h-[156px]">{vector}</div>
-            <figcaption className="mt-1 text-[11px] leading-none text-ink-soft">Clásico</figcaption>
-          </figure>
-          <figure className="flex flex-col items-center rounded-[8px] border border-line bg-paper p-2" data-testid="builder-painted">
-            <div className="flex h-[112px] w-full items-end justify-center md:h-[156px]">
-              {painted ? <PaintedStanding spec={painted} className="h-full w-full" fallback={vector} /> : vector}
-            </div>
-            <figcaption className="mt-1 text-[11px] leading-none text-ink-soft">Ilustrado</figcaption>
-          </figure>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(randomTraits())}>
-            Aleatorio
-          </button>
-          {!compact && painted && (
-            <p className="max-w-[30ch] text-[11px] leading-snug text-ink-soft">
-              La edición ilustrada toma pelo, piel y prenda; ojos, gafas, color de ropa y accesorio se ven en la clásica.
-            </p>
+        <figure
+          className={`flex flex-col items-center rounded-[8px] border border-line bg-paper p-2 ${compact ? "w-[132px]" : "w-full"}`}
+          data-testid="builder-previews"
+        >
+          <div
+            className={`flex w-full items-end justify-center ${compact ? "h-[132px]" : "h-[220px]"}`}
+            data-testid="builder-painted"
+          >
+            {painted ? (
+              <PaintedStanding
+                spec={painted}
+                className="h-full w-full"
+                fallback={vector}
+              />
+            ) : (
+              vector
+            )}
+          </div>
+          {!compact && (
+            <figcaption className="mt-2 text-[11px] leading-none text-ink-soft">
+              Así aparece en el libro
+            </figcaption>
           )}
-        </div>
+        </figure>
+        <button
+          type="button"
+          className="btn-ghost btn-sm self-start"
+          onClick={() => onChange(randomTraits())}
+        >
+          Aleatorio
+        </button>
       </div>
 
       <div className="grid gap-5">
@@ -46,7 +78,9 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
                 key={h.id}
                 type="button"
                 className={`chip ${traits.hair.shape === h.id ? "chip-on" : ""}`}
-                onClick={() => onChange({ ...traits, hair: { ...traits.hair, shape: h.id } })}
+                onClick={() =>
+                  onChange({ ...traits, hair: { ...traits.hair, shape: h.id } })
+                }
               >
                 {h.label}
               </button>
@@ -61,7 +95,9 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
                 title={c.label}
                 className={`swatch ${traits.hair.color === c.id ? "swatch-on" : ""}`}
                 style={{ background: c.hex }}
-                onClick={() => onChange({ ...traits, hair: { ...traits.hair, color: c.id } })}
+                onClick={() =>
+                  onChange({ ...traits, hair: { ...traits.hair, color: c.id } })
+                }
               />
             ))}
           </div>
@@ -83,77 +119,111 @@ export function AvatarBuilder({ traits: raw, onChange, compact = false }: { trai
           </div>
         </Field>
 
-        <Field label="Ojos">
-          <div className="flex flex-wrap gap-2">
-            {EYE_SHAPES.map((e) => (
-              <button key={e.id} type="button" className={`chip ${traits.eyeShape === e.id ? "chip-on" : ""}`} onClick={() => onChange({ ...traits, eyeShape: e.id })}>
-                {e.label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2.5">
-            {EYES.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                aria-label={`Ojos ${e.label}`}
-                title={e.label}
-                className={`swatch ${traits.eyes === e.id ? "swatch-on" : ""}`}
-                style={{ background: e.hex }}
-                onClick={() => onChange({ ...traits, eyes: e.id })}
-              />
-            ))}
-          </div>
-        </Field>
+        {!paintedOnly && (
+          <Field label="Ojos">
+            <div className="flex flex-wrap gap-2">
+              {EYE_SHAPES.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  className={`chip ${traits.eyeShape === e.id ? "chip-on" : ""}`}
+                  onClick={() => onChange({ ...traits, eyeShape: e.id })}
+                >
+                  {e.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2.5">
+              {EYES.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  aria-label={`Ojos ${e.label}`}
+                  title={e.label}
+                  className={`swatch ${traits.eyes === e.id ? "swatch-on" : ""}`}
+                  style={{ background: e.hex }}
+                  onClick={() => onChange({ ...traits, eyes: e.id })}
+                />
+              ))}
+            </div>
+          </Field>
+        )}
 
-        <Field label="Gafas">
-          <div className="flex flex-wrap gap-2">
-            {GLASSES.map((g) => (
-              <button key={g.id} type="button" className={`chip ${traits.glasses === g.id ? "chip-on" : ""}`} onClick={() => onChange({ ...traits, glasses: g.id })}>
-                {g.label}
-              </button>
-            ))}
-          </div>
-        </Field>
+        {!paintedOnly && (
+          <Field label="Gafas">
+            <div className="flex flex-wrap gap-2">
+              {GLASSES.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className={`chip ${traits.glasses === g.id ? "chip-on" : ""}`}
+                  onClick={() => onChange({ ...traits, glasses: g.id })}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
 
         <Field label="Ropa">
           <div className="flex flex-wrap gap-2">
             {GARMENTS.map((g) => (
-              <button key={g.id} type="button" className={`chip ${traits.garment === g.id ? "chip-on" : ""}`} onClick={() => onChange({ ...traits, garment: g.id })}>
+              <button
+                key={g.id}
+                type="button"
+                className={`chip ${traits.garment === g.id ? "chip-on" : ""}`}
+                onClick={() => onChange({ ...traits, garment: g.id })}
+              >
                 {g.label}
               </button>
             ))}
           </div>
-          <div className="mt-3 flex flex-wrap gap-2.5">
-            {OUTFITS.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                aria-label={`Ropa ${o.label}`}
-                title={o.label}
-                className={`swatch ${traits.outfit === o.id ? "swatch-on" : ""}`}
-                style={{ background: o.hex }}
-                onClick={() => onChange({ ...traits, outfit: o.id })}
-              />
-            ))}
-          </div>
+          {!paintedOnly && (
+            <div className="mt-3 flex flex-wrap gap-2.5">
+              {OUTFITS.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-label={`Ropa ${o.label}`}
+                  title={o.label}
+                  className={`swatch ${traits.outfit === o.id ? "swatch-on" : ""}`}
+                  style={{ background: o.hex }}
+                  onClick={() => onChange({ ...traits, outfit: o.id })}
+                />
+              ))}
+            </div>
+          )}
         </Field>
 
-        <Field label="Accesorio">
-          <div className="flex flex-wrap gap-2">
-            {ACCESSORIES.map((a) => (
-              <button key={a.id} type="button" className={`chip ${traits.accessory === a.id ? "chip-on" : ""}`} onClick={() => onChange({ ...traits, accessory: a.id })}>
-                {a.label}
-              </button>
-            ))}
-          </div>
-        </Field>
+        {!paintedOnly && (
+          <Field label="Accesorio">
+            <div className="flex flex-wrap gap-2">
+              {ACCESSORIES.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`chip ${traits.accessory === a.id ? "chip-on" : ""}`}
+                  onClick={() => onChange({ ...traits, accessory: a.id })}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
       </div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <div className="field-label mb-2">{label}</div>

@@ -30,22 +30,40 @@ BASE_SKIN = "#f3c9a6"  # tono de piel del catálogo (medido)
 
 
 def cutout(img, thresh=38):
-    """Fondo blanco → transparente. Solo el blanco conectado con el borde (los blancos interiores se conservan)."""
-    from PIL import ImageDraw, ImageFilter
+    """Fondo blanco → transparente (solo el conectado con el borde; los blancos interiores, como los ojos, se conservan).
+    La sombra gris neutra pintada bajo los pies también se quita (si no, el blanco que encierra queda como una mancha)."""
+    from PIL import ImageFilter
+    from scipy import ndimage
     im = img.convert("RGBA")
-    rgb = im.convert("RGB")
-    probe = rgb.copy()
-    w, h = probe.size
-    seeds = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w // 2, 0), (w // 2, h - 1), (0, h // 2), (w - 1, h // 2)]
-    for sx, sy in seeds:
-        if sum(probe.getpixel((sx, sy))) > 600:
-            ImageDraw.floodfill(probe, (sx, sy), (255, 0, 255), thresh=thresh)
-    pa = np.array(probe)
-    bg = (pa[..., 0] == 255) & (pa[..., 1] == 0) & (pa[..., 2] == 255)
+    a = np.array(im)
+    r, g, b = a[..., 0].astype(int), a[..., 1].astype(int), a[..., 2].astype(int)
+    h = a.shape[0]
+    mx = np.maximum(np.maximum(r, g), b); mn = np.minimum(np.minimum(r, g), b)
+    white = mn > 255 - thresh // 2 - 4  # ≈ > 236 en los tres canales
+    rows = np.arange(h)[:, None]
+    grey_shadow = (mx - mn < 12) & (mn > 150) & (rows > h * 0.7)  # gris neutro claro en la franja inferior
+    bglike = white | grey_shadow
+    lab, n = ndimage.label(bglike)
+    border = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    border = border[border > 0]
+    bg = np.isin(lab, border)
+    # hueco entre las piernas: blanco encerrado (no toca el borde), en la mitad inferior, centrado y alto;
+    # los calcetines y las suelas blancas son bajos y descentrados y se conservan
+    w = a.shape[1]
+    for i, sl in enumerate(ndimage.find_objects(lab), start=1):
+        if sl is None or i in border:
+            continue
+        ys, xs = sl
+        hh, cx = ys.stop - ys.start, (xs.start + xs.stop) / 2
+        if ys.start > h * 0.45 and hh > h * 0.06 and 0.38 * w < cx < 0.62 * w:
+            bg |= lab == i
+        # restos de suelo blanco entre los zapatos, en la franja inferior
+        elif ys.start > h * 0.88 and 0.25 * w < cx < 0.75 * w:
+            bg |= lab == i
     alpha = np.where(bg, 0, 255).astype(np.uint8)
     # suaviza el borde 1 px y recupera semitransparencia en los píxeles claros del contorno
     am = Image.fromarray(alpha, "L").filter(ImageFilter.GaussianBlur(0.8))
-    out = np.array(im)
+    out = a.copy()
     out[..., 3] = np.minimum(out[..., 3], np.array(am))
     return Image.fromarray(out, "RGBA")
 
