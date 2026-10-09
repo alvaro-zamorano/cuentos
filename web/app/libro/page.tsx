@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { IllustratedScene } from "@/components/IllustratedScene";
 import { Scene } from "@/components/Scene";
+import { DEFAULT_PAINTED_STYLE } from "@/lib/pieces";
 import { StyleImage } from "@/components/StyleImage";
 import { DEMO_DRAFT } from "@/lib/demo";
 import { useDraft } from "@/lib/draftStore";
@@ -106,7 +107,7 @@ function Libro() {
                     className="block w-full"
                   />
                 ) : (
-                  <Scene
+                  <Scene style={DEFAULT_PAINTED_STYLE}
                     scene={p.scene}
                     traits={draft.hero.traits}
                     expression={p.expression}

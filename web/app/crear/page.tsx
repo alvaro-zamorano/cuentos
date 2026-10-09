@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AvatarBuilder } from "@/components/AvatarBuilder";
 import { Avatar } from "@/components/Avatar";
 import { Scene } from "@/components/Scene";
+import { DEFAULT_PAINTED_STYLE } from "@/lib/pieces";
 import { COMPANIONS, SPECIALS, companionVariants, defaultVariant, randomTraits } from "@/lib/traits";
 import { BookPreview } from "@/components/BookPreview";
 import { EmailForm } from "@/components/EmailForm";
@@ -255,7 +256,7 @@ function CrearSteps({ draft, initialStep, notice }: { draft: Draft; initialStep:
               draft={draft}
               update={update}
               renderImage={(p) => (
-                <Scene
+                <Scene style={DEFAULT_PAINTED_STYLE}
                   scene={p.scene}
                   traits={draft.hero.traits}
                   expression={p.expression}

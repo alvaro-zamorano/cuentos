@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Scene } from "@/components/Scene";
+import { DEFAULT_PAINTED_STYLE } from "@/lib/pieces";
 import { GratisForm } from "./GratisForm";
 import { DEMO_DRAFT } from "@/lib/demo";
 import { buildBook } from "@/lib/story";
@@ -37,7 +38,7 @@ export default function Gratis() {
               const p = book.pages[n - 1];
               return (
                 <figure key={n} className="card overflow-hidden p-0">
-                  <Scene
+                  <Scene style={DEFAULT_PAINTED_STYLE}
                     scene={p.scene}
                     traits={DEMO_DRAFT.hero.traits}
                     expression={p.expression}
