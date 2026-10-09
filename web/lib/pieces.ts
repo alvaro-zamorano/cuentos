@@ -1,4 +1,4 @@
-import gouache from "@/public/pieces/gouache/pieces.json";
+import { MANIFESTS as GENERATED } from "./pieces.generated";
 import { HAIR_COLORS, SKINS, defaultVariant, normalizeTraits } from "./traits";
 import type { Companion, SceneId, StyleId, Traits } from "./types";
 
@@ -59,7 +59,8 @@ export function backgroundFor(style: StyleId | undefined | null, scene: SceneId)
   return m?.backgrounds?.[scene] ?? null;
 }
 
-const MANIFESTS: Partial<Record<StyleId, PiecesManifest>> = { gouache: gouache as PiecesManifest };
+/** Manifests de los estilos con piezas, generados en prebuild por scripts/pieces-build.mjs a partir del catálogo. */
+const MANIFESTS: Partial<Record<StyleId, PiecesManifest>> = GENERATED as Partial<Record<StyleId, PiecesManifest>>;
 
 export function piecesFor(style: StyleId | undefined | null): PiecesManifest | null {
   return (style && MANIFESTS[style]) || null;

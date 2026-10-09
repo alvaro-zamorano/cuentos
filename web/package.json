@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "pieces": "node scripts/pieces-build.mjs",
+    "predev": "npm run pieces",
+    "prebuild": "npm run pieces",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -8,3 +8,4 @@ assets/raw/
 capturas/
 __pycache__/
 web/tests/_scratch_*
+web/public/pieces/
