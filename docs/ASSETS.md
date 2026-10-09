@@ -77,4 +77,12 @@ Con 5 poses × 8 prendas son 40 imágenes; el mínimo útil son `brazos-arriba` 
 
 ## Otros estilos
 
-Para un estilo nuevo hace falta, además, el catálogo base (`web/public/catalog/<estilo>/`: `hair/`, `outfit/`, `pet/`, `grandparent/` con los mismos nombres de archivo que `gouache`) y el ancla `web/public/styles/<estilo>.jpg`. Con eso, `pieces_build.py <estilo>` genera las piezas y el selector lo marca como disponible al añadir el manifest en `web/lib/pieces.ts` (`MANIFESTS`).
+Las piezas se generan en el build (`web/scripts/pieces-build.mjs`, `prebuild`) para cada estilo cuyo catálogo tenga `hair/` y `outfit/` completos. Hoy: gouache, flat y lapiz. Para activar los demás falta, en `web/public/catalog/<estilo>/`, con los mismos nombres de archivo que en `gouache` y la misma construcción (bust con chubasquero amarillo para los peinados; figura entera sobre blanco para las prendas):
+
+| estilo | falta |
+|---|---|
+| `3d` | `hair/` (12 peinados: afro, coleta, corto, flequillo, melena, mono, ondulado, rapado, rizos-largos, rizos-media, rizos, trenzas) |
+| `papercraft` | `hair/` (los mismos 12) |
+| `acuarela` | `hair/` (12) y `outfit/` (8: chubasquero, jersey, marinera, peto, pijama, plumifero, verano, vestido) |
+
+Con esas imágenes en el catálogo, el selector marca el estilo como disponible en el siguiente deploy sin tocar código. El ancla `web/public/styles/<estilo>.jpg` ya existe para los seis.
