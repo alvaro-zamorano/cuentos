@@ -1,65 +1,67 @@
 "use client";
 
-import { CutoutImage } from "./CutoutImage";
-import { catalogCrop, type CatalogCategory } from "@/lib/catalog";
+import { Avatar } from "./Avatar";
+import { PaintedHead, PaintedStanding } from "./PaintedFigure";
+import { paintedStyleFor, pendingStyleNotice } from "./IllustratedScene";
+import { figureFor } from "@/lib/pieces";
 import { getStyle } from "@/lib/generation/styles";
-import { EYE_SHAPES, GARMENTS, GLASSES, HAIR_SHAPES, SKINS, normalizeTraits } from "@/lib/traits";
+import { GARMENTS, HAIR_COLORS, HAIR_SHAPES, SKINS, normalizeTraits } from "@/lib/traits";
 import type { StyleId, Traits } from "@/lib/types";
 
 /**
- * Hoja de personaje en dry-run: cuadrícula tipo turnaround compuesta con los recortes del catálogo
- * del estilo elegido. Si el estilo no tiene una categoría (huecos del manifest), usa el del estilo
- * más parecido y lo marca como «provisional».
+ * Hoja de personaje: la figura pintada en tres vistas (de frente, en espejo y la cabeza en grande)
+ * sobre papel, con la ficha de rasgos. Es la referencia de las doce páginas.
  */
 export function CharacterSheet({ styleId, traits: raw, name }: { styleId: StyleId; traits: Traits; name: string }) {
   const t = normalizeTraits(raw);
-  const garment = t.garment ?? "jersey";
-  const cells: { key: string; label: string; category: CatalogCategory; id: string; big?: boolean; flip?: boolean }[] = [
-    { key: "front", label: "De frente", category: "outfit", id: garment, big: true },
-    { key: "side", label: "Girado", category: "outfit", id: garment, big: true, flip: true },
-    { key: "hair", label: `Pelo · ${label(HAIR_SHAPES, t.hair.shape)}`, category: "hair", id: t.hair.shape },
-    { key: "skin", label: `Piel · ${label(SKINS, t.skin)}`, category: "skin", id: t.skin },
-    { key: "eyes", label: `Ojos · ${label(EYE_SHAPES, t.eyeShape)}`, category: "eyes", id: t.eyeShape ?? "puntos" },
+  const painted = paintedStyleFor(styleId);
+  const spec = figureFor(painted, t);
+  const fallback = <Avatar traits={t} expression="feliz" size={200} />;
+  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+  const rows: { key: string; label: string; value: string }[] = [
+    { key: "hair", label: "Pelo", value: `${label(HAIR_SHAPES, t.hair.shape)}, ${lower(label(HAIR_COLORS, t.hair.color))}` },
+    { key: "skin", label: "Piel", value: label(SKINS, t.skin) },
+    // las figuras pintadas recolorean piel y pelo; la ropa conserva los colores del estilo y los ojos y las gafas aún no se pintan
+    { key: "outfit", label: "Ropa", value: label(GARMENTS, t.garment) },
   ];
-  if (t.glasses !== "no") cells.push({ key: "glasses", label: `Gafas · ${label(GLASSES, t.glasses)}`, category: "glasses", id: t.glasses });
-  cells.push({ key: "outfit", label: `Ropa · ${label(GARMENTS, garment)}`, category: "outfit", id: garment });
 
   return (
-    <div className="rounded-3xl border-2 border-line bg-white p-4" data-testid="character-sheet">
-      <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h3 className="text-lg font-black">{name || "Protagonista"}</h3>
-        <span className="text-xs font-bold text-ink-soft">Estilo {getStyle(styleId)?.label ?? styleId}</span>
+    <div className="rounded-[8px] border border-line bg-paper" data-testid="character-sheet">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-3">
+        <h2 className="font-display text-xl font-medium">{name || "Protagonista"}</h2>
+        <span className="text-sm text-ink-soft">Estilo {getStyle(styleId)?.label ?? styleId}</span>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {cells.map((c) => {
-          const crop = catalogCrop(styleId, c.category, c.id);
-          return (
-            <figure
-              key={c.key}
-              className={`relative flex flex-col items-center rounded-2xl bg-cream p-2 ${c.big ? "row-span-2" : ""}`}
-              data-testid={`sheet-${c.key}`}
-              data-provisional={crop.provisional ? "1" : "0"}
-            >
-              <div className={`flex w-full items-end justify-center ${c.big ? "h-64 sm:h-72" : "h-28"}`}>
-                <CutoutImage src={crop.src} alt={c.label} className="max-h-full max-w-full object-contain" style={c.flip ? { transform: "scaleX(-1)" } : undefined} />
-              </div>
-              <figcaption className="mt-1 text-center text-xs font-bold text-ink-soft">{c.label}</figcaption>
-              {crop.provisional && (
-                <span
-                  className="absolute left-2 top-2 rounded-full bg-sun px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-ink"
-                  title={`Este estilo aún no tiene esta parte del catálogo: se muestra la del estilo ${getStyle(crop.fromStyle)?.label ?? crop.fromStyle}.`}
-                >
-                  provisional
-                </span>
-              )}
-            </figure>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-px bg-line sm:grid-cols-[1fr_1fr_1.3fr]">
+        <figure className="flex flex-col items-center bg-paper px-2 pb-3 pt-4" data-testid="sheet-front">
+          {spec ? <PaintedStanding spec={spec} className="h-56 w-full sm:h-64" fallback={fallback} /> : <Avatar traits={t} expression="feliz" size={180} />}
+          <figcaption className="mt-2 text-xs text-ink-soft">De frente</figcaption>
+        </figure>
+        <figure className="flex flex-col items-center bg-paper px-2 pb-3 pt-4" data-testid="sheet-mirror">
+          {spec ? <PaintedStanding spec={spec} flip className="h-56 w-full sm:h-64" fallback={fallback} /> : <Avatar traits={t} expression="feliz" size={180} flip />}
+          <figcaption className="mt-2 text-xs text-ink-soft">En espejo</figcaption>
+        </figure>
+        <figure className="col-span-2 flex flex-col items-center justify-center bg-paper px-4 pb-3 pt-4 sm:col-span-1" data-testid="sheet-head">
+          {spec ? <PaintedHead spec={spec} className="h-48 w-full sm:h-56" fallback={fallback} /> : <Avatar traits={t} expression="feliz" size={180} />}
+          <figcaption className="mt-2 text-xs text-ink-soft">Cara</figcaption>
+        </figure>
       </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 border-t border-line px-4 py-4 text-sm">
+        {rows.map((r) => (
+          <div key={r.key} className="contents" data-testid={`sheet-${r.key}`}>
+            <dt className="text-ink-soft">{r.label}</dt>
+            <dd>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {painted !== styleId && (
+        <p className="border-t border-line px-4 py-3 text-xs text-ink-soft" data-testid="style-pending">
+          {pendingStyleNotice()}.
+        </p>
+      )}
     </div>
   );
 }
 
 function label<T extends { id: string; label: string }>(list: T[], id: string | undefined): string {
-  return (list.find((x) => x.id === id) ?? list[0]).label.toLowerCase();
+  return (list.find((x) => x.id === id) ?? list[0]).label;
 }

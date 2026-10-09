@@ -1,24 +1,26 @@
 import Link from "next/link";
+import { Wordmark } from "./SiteHeader";
 
 /** Footer común con los enlaces legales. No sale al imprimir. */
 export function Footer() {
   return (
-    <footer className="no-print border-t-2 border-line bg-cream" data-testid="footer">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-6 pb-24 text-sm text-ink-soft">
-        <span className="font-black text-ink">
-          cuentos<span className="text-coral">.</span>
-        </span>
-        <nav className="flex flex-wrap gap-x-4 gap-y-2" aria-label="Legal">
-          <Link href="/gratis" className="hover:underline">
-            Cuento gratis
+    <footer className="no-print border-t border-line" data-testid="footer">
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 pb-28 pt-10 text-sm text-ink-soft sm:px-6 md:grid-cols-[1fr_auto] md:items-end">
+        <div className="grid gap-2">
+          <Wordmark className="text-ink" />
+          <p className="max-w-[44ch]">Cuentos personalizados, escritos e ilustrados para un solo lector.</p>
+        </div>
+        <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Legal">
+          <Link href="/gratis" className="hover:text-ink hover:underline">
+            Cuento de muestra
           </Link>
-          <Link href="/privacidad" className="hover:underline">
+          <Link href="/privacidad" className="hover:text-ink hover:underline">
             Privacidad
           </Link>
-          <Link href="/condiciones" className="hover:underline">
+          <Link href="/condiciones" className="hover:text-ink hover:underline">
             Condiciones
           </Link>
-          <Link href="/aviso-legal" className="hover:underline">
+          <Link href="/aviso-legal" className="hover:text-ink hover:underline">
             Aviso legal
           </Link>
         </nav>

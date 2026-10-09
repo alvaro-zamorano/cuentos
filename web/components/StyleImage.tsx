@@ -29,7 +29,7 @@ export function StyleImage({
         className={`flex items-center justify-center ${className ?? ""}`}
         style={{ background: `linear-gradient(160deg, ${palette[1] ?? palette[0]} 0%, ${palette[4] ?? palette[0]} 55%, ${palette[5] ?? palette[2] ?? palette[0]} 100%)` }}
       >
-        {showLabelOnFallback && <span className="rounded-full bg-white/80 px-3 py-1 text-sm font-black text-ink">{style?.label ?? styleId}</span>}
+        {showLabelOnFallback && <span className="rounded-[4px] bg-white/85 px-2.5 py-1 text-sm text-ink">{style?.label ?? styleId}</span>}
       </div>
     );
   }

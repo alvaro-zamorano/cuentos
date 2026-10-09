@@ -1,61 +1,60 @@
 "use client";
 
-import { CutoutImage } from "./CutoutImage";
-import { StyleImage } from "./StyleImage";
-import { companionCrop, heroCrop, pageLayout, type Placement } from "@/lib/illustration";
-import type { Companion, StyleId, Traits } from "@/lib/types";
+import { Scene } from "./Scene";
+import { DEFAULT_PAINTED_STYLE, piecesFor } from "@/lib/pieces";
+import { getStyle } from "@/lib/generation/styles";
+import type { BookPage, Draft, StyleId } from "@/lib/types";
+
+/** Texto de la etiqueta cuando el estilo elegido aún no tiene piezas pintadas. */
+export function pendingStyleNotice(): string {
+  return `Estilo disponible próximamente; vista en ${getStyle(DEFAULT_PAINTED_STYLE)?.label.toLowerCase() ?? DEFAULT_PAINTED_STYLE}`;
+}
+
+/** Estilo con el que se pinta de verdad: el elegido si tiene piezas; si no, el estilo pintado por defecto. */
+export function paintedStyleFor(styleId: StyleId): StyleId {
+  return piecesFor(styleId) ? styleId : DEFAULT_PAINTED_STYLE;
+}
 
 /**
- * Página ilustrada en modo demostración: ancla del estilo recortada a 3:2 con el avatar del catálogo
- * (y el acompañante) superpuestos. Determinista por (estilo, página, variante).
+ * Página de la edición ilustrada: la escena con acabado y figuras pintadas del estilo elegido.
+ * Determinista por (estilo, página, versión).
  */
 export function IllustratedScene({
   styleId,
-  n,
+  page,
   variant,
-  traits,
-  companion,
+  draft,
   className,
+  showNotice = true,
 }: {
   styleId: StyleId;
-  n: number;
+  page: BookPage;
   variant: number;
-  traits: Traits;
-  companion?: Companion;
+  draft: Draft;
   className?: string;
+  /** Etiqueta «próximamente» sobre la escena (se oculta en miniaturas y nunca se imprime). */
+  showNotice?: boolean;
 }) {
-  const l = pageLayout(styleId, n, variant);
-  const hero = heroCrop(styleId, traits);
-  const comp = companionCrop(styleId, companion);
-  const place = (p: Placement): React.CSSProperties => ({
-    left: `${p.centerX}%`,
-    bottom: `${p.bottom}%`,
-    height: `${p.height}%`,
-    transform: `translateX(-50%)${p.flip ? " scaleX(-1)" : ""}`,
-  });
+  const painted = paintedStyleFor(styleId);
+  const pending = painted !== styleId;
   return (
-    <div className={`relative aspect-[3/2] overflow-hidden bg-[#dfe9ef] ${className ?? ""}`} data-testid="illustrated-scene" data-variant={variant}>
-      <div
-        className="absolute"
-        style={{
-          width: `${l.zoom * 100}%`,
-          height: `${l.zoom * 100}%`,
-          left: `${-l.originX * l.zoom * 100}%`,
-          top: `${-l.originY * l.zoom * 100}%`,
-          transform: l.mirror ? "scaleX(-1)" : undefined,
-        }}
-      >
-        <StyleImage styleId={styleId} showLabelOnFallback={false} className="h-full w-full object-fill" />
-      </div>
-      {comp && (
-        <CutoutImage
-          src={comp.src}
-          alt="Acompañante"
-          className="absolute w-auto max-w-none drop-shadow-[0_4px_4px_rgba(0,0,0,0.18)]"
-          style={place(comp.slot === "elder" ? l.companion.elder : l.companion.ground)}
-        />
+    <div className={`relative ${className ?? ""}`} data-testid="illustrated-scene" data-variant={variant} data-painted-style={painted}>
+      <Scene
+        style={painted}
+        variant={variant}
+        scene={page.scene}
+        traits={draft.hero.traits}
+        expression={page.expression}
+        companion={page.withCompanion ? draft.companion : undefined}
+        special={draft.special}
+        age={draft.hero.age}
+        className="block w-full"
+      />
+      {pending && showNotice && (
+        <span className="no-print absolute bottom-2 left-2 rounded-[4px] bg-white/90 px-2 py-1 text-[11px] leading-none text-ink-soft" data-testid="style-pending">
+          {pendingStyleNotice()}
+        </span>
       )}
-      <CutoutImage src={hero.src} alt="Protagonista" className="absolute w-auto max-w-none drop-shadow-[0_4px_4px_rgba(0,0,0,0.2)]" style={place(l.hero)} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { CompanionSpec, FigureSpec } from "@/lib/pieces";
 import { isFigure } from "@/lib/pieces";
 import { recolorPiece } from "@/lib/recolor";
@@ -45,6 +45,7 @@ export function PaintedFigure({
   const bodyHref = useRecolored(spec.bodySrc, spec.skinHex, null);
   const headHref = useRecolored(spec.headSrc, spec.skinHex, spec.hairHex);
   const [broken, setBroken] = useState(false);
+  const mid = `pf${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   if (broken) return <>{fallback}</>;
   const s = height / spec.body.h;
   const w = spec.body.w * s;
@@ -55,7 +56,29 @@ export function PaintedFigure({
   return (
     <g transform={`translate(${x} ${y}) rotate(${tilt}) ${flip ? "scale(-1 1)" : ""} translate(${-w / 2} ${-height})`}>
       {bodyHref && <image href={bodyHref} width={w} height={height} preserveAspectRatio="none" data-piece="body" onError={() => setBroken(true)} />}
-      {headHref && <image href={headHref} x={hx} y={hy} width={hw} height={hh} preserveAspectRatio="none" data-piece="head" onError={() => setBroken(true)} />}
+      {/* el corte recto inferior de la cabeza (pelo largo) se funde en vez de verse como una línea */}
+      <defs>
+        <linearGradient id={`${mid}-g`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0.955" stopColor="#fff" />
+          <stop offset="1" stopColor="#000" />
+        </linearGradient>
+        <mask id={`${mid}-m`} maskUnits="userSpaceOnUse" x={hx} y={hy} width={hw} height={hh}>
+          <rect x={hx} y={hy} width={hw} height={hh} fill={`url(#${mid}-g)`} />
+        </mask>
+      </defs>
+      {headHref && (
+        <image
+          href={headHref}
+          x={hx}
+          y={hy}
+          width={hw}
+          height={hh}
+          preserveAspectRatio="none"
+          data-piece="head"
+          mask={`url(#${mid}-m)`}
+          onError={() => setBroken(true)}
+        />
+      )}
     </g>
   );
 }
@@ -85,5 +108,61 @@ export function PaintedCompanion({
     <g transform={`translate(${x} ${y}) ${flip ? "scale(-1 1)" : ""} translate(${-w / 2} ${-height})`}>
       <image href={spec.src} width={w} height={height} preserveAspectRatio="none" onError={() => setBroken(true)} />
     </g>
+  );
+}
+
+/**
+ * Cabeza sola (busto grande) para la hoja de personaje. Se dibuja en su propio SVG con el
+ * tamaño natural de la pieza; el contenedor decide la escala.
+ */
+export function PaintedHead({ spec, className, fallback = null }: { spec: FigureSpec; className?: string; fallback?: React.ReactNode }) {
+  const href = useRecolored(spec.headSrc, spec.skinHex, spec.hairHex);
+  const [broken, setBroken] = useState(false);
+  const mid = `hd${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  if (broken) return <>{fallback}</>;
+  const { w, h } = spec.head;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className={className} role="img" aria-label="Cabeza del protagonista">
+      {/* el corte inferior de la pieza se funde con el papel */}
+      <defs>
+        <linearGradient id={`${mid}-g`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0.8" stopColor="#fff" />
+          <stop offset="1" stopColor="#000" />
+        </linearGradient>
+        <mask id={`${mid}-m`} maskUnits="userSpaceOnUse" x="0" y="0" width={w} height={h}>
+          <rect width={w} height={h} fill={`url(#${mid}-g)`} />
+        </mask>
+      </defs>
+      {href && (
+        <image href={href} width={w} height={h} preserveAspectRatio="none" data-piece="head" mask={`url(#${mid}-m)`} onError={() => setBroken(true)} />
+      )}
+    </svg>
+  );
+}
+
+/** Figura de pie en su propio SVG (portada, hoja de personaje). Encaja cabeza y cuerpo con un margen. */
+export function PaintedStanding({
+  spec,
+  flip = false,
+  className,
+  fallback = null,
+  shadow = true,
+}: {
+  spec: FigureSpec;
+  flip?: boolean;
+  className?: string;
+  fallback?: React.ReactNode;
+  shadow?: boolean;
+}) {
+  const { w, h } = spec.body;
+  const hw = spec.head.w * spec.headScale;
+  const half = Math.max(w / 2 - Math.min(0, spec.headX), Math.max(w, spec.headX + hw) - w / 2) + 8;
+  const top = Math.min(0, spec.headY) - 8;
+  const bottom = h + 14;
+  return (
+    <svg viewBox={`${w / 2 - half} ${top} ${half * 2} ${bottom - top}`} className={className} role="img" aria-label="Protagonista">
+      {shadow && <ellipse cx={w / 2} cy={h - 2} rx={w * 0.34} ry={7} fill="#4a2a14" opacity="0.14" />}
+      <PaintedFigure spec={spec} x={w / 2} y={h} height={h} flip={flip} fallback={fallback} />
+    </svg>
   );
 }
