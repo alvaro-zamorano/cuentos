@@ -4,7 +4,7 @@
     {
       "id": "3d",
       "label": "3D suave",
-      "anchorPath": "assets/raw/Cometa roja en el prado.png",
+      "anchorPath": "web/public/styles/3d.jpg",
       "promptStyle": "soft 3D children's book illustration, rounded clay-like characters with smooth matte materials, gentle global illumination, warm pastel palette, shallow depth of field",
       "promptStyleOrigen": "redactado por el agente mirando el ancla; sustituir por el texto exacto del Prompt 1",
       "palette": [
@@ -19,8 +19,8 @@
     {
       "id": "flat",
       "label": "Plano",
-      "anchorPath": "assets/raw/El niño, la abuela y la cometa.png",
-      "promptStyle": "flat vector-style children's book illustration, simple solid shapes, subtle paper grain, limited warm palette, no outlines, clean composition",
+      "anchorPath": "web/public/styles/flat.jpg",
+      "promptStyle": "flat vector-style children's book illustration, simple solid shapes, subtle paper grain, limited bright palette, no outlines, clean composition",
       "promptStyleOrigen": "redactado por el agente mirando el ancla; sustituir por el texto exacto del Prompt 1",
       "palette": [
         "#a4dbf2",
@@ -34,8 +34,8 @@
     {
       "id": "gouache",
       "label": "Gouache retro",
-      "anchorPath": "assets/raw/La cometa roja en el prado-1.png",
-      "promptStyle": "retro gouache children's book illustration, opaque matte paint with visible brush texture, mid-century picture-book feel, warm earthy palette",
+      "anchorPath": "web/public/styles/gouache.jpg",
+      "promptStyle": "retro gouache children's book illustration, opaque matte paint with visible brush texture, mid-century picture-book feel, sunny natural palette with soft warm light",
       "promptStyleOrigen": "redactado por el agente mirando el ancla; sustituir por el texto exacto del Prompt 1",
       "palette": [
         "#a6d0df",
@@ -49,7 +49,7 @@
     {
       "id": "papercraft",
       "label": "Papercraft",
-      "anchorPath": "assets/raw/La cometa roja en el prado.png",
+      "anchorPath": "web/public/styles/papercraft.jpg",
       "promptStyle": "papercraft children's book illustration, layered cut paper and felt textures with soft drop shadows, handmade tactile look, bright cheerful palette",
       "promptStyleOrigen": "redactado por el agente mirando el ancla; sustituir por el texto exacto del Prompt 1",
       "palette": [
@@ -64,7 +64,7 @@
     {
       "id": "lapiz",
       "label": "Lápiz de colores",
-      "anchorPath": "assets/raw/La cometa roja y la abuela-2.png",
+      "anchorPath": "web/public/styles/lapiz.jpg",
       "promptStyle": "colored pencil children's book illustration, visible pencil strokes and paper tooth, soft hatching, light airy palette, hand-drawn warmth",
       "promptStyleOrigen": "redactado por el agente mirando el ancla; sustituir por el texto exacto del Prompt 1",
       "palette": [
@@ -79,7 +79,7 @@
     {
       "id": "acuarela",
       "label": "Acuarela",
-      "anchorPath": "assets/raw/La cometa y la abuela.png",
+      "anchorPath": "web/public/styles/acuarela.jpg",
       "promptStyle": "watercolor children's book illustration, transparent washes with soft edges and paper texture, fine ink details, fresh light palette",
       "promptStyleOrigen": "redactado por el agente mirando el ancla; sustituir por el texto exacto del Prompt 1",
       "palette": [

@@ -210,8 +210,8 @@ def palette(path, k=6):
 
 PROMPT_STYLE = {
     "3d": "soft 3D children's book illustration, rounded clay-like characters with smooth matte materials, gentle global illumination, warm pastel palette, shallow depth of field",
-    "flat": "flat vector-style children's book illustration, simple solid shapes, subtle paper grain, limited warm palette, no outlines, clean composition",
-    "gouache": "retro gouache children's book illustration, opaque matte paint with visible brush texture, mid-century picture-book feel, warm earthy palette",
+    "flat": "flat vector-style children's book illustration, simple solid shapes, subtle paper grain, limited bright palette, no outlines, clean composition",
+    "gouache": "retro gouache children's book illustration, opaque matte paint with visible brush texture, mid-century picture-book feel, sunny natural palette with soft warm light",
     "papercraft": "papercraft children's book illustration, layered cut paper and felt textures with soft drop shadows, handmade tactile look, bright cheerful palette",
     "lapiz": "colored pencil children's book illustration, visible pencil strokes and paper tooth, soft hatching, light airy palette, hand-drawn warmth",
     "acuarela": "watercolor children's book illustration, transparent washes with soft edges and paper texture, fine ink details, fresh light palette",
@@ -277,7 +277,8 @@ def main():
         f.write(compact_json(manifest))
     styles = []
     for s in STYLES:
-        styles.append({"id": s, "label": LABELS[s], "anchorPath": sets[s]["anchor"],
+        # anchorPath apunta a la copia versionada (web/public/styles/<id>.jpg, ≤1200 px); la paleta sale del original en assets/raw
+        styles.append({"id": s, "label": LABELS[s], "anchorPath": f"web/public/styles/{s}.jpg",
                        "promptStyle": PROMPT_STYLE[s],
                        "promptStyleOrigen": "redactado por el agente mirando el ancla; sustituir por el texto exacto del Prompt 1",
                        "palette": palette(os.path.join(ROOT, sets[s]["anchor"]))})
