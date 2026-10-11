@@ -26,10 +26,13 @@ const LOCAL_CANDIDATES = [
 
 async function launch(): Promise<Browser> {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const t = Date.now();
     const chromium = (await import("@sparticuz/chromium-min")).default;
+    const executablePath = await chromium.executablePath(PACK_URL);
+    console.log(`[pdf] chromium listo en ${Date.now() - t}ms`);
     return puppeteer.launch({
       args: chromium.args,
-      executablePath: await chromium.executablePath(PACK_URL),
+      executablePath,
       headless: true,
     });
   }
@@ -53,8 +56,13 @@ export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000
   const started = Date.now();
   const left = () => Math.max(1_000, timeoutMs - (Date.now() - started));
   const t0 = Date.now();
+  const marks: string[] = [];
+  const mark = (what: string) => {
+    marks.push(`${what} ${Date.now() - t0}ms`);
+    console.log(`[pdf] ${what} ${Date.now() - t0}ms`);
+  };
   const browser = await launch();
-  const marks: string[] = [`launch ${Date.now() - t0}ms`];
+  mark("launch");
   try {
     const page = await browser.newPage();
     // la barra de Vercel de las previews mantiene conexiones abiertas: se desactiva por cookie y no se espera a «red inactiva»
@@ -82,11 +90,11 @@ export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000
     );
     const url = `${origin}/libro?edition=${edition === "illustrated" ? "illustrated" : "classic"}&pdf=1`;
     await page.goto(url, { waitUntil: "load", timeout: Math.min(left(), 20_000) });
-    marks.push(`load ${Date.now() - t0}ms`);
+    mark("load");
     // 13 hojas presentes (portada + 12) y tipografías cargadas
     await page.waitForFunction(() => document.querySelectorAll("section.sheet").length >= 13, { timeout: Math.min(left(), 15_000) });
     await page.evaluate(() => (document as Document & { fonts: FontFaceSet }).fonts.ready);
-    marks.push(`sheets ${Date.now() - t0}ms`);
+    mark("sheets");
     await page
       .waitForFunction(() => Array.from(document.querySelectorAll("img")).every((i) => i.complete), { timeout: Math.min(left(), 8_000) })
       .catch(() => undefined);
@@ -102,7 +110,7 @@ export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000
       const pg = doc.addPage(A4_LANDSCAPE);
       pg.drawImage(img, { x: 0, y: 0, width: A4_LANDSCAPE[0], height: A4_LANDSCAPE[1] });
     }
-    marks.push(`shots ${Date.now() - t0}ms`);
+    mark("shots");
     const out = await doc.save();
     console.log(`[pdf] ${edition} ${out.length} bytes · ${marks.join(" · ")}`);
     return out;
