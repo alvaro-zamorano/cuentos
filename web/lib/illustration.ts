@@ -1,17 +1,25 @@
 import { normalizeTraits } from "./traits";
-import type { Draft, Illustration, StyleId } from "./types";
+import type { Draft, Illustration } from "./types";
 
 /**
  * Estado de la edición ilustrada: validez de la hoja y de las páginas frente a los rasgos actuales.
- * Las páginas se pintan en cliente con <Scene style=…> (components/IllustratedScene.tsx).
+ * Las imágenes las pinta el servidor (/api/generate/*, lib/generation/service.ts); en dry-run no hay imagen y se
+ * pinta la escena vectorial (components/IllustratedScene.tsx). `pages[n].variant` es la versión elegida (0 = la primera).
  */
 
 export function emptyIllustration(): Illustration {
-  return { paid: false, buyerDeclaration: false, sheetApproved: false, pages: {} };
+  return { paid: false, buyerDeclaration: false, sheetApproved: false, pages: {}, sheetVersions: 0, pageVersions: {} };
 }
 
 export function getIllustration(draft: Draft): Illustration {
-  return { ...emptyIllustration(), ...(draft.illustration ?? {}), pages: { ...(draft.illustration?.pages ?? {}) } };
+  const ill = draft.illustration;
+  return {
+    ...emptyIllustration(),
+    ...(ill ?? {}),
+    pages: { ...(ill?.pages ?? {}) },
+    sheetVersions: typeof ill?.sheetVersions === "number" ? ill.sheetVersions : 0,
+    pageVersions: { ...(ill?.pageVersions ?? {}) },
+  };
 }
 
 /** Huella de lo que dibuja la hoja: rasgos del protagonista + estilo. */
@@ -35,31 +43,4 @@ export function validPages(draft: Draft): Illustration["pages"] {
   const ill = getIllustration(draft);
   if (!sheetIsValid(draft) || ill.pagesKey !== pagesKey(draft)) return {};
   return ill.pages;
-}
-
-function hash(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
-/* ------------------------------ pintado (cliente) ------------------------------ */
-
-/**
- * Pinta una página: la escena se compone en cliente; esta espera de 300–800 ms (determinista por
- * página y versión) marca el ritmo del progreso. No llama a ningún proveedor.
- */
-export async function illustratePage(styleId: StyleId, n: number, variant = 0, signal?: AbortSignal): Promise<{ variant: number; ms: number }> {
-  const ms = 300 + (hash(`delay:${styleId}:${n}:${variant}`) % 501);
-  await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
-      clearTimeout(t);
-      reject(new DOMException("abort", "AbortError"));
-    });
-  });
-  return { variant, ms };
 }

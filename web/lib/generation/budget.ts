@@ -2,12 +2,13 @@
  * Presupuesto de generación (B3): cuánto se puede gastar por lead y por día UTC. Tabla `cuentos_spend`
  * (docs/sql/cuentos_spend.sql; RLS sin políticas: solo service role).
  *
- *   LEAD_CAP_CENTS   tope por lead antes del pago (por defecto 10). `paid: true` lo salta (libro pagado;
+ *   LEAD_CAP_CENTS   tope por lead antes del pago (por defecto 20: hoja + muestra + una versión más de la hoja a ~4 c/imagen). `paid: true` lo salta (libro pagado;
  *                    ahí manda MAX_COST_CENTS_PER_BOOK del worker).
  *   DAILY_CAP_CENTS  tope global por día UTC (por defecto 500). Se aplica a todo el gasto, pagado o no.
  *
  * Sin cliente admin, o si la lectura falla, canSpend devuelve ok:false: nunca se gasta a ciegas.
- * Dónde se llama: el worker (scripts/worker.ts) antes de cada job con proveedor de pago y al terminarlo.
+ * Dónde se llama: lib/generation/service.ts (al crear los jobs en /api/generate/sample y /book, y antes de cada
+ * imagen en /api/generate/run, que también registra el gasto) y el worker (scripts/worker.ts) para los jobs antiguos.
  * /api/jobs solo encola (no genera), así que no comprueba ni registra gasto.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -38,7 +39,7 @@ function capFromEnv(name: string, fallback: number): number {
 }
 
 export function leadCapCents(): number {
-  return capFromEnv("LEAD_CAP_CENTS", 10);
+  return capFromEnv("LEAD_CAP_CENTS", 20);
 }
 
 export function dailyCapCents(): number {

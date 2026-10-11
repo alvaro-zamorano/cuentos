@@ -80,16 +80,26 @@ export interface IllustratedPage {
 export interface Illustration {
   /** Pago simulado hecho (solo existe con NEXT_PUBLIC_DRY_RUN_PAYMENT=1). */
   paid: boolean;
-  /** Declaración del comprador aceptada en el paso de pago. */
+  /** Declaración del tutor aceptada (en el paso 4, con el email). */
   buyerDeclaration: boolean;
   sheetApproved: boolean;
   /** Huella de los rasgos con los que se aprobó la hoja; si cambian, la hoja y las páginas se invalidan. */
   sheetKey?: string;
-  /** Job `sheet` creado en Supabase (si lo hay). */
+  /** Job `sheet` elegido (la versión de la hoja que sirve de referencia al libro). */
   sheetJobId?: string;
   /** Huella (hoja + acompañante) con la que se ilustraron las páginas. */
   pagesKey?: string;
   pages: Record<number, IllustratedPage>;
+  /** Id del libro con el que se generan las imágenes (public_id de cuentos_books, o el que asigna el servidor sin Supabase). */
+  bookId?: string;
+  /** Job `sample` (página 9) de la muestra gratuita. */
+  sampleJobId?: string;
+  /** Huella (rasgos + estilo + historia) con la que se pidió la muestra; si cambia, la muestra se invalida (lib/generation/keys.ts). */
+  sampleKey?: string;
+  /** Versiones de la hoja pedidas (1 = la de la muestra; máximo 3: la original y dos más). */
+  sheetVersions: number;
+  /** Versiones pedidas por página tras el pago (1 = la incluida; máximo 2). */
+  pageVersions: Record<number, number>;
 }
 
 export interface Draft {

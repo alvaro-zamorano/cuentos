@@ -1,0 +1,266 @@
+/**
+ * Almacén de libros y jobs de generación para las rutas /api/generate/* (B3) y el worker.
+ *
+ * - `supabaseStore(db)`: cuentos_books, cuentos_generation_jobs, cuentos_orders y el bucket privado `cuentos`.
+ * - `memoryStore()`: en memoria del proceso. Solo para dry-run sin Supabase (desarrollo, tests y la preview sin
+ *   service role): no sube imágenes y se pierde al reiniciar. Nunca se usa con un proveedor de pago.
+ *
+ * Sin `server-only` a propósito: lo importan los tests unitarios y scripts/worker.ts. Las rutas lo obtienen de
+ * lib/generation/server.ts, que sí es solo servidor.
+ */
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeDraft } from "../story";
+import type { Database, Json } from "../supabase/types";
+import type { Draft } from "../types";
+import type { JobKind } from "./keys";
+
+export const BUCKET = "cuentos";
+
+export type JobStatus = "pending" | "running" | "done" | "failed";
+
+export interface GenJob {
+  id: string;
+  book_id: string;
+  kind: JobKind;
+  page_n: number | null;
+  variant: number;
+  job_key: string;
+  style_id: string;
+  prompt: string;
+  references: Json;
+  status: JobStatus;
+  attempts: number;
+  candidates: Json;
+  chosen: string | null;
+  storage_path: string | null;
+  cost_cents: number;
+  error: string | null;
+  paid: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NewJob = Pick<GenJob, "book_id" | "kind" | "page_n" | "variant" | "job_key" | "style_id" | "prompt" | "references" | "paid">;
+
+export interface BookRecord {
+  /** cuentos_books.id (uuid) en Supabase; en memoria, el mismo public_id. */
+  id: string;
+  public_id: string;
+  email: string | null;
+  draft: Draft;
+}
+
+export interface GenStore {
+  mode: "supabase" | "memory";
+  /** Cliente para el presupuesto (cuentos_spend); null en memoria. */
+  db: SupabaseClient<Database> | null;
+  findBook(q: { publicId?: string; email?: string }): Promise<BookRecord | null>;
+  getBookById(id: string): Promise<BookRecord | null>;
+  /** Solo memoria: crea o actualiza el libro con el borrador que manda el cliente (sin Supabase no hay /api/books). */
+  saveMemoryBook?(b: { publicId: string; email: string | null; draft: Draft }): Promise<BookRecord>;
+  listJobs(bookId: string): Promise<GenJob[]>;
+  getJob(id: string): Promise<GenJob | null>;
+  /** Inserta ignorando las que ya existen para (book_id, job_key): nunca hay dos jobs con la misma huella. */
+  insertJobs(rows: NewJob[]): Promise<void>;
+  /** Bloqueo optimista: pasa a `running` solo si nadie lo ha tocado desde que se leyó (mismo updated_at y estado). */
+  claim(job: GenJob): Promise<GenJob | null>;
+  updateJob(id: string, patch: Partial<Pick<GenJob, "status" | "candidates" | "chosen" | "storage_path" | "cost_cents" | "error" | "attempts">>): Promise<void>;
+  /** Vuelve a `pending` un job `failed` (reintento), con el mismo bloqueo optimista. */
+  reopen(job: GenJob): Promise<boolean>;
+  upload(path: string, data: Uint8Array, contentType: string): Promise<void>;
+  signedUrl(path: string, seconds: number): Promise<string | null>;
+  hasPaidOrder(bookId: string): Promise<boolean>;
+  markIllustrating(bookId: string): Promise<void>;
+}
+
+const JOB_COLUMNS =
+  "id, book_id, kind, page_n, variant, job_key, style_id, prompt, references, status, attempts, candidates, chosen, storage_path, cost_cents, error, paid, created_at, updated_at";
+
+function asJob(row: Record<string, unknown>): GenJob {
+  const status = row.status === "error" || row.status === "skipped" ? "failed" : (row.status as JobStatus);
+  return { ...(row as unknown as GenJob), status, variant: Number(row.variant ?? 1), paid: !!row.paid };
+}
+
+/* ------------------------------ Supabase ------------------------------ */
+
+export function supabaseStore(db: SupabaseClient<Database>): GenStore {
+  const jobs = () => db.from("cuentos_generation_jobs");
+  const toBook = (row: { id: string; public_id: string; email: string | null; draft: Json }): BookRecord => ({
+    id: row.id,
+    public_id: row.public_id,
+    email: row.email,
+    draft: normalizeDraft(row.draft as unknown as Partial<Draft>),
+  });
+  return {
+    mode: "supabase",
+    db,
+    async findBook({ publicId, email }) {
+      const now = new Date().toISOString();
+      if (publicId) {
+        const { data } = await db.from("cuentos_books").select("id, public_id, email, draft").eq("public_id", publicId).gt("expires_at", now).maybeSingle();
+        return data ? toBook(data) : null;
+      }
+      if (email) {
+        const { data } = await db
+          .from("cuentos_books")
+          .select("id, public_id, email, draft")
+          .eq("email", email)
+          .gt("expires_at", now)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        return data ? toBook(data) : null;
+      }
+      return null;
+    },
+    async getBookById(id) {
+      const { data } = await db.from("cuentos_books").select("id, public_id, email, draft").eq("id", id).maybeSingle();
+      return data ? toBook(data) : null;
+    },
+    async listJobs(bookId) {
+      const { data, error } = await jobs().select(JOB_COLUMNS).eq("book_id", bookId).not("job_key", "is", null).order("created_at", { ascending: true });
+      if (error) throw new Error(`jobs: ${error.message}`);
+      return (data ?? []).map((r) => asJob(r as Record<string, unknown>));
+    },
+    async getJob(id) {
+      const { data } = await jobs().select(JOB_COLUMNS).eq("id", id).maybeSingle();
+      return data ? asJob(data as Record<string, unknown>) : null;
+    },
+    async insertJobs(rows) {
+      if (rows.length === 0) return;
+      const { error } = await jobs().upsert(rows, { onConflict: "book_id,job_key", ignoreDuplicates: true });
+      if (error) throw new Error(`jobs: ${error.message}`);
+    },
+    async claim(job) {
+      const { data } = await jobs()
+        .update({ status: "running", attempts: job.attempts + 1, error: null })
+        .eq("id", job.id)
+        .eq("status", job.status)
+        .eq("updated_at", job.updated_at)
+        .select(JOB_COLUMNS)
+        .maybeSingle();
+      return data ? asJob(data as Record<string, unknown>) : null;
+    },
+    async updateJob(id, patch) {
+      const { error } = await jobs().update(patch).eq("id", id);
+      if (error) throw new Error(`jobs: ${error.message}`);
+    },
+    async reopen(job) {
+      const { data } = await jobs().update({ status: "pending", error: null }).eq("id", job.id).eq("updated_at", job.updated_at).select("id").maybeSingle();
+      return !!data;
+    },
+    async upload(path, data, contentType) {
+      const { error } = await db.storage.from(BUCKET).upload(path, data, { contentType, upsert: true });
+      if (error) throw new Error(`storage: ${error.message}`);
+    },
+    async signedUrl(path, seconds) {
+      const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds);
+      return data?.signedUrl ?? null;
+    },
+    async hasPaidOrder(bookId) {
+      const { data } = await db.from("cuentos_orders").select("id").eq("book_id", bookId).eq("status", "paid").limit(1);
+      return !!data && data.length > 0;
+    },
+    async markIllustrating(bookId) {
+      await db.from("cuentos_books").update({ status: "illustrating" }).eq("id", bookId);
+    },
+  };
+}
+
+/* ------------------------------ memoria ------------------------------ */
+
+interface MemoryState {
+  books: Map<string, BookRecord>;
+  jobs: Map<string, GenJob>;
+  tick: number;
+}
+
+/** Estado en globalThis: las rutas de Next pueden cargar el módulo más de una vez en el mismo proceso. */
+function memoryState(): MemoryState {
+  const g = globalThis as unknown as { __cuentosGen?: MemoryState };
+  g.__cuentosGen ??= { books: new Map(), jobs: new Map(), tick: 0 };
+  return g.__cuentosGen;
+}
+
+export function memoryStore(state: MemoryState = memoryState()): GenStore {
+  // marca de tiempo estrictamente creciente: el bloqueo optimista compara updated_at
+  const stamp = () => new Date(Date.now() + ++state.tick).toISOString();
+  const clone = (j: GenJob): GenJob => JSON.parse(JSON.stringify(j));
+  return {
+    mode: "memory",
+    db: null,
+    async findBook({ publicId, email }) {
+      if (publicId) return state.books.get(publicId) ?? null;
+      if (email) return [...state.books.values()].reverse().find((b) => b.email === email) ?? null;
+      return null;
+    },
+    async getBookById(id) {
+      return state.books.get(id) ?? null;
+    },
+    async saveMemoryBook({ publicId, email, draft }) {
+      const prev = state.books.get(publicId);
+      const book: BookRecord = { id: publicId, public_id: publicId, email: email ?? prev?.email ?? null, draft };
+      state.books.set(publicId, book);
+      return book;
+    },
+    async listJobs(bookId) {
+      return [...state.jobs.values()].filter((j) => j.book_id === bookId).map(clone);
+    },
+    async getJob(id) {
+      const j = state.jobs.get(id);
+      return j ? clone(j) : null;
+    },
+    async insertJobs(rows) {
+      for (const r of rows) {
+        const exists = [...state.jobs.values()].some((j) => j.book_id === r.book_id && j.job_key === r.job_key);
+        if (exists) continue;
+        const now = stamp();
+        const job: GenJob = {
+          ...r,
+          id: crypto.randomUUID(),
+          status: "pending",
+          attempts: 0,
+          candidates: [],
+          chosen: null,
+          storage_path: null,
+          cost_cents: 0,
+          error: null,
+          created_at: now,
+          updated_at: now,
+        };
+        state.jobs.set(job.id, job);
+      }
+    },
+    async claim(job) {
+      const cur = state.jobs.get(job.id);
+      if (!cur || cur.status !== job.status || cur.updated_at !== job.updated_at) return null;
+      Object.assign(cur, { status: "running", attempts: job.attempts + 1, error: null, updated_at: stamp() });
+      return clone(cur);
+    },
+    async updateJob(id, patch) {
+      const cur = state.jobs.get(id);
+      if (cur) Object.assign(cur, patch, { updated_at: stamp() });
+    },
+    async reopen(job) {
+      const cur = state.jobs.get(job.id);
+      if (!cur || cur.updated_at !== job.updated_at) return false;
+      Object.assign(cur, { status: "pending", error: null, updated_at: stamp() });
+      return true;
+    },
+    async upload() {
+      throw new Error("sin Storage: el almacén en memoria solo admite dry-run");
+    },
+    async signedUrl() {
+      return null;
+    },
+    async hasPaidOrder() {
+      return false;
+    },
+    async markIllustrating() {},
+  };
+}
+
+/** Estado vacío (tests). */
+export function newMemoryState(): MemoryState {
+  return { books: new Map(), jobs: new Map(), tick: 0 };
+}
