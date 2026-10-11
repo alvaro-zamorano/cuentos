@@ -28,13 +28,13 @@ async function launch(): Promise<Browser> {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const t = Date.now();
     const chromium = (await import("@sparticuz/chromium-min")).default;
+    chromium.setGraphicsMode = false; // sin WebGL: menos memoria y arranque más rápido
     const executablePath = await chromium.executablePath(PACK_URL);
     console.log(`[pdf] chromium listo en ${Date.now() - t}ms`);
-    return puppeteer.launch({
-      args: chromium.args,
-      executablePath,
-      headless: true,
-    });
+    // el paquete de Sparticuz es el «headless shell»: puppeteer tiene que lanzarlo como tal (no --headless=new)
+    const browser = await puppeteer.launch({ args: chromium.args, executablePath, headless: "shell", timeout: 20_000 });
+    console.log(`[pdf] navegador arrancado en ${Date.now() - t}ms`);
+    return browser;
   }
   const local = LOCAL_CANDIDATES.find((p) => fs.existsSync(p));
   if (!local) throw new Error("no_chromium");
