@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AvatarBuilder } from "@/components/AvatarBuilder";
 import { Scene } from "@/components/Scene";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -13,10 +13,10 @@ import { EmailForm } from "@/components/EmailForm";
 import { buildBook, normalizeDraft } from "@/lib/story";
 import { MAX_DETAIL_CHARS, MAX_DETAILS, MIN_DETAILS_TO_CONTINUE, filledDetails } from "@/lib/story/hash";
 import { useStoryWriter } from "@/lib/useStoryWriter";
-import { setDraft, useDraft } from "@/lib/draftStore";
+import { getDraft, setDraft, useDraft } from "@/lib/draftStore";
 import { saveBook, storeBookId } from "@/lib/bookSync";
-import { DRY_RUN_PAYMENT } from "@/lib/flags";
-import { EDITION_PRICE } from "@/lib/pricing";
+import { getIllustration } from "@/lib/illustration";
+import { EDITION_PRICE, PRICE_HARDCOVER } from "@/lib/pricing";
 import type { CompanionKind, Draft, Edition, SpecialId } from "@/lib/types";
 
 type Step = 1 | 2 | 3 | 4;
@@ -128,7 +128,7 @@ function CrearSteps({ draft, initialStep, notice }: { draft: Draft; initialStep:
       <Progress step={step} onGo={go} />
 
       <div className="mx-auto max-w-3xl px-4 pb-32 pt-8 sm:px-6">
-        {draft.illustration?.paid && (
+        {(draft.illustration?.paid || draft.illustration?.sampleKey) && (
           <p className="notice mb-6">
             Tienes una edición ilustrada en curso.{" "}
             <Link href="/ilustrado" className="link">
@@ -348,102 +348,91 @@ function CrearSteps({ draft, initialStep, notice }: { draft: Draft; initialStep:
 }
 
 function EditionStep({ draft, update }: { draft: Draft; update: (p: Partial<Draft>) => void }) {
+  const router = useRouter();
   const [link, setLink] = useState<string | null>(null);
-  const choose = (edition: Edition) => update({ edition });
   const name = draft.hero.name.trim();
-  const illustratedTrial = DRY_RUN_PAYMENT && draft.edition === "illustrated";
+  // la tapa dura ya no se elige aquí: un borrador antiguo con «hardcover» cuenta como Ilustrado
+  const illustrated = draft.edition !== "classic";
+  const choose = (edition: Edition) => update({ edition });
 
   return (
     <div className="grid gap-8">
       <div>
         <h1 className="display text-[34px] md:text-[44px]">Elige la edición</h1>
-        <p className="mt-2 text-ink-soft">El texto es el mismo en las tres. Cambia cómo se ilustra y cómo llega.</p>
+        <p className="mt-2 text-ink-soft">El texto es el mismo en las dos. Cambia cómo se ilustra.</p>
       </div>
       <div className="grid gap-3" role="radiogroup" aria-label="Edición">
         <EditionCard
-          on={draft.edition === "classic"}
+          on={!illustrated}
           onClick={() => choose("classic")}
           title="Clásico · PDF"
           price={EDITION_PRICE.classic}
-          desc="Las doce páginas ilustradas en gouache, en A4 apaisado para imprimir en casa."
+          desc="PDF para imprimir en casa, con las escenas del cuento en A4 apaisado."
         />
         <EditionCard
-          on={draft.edition === "illustrated"}
+          on={illustrated}
           onClick={() => choose("illustrated")}
           title="Ilustrado · PDF"
           price={EDITION_PRICE.illustrated}
-          desc={`Eliges el estilo, apruebas la hoja de personaje de ${name || "tu hijo"} y puedes pedir otra versión de cada página.`}
-          status={DRY_RUN_PAYMENT ? undefined : "Próximamente"}
-        />
-        <EditionCard
-          on={draft.edition === "hardcover"}
-          onClick={() => choose("hardcover")}
-          title="Tapa dura"
-          price={EDITION_PRICE.hardcover}
-          desc="El libro ilustrado, impreso y encuadernado, enviado a tu casa."
-          status="Próximamente"
+          desc="Tu hijo pintado en cada página. Antes de pagar ves su hoja de personaje y una página ya pintada."
+          status={`Tapa dura (${PRICE_HARDCOVER}): próximamente.`}
         />
       </div>
 
-      {illustratedTrial ? (
-        <section className="border-t border-line pt-6">
-          <h2 className="font-display text-xl font-medium">Edición ilustrada</h2>
-          <p className="mt-2 max-w-[60ch] text-ink-soft">
-            Primero el pago. Después eliges el estilo, apruebas la hoja de personaje y se pinta el libro página a página.
-          </p>
-          <Link href="/ilustrado" className="btn-primary mt-5" data-testid="go-illustrated">
-            Continuar al pago
-          </Link>
-        </section>
-      ) : (
-        <section className="border-t border-line pt-6">
-          <h2 className="font-display text-xl font-medium">{draft.edition === "classic" ? `Descargar el cuento de ${name}` : "Avisarme cuando esté disponible"}</h2>
-          <p className="mb-5 mt-2 max-w-[60ch] text-ink-soft">
-            {draft.edition === "classic"
-              ? "Te pedimos un email para enviarte un enlace al cuento por si lo pierdes. El PDF se abre al instante."
-              : "Te escribiremos una vez, cuando esta edición esté disponible."}
-          </p>
-          <EmailForm
-            key={draft.edition}
-            edition={draft.edition}
-            source="cuentos-web"
-            initialEmail={draft.email ?? ""}
-            submitLabel={draft.edition === "classic" ? "Descargar PDF" : "Avisarme"}
-            openUrl={draft.edition === "classic" ? "/libro?print=1" : undefined}
-            successMessage={
-              draft.edition === "classic" ? (
-                <p className="text-sm text-ink">
-                  El cuento se ha abierto en una pestaña nueva. Si no aparece,{" "}
-                  <a className="link" href="/libro?print=1" target="_blank">
-                    ábrelo aquí
-                  </a>{" "}
-                  y elige «Guardar como PDF».
-                </p>
-              ) : (
-                <p className="text-sm text-ink">Hecho. Te avisaremos. Mientras tanto, la edición clásica es gratuita.</p>
-              )
-            }
-            onSaved={async (email) => {
-              update({ email });
-              // guardar el cuento para el enlace de recuperación; si falla, el cuento sigue en este navegador
-              const saved = await saveBook(draft, email);
-              if (saved) setLink(`${window.location.origin}${saved.url}`);
-            }}
-          >
-            {link && (
-              <div className="rounded-[6px] border border-line bg-card p-4 text-sm" data-testid="book-link">
-                <p className="text-ink-soft">Enlace para volver a este cuento durante 30 días:</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <code className="break-all text-ink">{link}</code>
-                  <button type="button" className="btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(link)}>
-                    Copiar
-                  </button>
-                </div>
+      <section className="border-t border-line pt-6">
+        <h2 className="font-display text-xl font-medium">{illustrated ? `Ver el libro de ${name} ilustrado` : `Descargar el cuento de ${name}`}</h2>
+        <p className="mb-5 mt-2 max-w-[60ch] text-ink-soft">
+          {illustrated
+            ? "Te pedimos un email para guardar el cuento. Después pintamos su hoja de personaje y la página 9, sin coste; el resto del libro se pinta al confirmar."
+            : "Te pedimos un email para enviarte un enlace al cuento por si lo pierdes. El PDF se abre al instante."}
+        </p>
+        <EmailForm
+          key={illustrated ? "illustrated" : "classic"}
+          edition={illustrated ? "illustrated" : "classic"}
+          source="cuentos-web"
+          initialEmail={draft.email ?? ""}
+          submitLabel={illustrated ? "Ver cómo quedaría" : "Descargar PDF"}
+          openUrl={illustrated ? undefined : "/libro?print=1"}
+          successMessage={
+            illustrated ? (
+              <p className="text-sm text-ink">Abriendo la edición ilustrada.</p>
+            ) : (
+              <p className="text-sm text-ink">
+                El cuento se ha abierto en una pestaña nueva. Si no aparece,{" "}
+                <a className="link" href="/libro?print=1" target="_blank">
+                  ábrelo aquí
+                </a>{" "}
+                y elige «Guardar como PDF».
+              </p>
+            )
+          }
+          onSaved={async (email) => {
+            // la declaración del tutor va en este formulario: en el pago no se vuelve a pedir
+            setDraft((d) => ({
+              ...d,
+              email,
+              ...(illustrated ? { edition: "illustrated" as const, styleId: d.styleId ?? DEFAULT_PAINTED_STYLE } : {}),
+              illustration: { ...getIllustration(d), buyerDeclaration: true },
+            }));
+            // guardar el cuento para el enlace de recuperación; si falla, el cuento sigue en este navegador
+            const saved = await saveBook(getDraft(), email);
+            if (illustrated) return router.push("/ilustrado");
+            if (saved) setLink(`${window.location.origin}${saved.url}`);
+          }}
+        >
+          {link && (
+            <div className="rounded-[6px] border border-line bg-card p-4 text-sm" data-testid="book-link">
+              <p className="text-ink-soft">Enlace para volver a este cuento durante 30 días:</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <code className="break-all text-ink">{link}</code>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(link)}>
+                  Copiar
+                </button>
               </div>
-            )}
-          </EmailForm>
-        </section>
-      )}
+            </div>
+          )}
+        </EmailForm>
+      </section>
     </div>
   );
 }

@@ -4,12 +4,15 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { BookCover, BookSheet } from "@/components/BookSheet";
+import { GeneratedPicture } from "@/components/GeneratedPicture";
 import { IllustratedScene, paintedStyleFor } from "@/components/IllustratedScene";
 import { Scene } from "@/components/Scene";
 import { DEFAULT_PAINTED_STYLE } from "@/lib/pieces";
 import { DEMO_DRAFT } from "@/lib/demo";
 import { useDraft } from "@/lib/draftStore";
-import { validPages } from "@/lib/illustration";
+import { chosenPageVersion, coverJob, currentKeys, pageVersions } from "@/lib/generation/view";
+import { getIllustration, validPages } from "@/lib/illustration";
+import { useGeneration } from "@/lib/useGeneration";
 import { buildBook } from "@/lib/story";
 import type { Draft } from "@/lib/types";
 
@@ -51,14 +54,20 @@ function Libro() {
   const book = useMemo(() => (draft && hasStory ? buildBook(draft) : null), [draft, hasStory]);
   const blocked = wantsIllustrated && !illustrated;
   const { ref, zoom } = useFitZoom(!!book && !blocked);
+  // imágenes generadas (URL firmadas); en dry-run no hay y se pintan las escenas vectoriales
+  const ill = draft ? getIllustration(draft) : null;
+  const gen = useGeneration(illustrated ? ill?.bookId : undefined, () => false);
+  const styleId = draft?.styleId ? paintedStyleFor(draft.styleId) : DEFAULT_PAINTED_STYLE;
+  const keys = useMemo(() => (illustrated && draft && book ? currentKeys(draft, styleId, book) : null), [illustrated, draft, book, styleId]);
+  const imagesReady = !illustrated || !ill?.bookId || gen.jobs !== null || gen.offline;
 
   useEffect(() => {
-    if (book && !blocked && params.get("print") === "1") {
-      // margen para que carguen y se recoloreen las figuras pintadas
+    if (book && !blocked && imagesReady && params.get("print") === "1") {
+      // margen para que carguen las imágenes y se recoloreen las figuras pintadas
       const t = setTimeout(() => window.print(), 1500);
       return () => clearTimeout(t);
     }
-  }, [book, blocked, params]);
+  }, [book, blocked, imagesReady, params]);
 
   if (!draft) return null;
   if (!book || blocked)
@@ -99,7 +108,14 @@ function Libro() {
           style={{ zoom }}
           data-edition={illustrated ? "illustrated" : "classic"}
         >
-          <BookCover title={book.title} dedication={book.dedication} traits={draft.hero.traits} styleId={coverStyle} className="shadow-[0_1px_3px_rgba(31,26,23,0.12)] print:shadow-none" />
+          <BookCover
+            title={book.title}
+            dedication={book.dedication}
+            traits={draft.hero.traits}
+            styleId={coverStyle}
+            imageUrl={keys ? coverJob(gen.jobs, keys)?.url ?? undefined : undefined}
+            className="shadow-[0_1px_3px_rgba(31,26,23,0.12)] print:shadow-none"
+          />
           {book.pages.map((p) => (
             <BookSheet
               key={p.n}
@@ -107,8 +123,14 @@ function Libro() {
               text={p.text}
               className="shadow-[0_1px_3px_rgba(31,26,23,0.12)] print:shadow-none"
               image={
-                illustrated && draft.styleId ? (
-                  <IllustratedScene styleId={draft.styleId} page={p} variant={pages[p.n]?.variant ?? 0} draft={draft} />
+                illustrated && draft.styleId && ill && keys ? (
+                  <GeneratedPicture
+                    job={chosenPageVersion(ill, p.n, pageVersions(gen.jobs, keys, p.n))}
+                    provider={gen.provider}
+                    alt=""
+                    label={false}
+                    fallback={<IllustratedScene styleId={draft.styleId} page={p} variant={pages[p.n]?.variant ?? 0} draft={draft} />}
+                  />
                 ) : (
                   <Scene
                     style={DEFAULT_PAINTED_STYLE}

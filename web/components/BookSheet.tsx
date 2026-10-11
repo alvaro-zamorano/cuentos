@@ -43,7 +43,10 @@ export function BookCover({
   styleId,
   className = "",
   titleAs: Title = "h1",
+  imageUrl,
 }: {
+  /** Portada generada (URL firmada); sin ella, la figura pintada. */
+  imageUrl?: string;
   /** "p" cuando la portada es una muestra dentro de otra página (la landing ya tiene su h1). */
   titleAs?: "h1" | "p";
   title: string;
@@ -64,7 +67,10 @@ export function BookCover({
         <p className="story mt-[3cqw] max-w-[34ch] text-[1.9cqw] italic leading-[1.45] text-ink/80">{dedication}</p>
       </div>
       <div className="absolute bottom-[6cqw] right-[9cqw] top-[8cqw] flex w-[30cqw] items-end justify-center">
-        {spec ? (
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- URL firmada de Storage
+          <img src={imageUrl} alt="" className="h-full w-full object-contain" data-testid="cover-image" />
+        ) : spec ? (
           <PaintedStanding spec={spec} className="h-full w-full" fallback={<Avatar traits={traits} expression="orgullo" size={220} />} />
         ) : (
           <Avatar traits={traits} expression="orgullo" size={260} />

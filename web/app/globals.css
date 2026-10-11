@@ -117,6 +117,17 @@ select.input {
   @apply rounded-[6px] border border-line bg-card px-4 py-3 text-sm text-ink-soft;
 }
 
+/* Hueco velado de una página de la edición ilustrada aún sin pintar: papel con fibra y trama fina. */
+.locked-paper {
+  background-color: var(--paper-deep);
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.55) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 70% 80%, rgba(92, 83, 75, 0.08) 0 1px, transparent 1.5px),
+    repeating-linear-gradient(135deg, rgba(92, 83, 75, 0.06) 0 1px, transparent 1px 7px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0));
+  background-size: 9px 9px, 13px 13px, auto, auto;
+}
+
 /* ---------- Impresión (A4 apaisado) ---------- */
 @page {
   size: A4 landscape;
