@@ -1,6 +1,8 @@
 import { cumpleanos } from "./arcs/cumpleanos";
 import { COMPANIONS, PET_KINDS, SPECIALS, describeCompanionEn, describeTraitsEn, normalizeTraits } from "./traits";
-import type { AgeBand, Arc, Book, Draft } from "./types";
+import { MAX_DETAIL_CHARS, MAX_DETAILS, storyInputHash } from "./story/hash";
+import { sceneBaseFor } from "./story/spec";
+import type { AgeBand, Arc, Book, Draft, Story } from "./types";
 
 const ARCS: Record<string, Arc> = { cumpleanos };
 
@@ -43,7 +45,36 @@ export function scenePromptFor(base: string, draft: Draft, withCompanion: boolea
   return `${base}. ${hero}${comp} No text, letters or numbers in the image.`;
 }
 
+/** Historia generada válida para las entradas actuales del borrador (si el hash no coincide, no vale). */
+export function currentStory(draft: Draft): Story | undefined {
+  return draft.story && draft.story.inputHash === storyInputHash(draft) ? draft.story : undefined;
+}
+
 export function buildBook(draft: Draft): Book {
+  const story = currentStory(draft);
+  if (story) {
+    return {
+      title: story.title,
+      dedication: story.dedication,
+      pages: story.pages.map((p) => {
+        const withCompanion = p.withCompanion && !!draft.companion;
+        return {
+          n: p.n,
+          scene: p.scene,
+          expression: p.expression,
+          withCompanion,
+          text: draft.textOverrides[p.n] ?? p.text,
+          // se recalcula con los rasgos actuales: si cambian después de escribir el cuento, la escena los sigue
+          scenePrompt: p.sceneBrief ? scenePromptFor(sceneBaseFor(p.scene, p.sceneBrief), draft, withCompanion) : p.scenePrompt,
+        };
+      }),
+    };
+  }
+  return buildArcBook(draft);
+}
+
+/** El cuento base del arco (el de siempre): sin historia generada. */
+export function buildArcBook(draft: Draft): Book {
   const arc = ARCS[draft.occasionId] ?? cumpleanos;
   const band = ageBand(draft.hero.age);
   const pet = isPet(draft);
@@ -66,6 +97,7 @@ export const DEFAULT_DRAFT: Draft = {
   occasionId: "cumpleanos",
   companion: undefined,
   special: "dinosaurios",
+  details: [],
   edition: "classic",
   textOverrides: {},
   updatedAt: 0,
@@ -82,6 +114,10 @@ export function normalizeDraft(parsed: Partial<Draft>): Draft {
     hero: { ...DEFAULT_DRAFT.hero, ...(parsed.hero ?? {}), traits: normalizeTraits(parsed.hero?.traits) },
     companion: companion ? { ...companion, traits: companion.traits ? normalizeTraits(companion.traits) : undefined } : undefined,
     textOverrides: parsed.textOverrides ?? {},
+    details: Array.isArray(parsed.details)
+      ? parsed.details.slice(0, MAX_DETAILS).map((d) => (typeof d === "string" ? d.slice(0, MAX_DETAIL_CHARS) : ""))
+      : [],
+    story: parsed.story && Array.isArray(parsed.story.pages) && parsed.story.pages.length === 12 ? parsed.story : undefined,
   };
 }
 

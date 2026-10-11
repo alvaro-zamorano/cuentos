@@ -97,6 +97,12 @@ export interface Draft {
   occasionId: OccasionId;
   companion?: Companion;
   special: SpecialId;
+  /** «Lo que solo tú sabes»: hasta 5 detalles reales en texto libre (≤ 140 caracteres). Puede tener huecos vacíos. */
+  details: string[];
+  /** Semilla de «Escribirlo de otra manera»; entra en el hash de entradas de la historia. */
+  storySeed?: number;
+  /** Historia escrita por el motor (LLM o mock) para las entradas cuyo hash es `inputHash`. */
+  story?: Story;
   edition: Edition;
   textOverrides: Record<number, string>;
   email?: string;
@@ -119,6 +125,32 @@ export type SceneId =
   | "velas"
   | "abrir-regalo"
   | "cama-noche";
+
+/** Página de una historia generada (motor de historia, brief 5). */
+export interface StoryPage {
+  n: number;
+  scene: SceneId;
+  expression: Expression;
+  withCompanion: boolean;
+  text: string;
+  /** Escena en inglés para la edición ilustrada (rasgos redeclarados, sin texto en la imagen). */
+  scenePrompt: string;
+  /** Escena en castellano tal como la describió el motor; con ella se recalcula `scenePrompt` si cambian los rasgos. */
+  sceneBrief?: string;
+}
+
+export interface Story {
+  id: string;
+  provider: string;
+  model: string;
+  pages: StoryPage[];
+  title: string;
+  dedication: string;
+  inputHash: string;
+  createdAt: number;
+  /** true si el proveedor no consiguió una versión válida y se devolvió el arco base. */
+  fallback?: boolean;
+}
 
 export interface ArcPage {
   n: number;
