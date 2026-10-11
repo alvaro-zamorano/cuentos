@@ -30,6 +30,7 @@ import { PRICE_ILLUSTRATED } from "@/lib/pricing";
 import { buildBook } from "@/lib/story";
 import { useGeneration, type GenJobView } from "@/lib/useGeneration";
 import type { Book, BookPage, Draft, Illustration, StyleId } from "@/lib/types";
+import { IllustratedPdfButton } from "@/components/IllustratedPdfButton";
 
 /**
  * Edición ilustrada (B3): muestra gratuita tras el email (hoja + página 9), resto bloqueado con el precio, pago
@@ -782,9 +783,7 @@ function PreviewView({
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-y border-line py-4">
         <span className="text-sm text-ink-soft">13 hojas A4 apaisadas, portada incluida.</span>
-        <a href="/libro?edition=illustrated&print=1" target="_blank" className="btn-primary btn-sm" data-testid="illustrated-pdf">
-          Descargar PDF
-        </a>
+        <IllustratedPdfButton draft={draft} />
       </div>
       <BookPreview
         book={book}

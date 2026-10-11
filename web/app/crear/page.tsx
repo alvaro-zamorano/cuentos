@@ -18,6 +18,7 @@ import { saveBook, storeBookId } from "@/lib/bookSync";
 import { getIllustration } from "@/lib/illustration";
 import { EDITION_PRICE, PRICE_HARDCOVER } from "@/lib/pricing";
 import type { CompanionKind, Draft, Edition, SpecialId } from "@/lib/types";
+import { downloadBookPdf } from "@/lib/pdfClient";
 
 type Step = 1 | 2 | 3 | 4;
 const STEPS: { n: Step; label: string }[] = [
@@ -384,7 +385,7 @@ function EditionStep({ draft, update }: { draft: Draft; update: (p: Partial<Draf
         <p className="mb-5 mt-2 max-w-[60ch] text-ink-soft">
           {illustrated
             ? "Te pedimos un email para guardar el cuento. Después pintamos su hoja de personaje y la página 9, sin coste; el resto del libro se pinta al confirmar."
-            : "Te pedimos un email para enviarte un enlace al cuento por si lo pierdes. El PDF se abre al instante."}
+            : "Te pedimos un email para enviarte un enlace al cuento por si lo pierdes. El PDF se descarga al momento."}
         </p>
         <EmailForm
           key={illustrated ? "illustrated" : "classic"}
@@ -392,13 +393,14 @@ function EditionStep({ draft, update }: { draft: Draft; update: (p: Partial<Draf
           source="cuentos-web"
           initialEmail={draft.email ?? ""}
           submitLabel={illustrated ? "Ver cómo quedaría" : "Descargar PDF"}
-          openUrl={illustrated ? undefined : "/libro?print=1"}
+          onDownload={illustrated ? undefined : () => downloadBookPdf(draft, "classic")}
+          fallbackUrl={illustrated ? undefined : "/libro?print=1"}
           successMessage={
             illustrated ? (
               <p className="text-sm text-ink">Abriendo la edición ilustrada.</p>
             ) : (
-              <p className="text-sm text-ink">
-                El cuento se ha abierto en una pestaña nueva. Si no aparece,{" "}
+              <p className="text-sm text-ink" data-testid="pdf-ok">
+                El PDF se está descargando. Si no aparece,{" "}
                 <a className="link" href="/libro?print=1" target="_blank">
                   ábrelo aquí
                 </a>{" "}

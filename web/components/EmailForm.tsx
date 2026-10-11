@@ -7,6 +7,7 @@ import type { Edition } from "@/lib/types";
 /**
  * Formulario de email + consentimiento (lead magnet y avisos). Lo usan /crear y /gratis.
  * - `openUrl`: pestaña que se abre en el gesto del usuario (si no, los navegadores la bloquean).
+ * - `onDownload`: en vez de abrir pestaña, pide el PDF al servidor tras guardar el lead; si devuelve false se enseña `fallbackUrl`.
  * - `onSaved`: se llama tras guardar el lead (p. ej. para guardar el libro y mostrar el enlace).
  */
 export function EmailForm({
@@ -15,6 +16,8 @@ export function EmailForm({
   initialEmail = "",
   submitLabel,
   openUrl,
+  onDownload,
+  fallbackUrl,
   successMessage,
   onSaved,
   children,
@@ -24,6 +27,8 @@ export function EmailForm({
   initialEmail?: string;
   submitLabel: string;
   openUrl?: string;
+  onDownload?: () => Promise<boolean>;
+  fallbackUrl?: string;
   successMessage?: React.ReactNode;
   onSaved?: (email: string) => void | Promise<void>;
   children?: React.ReactNode;
@@ -31,7 +36,7 @@ export function EmailForm({
   const [email, setEmail] = useState(initialEmail);
   const [consent, setConsent] = useState(false);
   const [marketing, setMarketing] = useState(false);
-  const [status, setStatus] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "sending" | "preparing" | "ok" | "fallback" | "error">("idle");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,11 +49,17 @@ export function EmailForm({
         body: JSON.stringify({ email, marketing, edition, consent, source }),
       });
       if (!res.ok) throw new Error("bad");
-      setStatus("ok");
     } catch {
       tab?.close();
       setStatus("error");
       return;
+    }
+    if (onDownload) {
+      setStatus("preparing");
+      const ok = await onDownload();
+      setStatus(ok ? "ok" : "fallback");
+    } else {
+      setStatus("ok");
     }
     await onSaved?.(email);
   };
@@ -86,11 +97,21 @@ export function EmailForm({
         <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />
         <span>Quiero recibir avisos de nuevas ocasiones y ediciones. Opcional; puedes darte de baja cuando quieras.</span>
       </label>
-      <button type="submit" className="btn-primary justify-self-start" disabled={status === "sending"}>
-        {status === "sending" ? "Enviando…" : submitLabel}
+      <button type="submit" className="btn-primary justify-self-start" disabled={status === "sending" || status === "preparing"}>
+        {status === "sending" ? "Enviando…" : status === "preparing" ? "Preparando el PDF…" : submitLabel}
       </button>
+      {status === "preparing" && <p className="text-sm text-ink-soft">Montando las 13 hojas. Suele tardar menos de medio minuto.</p>}
       {status === "ok" && successMessage}
-      {status === "ok" && children}
+      {status === "fallback" && fallbackUrl && (
+        <p className="text-sm text-ink" data-testid="pdf-fallback">
+          No hemos podido preparar el PDF en el servidor.{" "}
+          <a className="link" href={fallbackUrl} target="_blank">
+            Ábrelo aquí
+          </a>{" "}
+          y elige «Guardar como PDF».
+        </p>
+      )}
+      {(status === "ok" || status === "fallback") && children}
       {status === "error" && <p className="text-sm text-[#8a2a1c]">No se ha podido guardar el email. Comprueba la conexión e inténtalo de nuevo.</p>}
     </form>
   );
