@@ -47,7 +47,15 @@ test.beforeEach(async ({ page, context }) => {
   await mockBackend(context);
 });
 
-async function createClassic(page: Page) {
+const DETAILS = ["Los trenes de mercancías que pasan por el puente", "Dice «ya voy» antes de bajar la escalera"];
+
+/** Textos de las 12 páginas del paso 3. */
+async function pageTexts(page: Page): Promise<string[]> {
+  return page.locator("textarea[aria-label^='Texto de la página']").evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value));
+}
+
+/** Pasos 1 y 2 con dos detalles reales; deja la página en el paso 3 (o en el estado de escritura). */
+async function toBookStep(page: Page) {
   await page.goto("/crear");
   await page.getByPlaceholder("Lucas, Vera, Mateo…").fill("Vera");
   await page.getByRole("combobox").selectOption("6");
@@ -59,8 +67,20 @@ async function createClassic(page: Page) {
   await page.getByRole("button", { name: "Su perro" }).click();
   await page.getByPlaceholder("Toby").fill("Toby");
   await page.getByRole("button", { name: /Dinosaurios/ }).click();
+  // «Lo que solo tú sabes»: hacen falta dos detalles para continuar
+  await page.getByTestId("detail-1").fill(DETAILS[0]);
+  await expect(page.getByRole("button", { name: "Continuar" })).toBeDisabled();
+  await expect(page.getByTestId("details-count")).toHaveText("1 de 5");
+  await page.getByTestId("detail-2").fill(DETAILS[1]);
+  await expect(page.getByTestId("details-count")).toHaveText("2 de 5");
   await page.getByRole("button", { name: "Continuar" }).click();
+}
+
+async function createClassic(page: Page) {
+  await toBookStep(page);
   await expect(page.getByTestId("page-12")).toBeVisible();
+  // el cuento lo escribe el motor (mock sin clave) con los detalles: alguna página los nombra
+  expect((await pageTexts(page)).some((t) => /trenes|mercancías|escalera/.test(t))).toBe(true);
   const first = page.getByLabel("Texto de la página 1", { exact: true });
   await first.fill("Vera se despertó antes que nadie.");
   await expect(page.getByRole("button", { name: "Volver al texto original" })).toBeVisible();
@@ -166,6 +186,44 @@ test("Ilustrado en dry-run: pago simulado, estilo, hoja, progreso, preview y PDF
   const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
   const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) ?? []).length;
   expect(pages).toBe(13);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("Historia: estado de escritura y «Escribirlo de otra manera»", async ({ page }) => {
+  // el mock responde al instante: se retrasa la respuesta para ver el estado de escritura
+  let calls = 0;
+  await page.route("**/api/story", async (route) => {
+    calls++;
+    await new Promise((r) => setTimeout(r, 1800));
+    await route.continue();
+  });
+  await toBookStep(page);
+  const writing = page.getByTestId("story-writing");
+  await expect(writing.getByRole("heading", { name: "Escribiendo el cuento de Vera" })).toBeVisible();
+  await expect(writing.getByRole("listitem")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Continuar" })).toBeDisabled();
+  await expect(page.getByTestId("page-12")).toBeVisible();
+  await expect(writing).toHaveCount(0);
+  await expect(page.getByTestId("story-base-note")).toHaveCount(0);
+  const before = await pageTexts(page);
+  expect(before).toHaveLength(12);
+  expect(before.some((t) => /trenes|mercancías|escalera/.test(t))).toBe(true);
+  // la portada usa el título del cuento escrito
+  await expect(page.getByRole("heading", { level: 1 })).not.toHaveText("");
+
+  await page.getByTestId("story-rewrite").click();
+  await expect(writing).toBeVisible();
+  await expect(page.getByTestId("page-12")).toBeVisible();
+  const after = await pageTexts(page);
+  expect(after.some((t, i) => t !== before[i])).toBe(true);
+  await expect(page.getByText("Puedes pedir otra versión una vez más.")).toBeVisible();
+  expect(calls).toBe(2);
+
+  // al volver al paso 3 no se vuelve a escribir: la historia vale para las mismas entradas
+  await page.goto("/crear?paso=3");
+  await expect(page.getByTestId("page-12")).toBeVisible();
+  expect(await pageTexts(page)).toEqual(after);
+  expect(calls).toBe(2);
   expect(consoleErrors).toEqual([]);
 });
 
