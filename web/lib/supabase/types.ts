@@ -80,6 +80,7 @@ export type Database = {
         }
         Relationships: []
       }
+      // job_key, variant, paid y storage_path añadidas a mano (brief 7, docs/sql/cuentos_generation_jobs_b3.sql).
       cuentos_generation_jobs: {
         Row: {
           attempts: number
@@ -90,13 +91,17 @@ export type Database = {
           created_at: string
           error: string | null
           id: string
+          job_key: string | null
           kind: string
           page_n: number | null
+          paid: boolean
           prompt: string
           references: Json
           status: string
+          storage_path: string | null
           style_id: string
           updated_at: string
+          variant: number
         }
         Insert: {
           attempts?: number
@@ -107,13 +112,17 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          job_key?: string | null
           kind: string
           page_n?: number | null
+          paid?: boolean
           prompt: string
           references?: Json
           status?: string
+          storage_path?: string | null
           style_id: string
           updated_at?: string
+          variant?: number
         }
         Update: {
           attempts?: number
@@ -124,13 +133,17 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          job_key?: string | null
           kind?: string
           page_n?: number | null
+          paid?: boolean
           prompt?: string
           references?: Json
           status?: string
+          storage_path?: string | null
           style_id?: string
           updated_at?: string
+          variant?: number
         }
         Relationships: [
           {

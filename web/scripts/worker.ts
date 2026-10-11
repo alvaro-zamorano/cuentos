@@ -18,11 +18,18 @@
  * el libro está pagado, así que no aplica el tope por lead). Si no hay presupuesto, el job sigue pending y se
  * reintenta en la siguiente pasada; al terminar se anota con recordSpend (lead_id = id del libro).
  * También borra los libros caducados (expires_at < now) — datos del niño a 30 días (PRD §9).
+ *
+ * Jobs con huella (job_key: muestra, páginas y portada de /api/generate/*): se procesan con la misma función que
+ * /api/generate/run (lib/generation/service.ts, runJob), con su bloqueo optimista, presupuesto y rutas de Storage.
+ * Así el worker es una alternativa al cliente (p. ej. si el usuario cierra la página) y no compiten: solo uno
+ * reclama cada job. Cuándo usar cada camino: docs/GENERATION.md.
  */
 import { createAdminClient } from "../lib/supabase/admin";
 import { estimatedCostCents, getAdapter, type GenerationResult, type ImageRef } from "../lib/generation/adapter";
 import { getStyle } from "../lib/generation/styles";
 import { canSpend, recordSpend } from "../lib/generation/budget";
+import { runJob } from "../lib/generation/service";
+import { supabaseStore } from "../lib/generation/store";
 
 const MAX_ATTEMPTS = 1;
 const BUCKET = "cuentos";
@@ -148,7 +155,7 @@ async function tick(db: Db) {
   await purgeExpired(db);
   const { data: jobs, error } = await db
     .from("cuentos_generation_jobs")
-    .select("id, book_id, kind, style_id, prompt, references")
+    .select("id, book_id, kind, style_id, prompt, references, job_key")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(Number(env("WORKER_BATCH", "4")));
@@ -156,7 +163,13 @@ async function tick(db: Db) {
     console.error("[worker] lectura de jobs:", error.message);
     return;
   }
-  for (const job of jobs ?? []) await processJob(db, job);
+  for (const job of jobs ?? []) {
+    if (job.job_key) {
+      const r = await runJob(supabaseStore(db), job.id, getAdapter());
+      if (!r.ok) console.warn(`[worker] ${job.kind} ${job.id} en espera: ${r.error}${r.reason ? ` (${r.reason})` : ""}`);
+      else if (r.ran) console.log(`[worker] ${job.kind} ${job.id} → ${r.job.status}`);
+    } else await processJob(db, job);
+  }
 }
 
 async function main() {
