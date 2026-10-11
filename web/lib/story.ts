@@ -3,6 +3,7 @@ import { COMPANIONS, PET_KINDS, SPECIALS, describeCompanionEn, describeTraitsEn,
 import { MAX_DETAIL_CHARS, MAX_DETAILS, storyInputHash } from "./story/hash";
 import { sceneBaseFor } from "./story/spec";
 import type { AgeBand, Arc, Book, Draft, Story } from "./types";
+import { DRAFT_STORAGE_KEY } from "./draftKey";
 
 const ARCS: Record<string, Arc> = { cumpleanos };
 
@@ -103,7 +104,7 @@ export const DEFAULT_DRAFT: Draft = {
   updatedAt: 0,
 };
 
-const KEY = "cuentos:draft:v1";
+const KEY = DRAFT_STORAGE_KEY;
 
 /** Rellena campos ausentes (borradores antiguos o recuperados del servidor). */
 export function normalizeDraft(parsed: Partial<Draft>): Draft {

@@ -4,12 +4,13 @@ import { useSyncExternalStore } from "react";
 import { DEFAULT_DRAFT, loadDraft, saveDraft } from "./story";
 import { randomTraits } from "./traits";
 import type { Draft } from "./types";
+import { DRAFT_STORAGE_KEY } from "./draftKey";
 
 /**
  * Borrador compartido por /crear, /ilustrado y /libro: localStorage como fuente,
  * leído con useSyncExternalStore (sin setState dentro de efectos). En el servidor vale null.
  */
-const KEY = "cuentos:draft:v1";
+const KEY = DRAFT_STORAGE_KEY;
 let current: Draft | null = null;
 const listeners = new Set<() => void>();
 
