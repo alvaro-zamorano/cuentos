@@ -90,7 +90,7 @@ Ver `docs/GENERATION.md`.
 | Tarea | Quién | Hecho cuando |
 |---|---|---|
 | Stripe Checkout + webhook; generación de las 13 imágenes restantes tras el pago, con progreso y aprobación página a página | Álvaro claves · Claude | Pago de prueba completo; libro generado |
-| PDF generado en servidor (`/api/pdf`, puppeteer + pdf-lib; `docs/PDF.md`) | Claude | Hecho (11 oct): 13 páginas A4, ~5 MB, 10–20 s; test con `pdfinfo`. Pendiente verlo en Vercel (descarga de Chromium en el primer arranque) |
+| PDF generado en servidor (`/api/pdf`, puppeteer + pdf-lib; `docs/PDF.md`) | Claude | Hecho y verificado en Vercel (11 oct, `37d0d36`): 13 páginas A4, 2,9 MB, 26 s en frío; test con `pdfinfo` |
 | Email transaccional con enlace y PDF adjunto | Álvaro clave (Resend) · Claude | Email recibido con PDF de 13 páginas |
 
 ### B5. Legal, salida y distribución
