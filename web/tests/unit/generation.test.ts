@@ -252,16 +252,16 @@ test("canSpend: sin cliente nunca gasta", async () => {
   assert.equal((await recordSpend(null, { leadId: "a", kind: "sheet", provider: "p", model: "m", cents: 4 })).ok, false);
 });
 
-test("canSpend: respeta el tope por lead (10 c por defecto)", async () => {
+test("canSpend: respeta el tope por lead (20 c por defecto)", async () => {
   await withEnv({ LEAD_CAP_CENTS: undefined, DAILY_CAP_CENTS: undefined }, async () => {
     const { db } = fakeDb([{ lead_id: "a@b.c", cost_cents: 4, created_at: YESTERDAY }]);
     assert.deepEqual(await canSpend(db, { leadId: "a@b.c", cents: 4, now: NOW }), { ok: true });
-    assert.deepEqual(await canSpend(db, { leadId: "a@b.c", cents: 6, now: NOW }), { ok: true });
-    const over = await canSpend(db, { leadId: "a@b.c", cents: 7, now: NOW });
+    assert.deepEqual(await canSpend(db, { leadId: "a@b.c", cents: 16, now: NOW }), { ok: true });
+    const over = await canSpend(db, { leadId: "a@b.c", cents: 17, now: NOW });
     assert.equal(over.ok, false);
-    assert.match(over.reason!, /tope por lead \(10 c\)/);
+    assert.match(over.reason!, /tope por lead \(20 c\)/);
     // otro lead no se ve afectado; un libro pagado salta el tope por lead
-    assert.equal((await canSpend(db, { leadId: "otro@b.c", cents: 8, now: NOW })).ok, true);
+    assert.equal((await canSpend(db, { leadId: "otro@b.c", cents: 18, now: NOW })).ok, true);
     assert.equal((await canSpend(db, { leadId: "a@b.c", cents: 50, paid: true, now: NOW })).ok, true);
   });
 });
