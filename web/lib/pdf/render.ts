@@ -52,11 +52,21 @@ const A4_LANDSCAPE: [number, number] = [841.89, 595.28];
 export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000 }: RenderPdfOptions): Promise<Uint8Array> {
   const started = Date.now();
   const left = () => Math.max(1_000, timeoutMs - (Date.now() - started));
+  const t0 = Date.now();
   const browser = await launch();
+  const marks: string[] = [`launch ${Date.now() - t0}ms`];
   try {
     const page = await browser.newPage();
-    // ancho suficiente para que la hoja (297 mm ≈ 1123 px) no se reduzca; ×3 ≈ 290 ppp en A4
-    await page.setViewport({ width: 1400, height: 1000, deviceScaleFactor: 3 });
+    // la barra de Vercel de las previews mantiene conexiones abiertas: se desactiva por cookie y no se espera a «red inactiva»
+    try {
+      const u = new URL(origin);
+      await page.setCookie({ name: "__vercel_toolbar", value: "0", domain: u.hostname, path: "/" });
+    } catch {
+      /* origen sin cookie posible */
+    }
+    // ancho suficiente para que la hoja (297 mm ≈ 1123 px) no se reduzca; ×2 ≈ 190 ppp, ×3 ≈ 290 ppp (PDF_SCALE)
+    const scale = Math.min(3, Math.max(1, Number(process.env.PDF_SCALE) || 2));
+    await page.setViewport({ width: 1400, height: 1000, deviceScaleFactor: scale });
     const key = DRAFT_STORAGE_KEY;
     const json = JSON.stringify(draft);
     await page.evaluateOnNewDocument(
@@ -71,10 +81,12 @@ export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000
       json,
     );
     const url = `${origin}/libro?edition=${edition === "illustrated" ? "illustrated" : "classic"}&pdf=1`;
-    await page.goto(url, { waitUntil: "networkidle0", timeout: left() });
+    await page.goto(url, { waitUntil: "load", timeout: Math.min(left(), 20_000) });
+    marks.push(`load ${Date.now() - t0}ms`);
     // 13 hojas presentes (portada + 12) y tipografías cargadas
-    await page.waitForFunction(() => document.querySelectorAll("section.sheet").length >= 13, { timeout: left() });
+    await page.waitForFunction(() => document.querySelectorAll("section.sheet").length >= 13, { timeout: Math.min(left(), 15_000) });
     await page.evaluate(() => (document as Document & { fonts: FontFaceSet }).fonts.ready);
+    marks.push(`sheets ${Date.now() - t0}ms`);
     await page
       .waitForFunction(() => Array.from(document.querySelectorAll("img")).every((i) => i.complete), { timeout: Math.min(left(), 8_000) })
       .catch(() => undefined);
@@ -90,7 +102,10 @@ export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000
       const pg = doc.addPage(A4_LANDSCAPE);
       pg.drawImage(img, { x: 0, y: 0, width: A4_LANDSCAPE[0], height: A4_LANDSCAPE[1] });
     }
-    return doc.save();
+    marks.push(`shots ${Date.now() - t0}ms`);
+    const out = await doc.save();
+    console.log(`[pdf] ${edition} ${out.length} bytes · ${marks.join(" · ")}`);
+    return out;
   } finally {
     await browser.close().catch(() => undefined);
   }
