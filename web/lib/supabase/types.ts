@@ -185,6 +185,37 @@ export type Database = {
         }
         Relationships: []
       }
+      // Añadida a mano (brief 6, docs/sql/cuentos_spend.sql); regenerar los tipos cuando la tabla exista.
+      cuentos_spend: {
+        Row: {
+          cost_cents: number
+          created_at: string
+          id: string
+          kind: string
+          lead_id: string
+          model: string
+          provider: string
+        }
+        Insert: {
+          cost_cents?: number
+          created_at?: string
+          id?: string
+          kind: string
+          lead_id: string
+          model: string
+          provider: string
+        }
+        Update: {
+          cost_cents?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id?: string
+          model?: string
+          provider?: string
+        }
+        Relationships: []
+      }
       cuentos_leads: {
         Row: {
           created_at: string

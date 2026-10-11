@@ -5,7 +5,7 @@ import type { StyleId } from "../types";
 export interface StyleDef {
   id: StyleId;
   label: string;
-  /** Ruta relativa a la raíz del repo (assets/raw, fuera de git: existe en el Mac Mini). */
+  /** Ruta relativa a la raíz del repo: web/public/styles/<id>.jpg (versionada, 1200×800). */
   anchorPath: string;
   promptStyle: string;
   palette: string[];

@@ -99,14 +99,14 @@ export const OUTFITS: { id: Outfit; label: string; hex: string; dark: string; en
 ];
 
 /** Prenda. Orden = catálogo O01–O08. */
-export const GARMENTS: { id: Garment; label: string; en: string }[] = [
+export const GARMENTS: { id: Garment; label: string; en: string; plural?: true }[] = [
   { id: "chubasquero", label: "Chubasquero", en: "hooded raincoat with rain boots" },
-  { id: "peto", label: "Peto", en: "dungarees over a cream shirt" },
+  { id: "peto", label: "Peto", en: "dungarees over a cream shirt", plural: true },
   { id: "jersey", label: "Jersey", en: "knitted sweater and trousers" },
   { id: "marinera", label: "Camiseta de rayas", en: "striped sailor top and shorts" },
   { id: "vestido", label: "Vestido", en: "dress" },
   { id: "plumifero", label: "Plumífero", en: "puffy winter jacket" },
-  { id: "pijama", label: "Pijama", en: "pyjamas with little stars" },
+  { id: "pijama", label: "Pijama", en: "pyjamas with little stars", plural: true },
   { id: "verano", label: "De verano", en: "t-shirt and swim shorts" },
 ];
 
@@ -259,7 +259,8 @@ export function describeTraitsEn(input: Traits): string {
     `${en(EYE_SHAPES, t.eyeShape)} ${en(EYES, t.eyes)} eyes`,
   ];
   if (t.glasses !== "no") parts.push(en(GLASSES, t.glasses));
-  parts.push(`wearing a ${en(OUTFITS, t.outfit)} ${en(GARMENTS, t.garment)}`);
+  const garment = GARMENTS.find((g) => g.id === t.garment) ?? GARMENTS[0];
+  parts.push(`wearing ${garment.plural ? "" : "a "}${en(OUTFITS, t.outfit)} ${garment.en}`);
   if (t.accessory !== "no") parts.push(`with ${en(ACCESSORIES, t.accessory)}`);
   return parts.join(", ");
 }
