@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { PUBLIC_ID_RE } from "@/lib/ids";
 import { buildBook, normalizeDraft } from "@/lib/story";
-import { describeTraitsEn } from "@/lib/traits";
+import { characterBible } from "@/lib/generation/character";
 import { getStyle } from "@/lib/generation/styles";
 import type { Draft } from "@/lib/types";
 
@@ -14,6 +14,10 @@ import type { Draft } from "@/lib/types";
  * Protegido con la cabecera x-cuentos-jobs-secret = JOBS_API_SECRET (hasta que exista el flujo de pago, lo llama Álvaro o Stripe).
  * No ejecuta nada: el worker del Mac Mini (scripts/worker.ts) recoge los jobs pending.
  * Con { dry_run: true } (solo kind "sheet" y NEXT_PUBLIC_DRY_RUN_PAYMENT=1) registra la hoja aprobada en la demo: ver dryRunSheet.
+ * El prompt del job de hoja es la descripción canónica del niño (characterBible, sin el nombre para que el modelo no lo
+ * escriba); el worker la redeclara en cada página.
+ * Presupuesto: esta ruta solo encola y no gasta. El control de gasto (canSpend / recordSpend de lib/generation/budget.ts,
+ * tabla cuentos_spend) está en el worker, que es quien llama al proveedor.
  */
 export async function POST(req: Request) {
   let body: { public_id?: string; kind?: string; style_id?: string; dry_run?: boolean };
@@ -57,7 +61,7 @@ export async function POST(req: Request) {
     if (existing?.some((j) => j.kind === "sheet")) return NextResponse.json({ ok: false, error: "sheet_exists" }, { status: 409 });
     const { data, error: insErr } = await db
       .from("cuentos_generation_jobs")
-      .insert({ book_id: book.id, kind: "sheet", style_id: style.id, prompt: describeTraitsEn(draft.hero.traits), references: [{ kind: "anchor", style_id: style.id }] })
+      .insert({ book_id: book.id, kind: "sheet", style_id: style.id, prompt: characterBible(draft.hero.traits, draft.hero.age), references: [{ kind: "anchor", style_id: style.id }] })
       .select("id")
       .single();
     if (insErr) return NextResponse.json({ ok: false, error: "db" }, { status: 500 });
@@ -127,7 +131,7 @@ async function dryRunSheet(body: { public_id?: string; kind?: string; style_id?:
       book_id: book.id,
       kind: "sheet",
       style_id: style.id,
-      prompt: describeTraitsEn(draft.hero.traits),
+      prompt: characterBible(draft.hero.traits, draft.hero.age),
       references: [{ kind: "anchor", style_id: style.id }, { kind: "dry_run" }],
       status: "done",
       attempts: 1,

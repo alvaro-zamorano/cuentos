@@ -6,18 +6,23 @@
  *
  * Variables (en web/.env.local del Mac Mini, nunca en el repo):
  *   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   acceso a cuentos_* y al bucket privado `cuentos`
- *   GENERATION_PROVIDER = dry-run | openai-images         dry-run por defecto (sin coste)
- *   OPENAI_API_KEY                                       solo con openai-images
+ *   GENERATION_PROVIDER = dry-run | gemini-images | openai-images   dry-run por defecto (sin coste)
+ *   GEMINI_API_KEY / OPENAI_API_KEY                      solo con el proveedor correspondiente
  *   MAX_COST_CENTS_PER_BOOK                              tope de coste por libro (por defecto 300)
- *   GENERATION_COST_CENTS_PER_IMAGE                      estimación por imagen (por defecto 7)
+ *   GENERATION_COST_CENTS_PER_IMAGE                      estimación por imagen (por defecto gemini 4, openai 8)
+ *   DAILY_CAP_CENTS                                      tope global por día UTC (lib/generation/budget.ts, por defecto 500)
  *
  * Reglas: tope de intentos = 1 (un job que falla queda en `error` y no se reintenta solo);
  * antes de cada job se comprueba el tope de coste del libro; nunca hay bucles de regeneración.
+ * Presupuesto (cuentos_spend): con proveedor de pago, antes de reclamar un job se llama a canSpend (tope diario;
+ * el libro está pagado, así que no aplica el tope por lead). Si no hay presupuesto, el job sigue pending y se
+ * reintenta en la siguiente pasada; al terminar se anota con recordSpend (lead_id = id del libro).
  * También borra los libros caducados (expires_at < now) — datos del niño a 30 días (PRD §9).
  */
 import { createAdminClient } from "../lib/supabase/admin";
 import { estimatedCostCents, getAdapter, type GenerationResult, type ImageRef } from "../lib/generation/adapter";
 import { getStyle } from "../lib/generation/styles";
+import { canSpend, recordSpend } from "../lib/generation/budget";
 
 const MAX_ATTEMPTS = 1;
 const BUCKET = "cuentos";
@@ -47,12 +52,13 @@ async function spentCents(db: Db, bookId: string): Promise<number> {
   return (data ?? []).reduce((a, r) => a + (r.cost_cents ?? 0), 0);
 }
 
-async function signedSheetRef(db: Db, sheetJobId: string): Promise<ImageRef | null> {
-  const { data } = await db.from("cuentos_generation_jobs").select("chosen").eq("id", sheetJobId).maybeSingle();
+/** Hoja aprobada como referencia + su prompt (la descripción canónica del niño, que se redeclara en cada página). */
+async function signedSheetRef(db: Db, sheetJobId: string): Promise<{ ref: ImageRef; bible: string } | null> {
+  const { data } = await db.from("cuentos_generation_jobs").select("chosen, prompt").eq("id", sheetJobId).maybeSingle();
   if (!data?.chosen) return null;
-  if (data.chosen.startsWith("dry-run/")) return { path: data.chosen };
+  if (data.chosen.startsWith("dry-run/")) return { ref: { path: data.chosen }, bible: data.prompt };
   const { data: signed } = await db.storage.from(BUCKET).createSignedUrl(data.chosen, 600);
-  return signed ? { url: signed.signedUrl } : null;
+  return signed ? { ref: { url: signed.signedUrl }, bible: data.prompt } : null;
 }
 
 async function storeCandidates(db: Db, bookId: string, jobId: string, result: GenerationResult): Promise<string[]> {
@@ -71,6 +77,15 @@ async function storeCandidates(db: Db, bookId: string, jobId: string, result: Ge
 }
 
 async function processJob(db: Db, job: { id: string; book_id: string; kind: string; style_id: string; prompt: string; references: unknown }) {
+  const adapter = getAdapter();
+  const candidates = job.kind === "sheet" ? 1 : 2;
+  const projected = adapter.name === "dry-run" ? 0 : candidates * estimatedCostCents(adapter.name);
+  if (projected > 0) {
+    // antes de reclamar: si no hay presupuesto hoy, el job se queda pending (no se pierde)
+    const gate = await canSpend(db, { leadId: job.book_id, cents: projected, paid: true });
+    if (!gate.ok) return void console.warn(`[worker] ${job.kind} ${job.id} en espera: ${gate.reason}`);
+  }
+
   // reclamar: pending -> running, solo si no ha agotado intentos
   const { data: claimed } = await db
     .from("cuentos_generation_jobs")
@@ -88,10 +103,7 @@ async function processJob(db: Db, job: { id: string; book_id: string; kind: stri
   const style = getStyle(job.style_id);
   if (!style) return void (await fail(`estilo desconocido: ${job.style_id}`));
 
-  const adapter = getAdapter();
-  const candidates = job.kind === "sheet" ? 1 : 2;
   const cap = Number(env("MAX_COST_CENTS_PER_BOOK", "300"));
-  const projected = adapter.name === "dry-run" ? 0 : candidates * estimatedCostCents();
   if ((await spentCents(db, job.book_id)) + projected > cap) return void (await fail(`tope de coste por libro (${cap} c) alcanzado`, "skipped"));
 
   try {
@@ -101,15 +113,25 @@ async function processJob(db: Db, job: { id: string; book_id: string; kind: stri
     } else {
       const refs = Array.isArray(job.references) ? (job.references as { kind?: string; job_id?: string }[]) : [];
       const sheetJob = refs.find((r) => r.kind === "sheet")?.job_id;
-      const sheetRef = sheetJob ? await signedSheetRef(db, sheetJob) : null;
-      if (!sheetRef) return void (await fail("hoja de personaje sin aprobar"));
-      result = await adapter.generateScene(sheetRef, style, job.prompt, { candidates });
+      const sheet = sheetJob ? await signedSheetRef(db, sheetJob) : null;
+      if (!sheet) return void (await fail("hoja de personaje sin aprobar"));
+      result = await adapter.generateScene(sheet.ref, style, job.prompt, { candidates, bible: sheet.bible });
     }
     const stored = await storeCandidates(db, job.book_id, job.id, result);
     await db
       .from("cuentos_generation_jobs")
       .update({ status: "done", candidates: stored, cost_cents: result.costCents, error: null })
       .eq("id", job.id);
+    if (result.costCents > 0) {
+      const rec = await recordSpend(db, {
+        leadId: job.book_id,
+        kind: job.kind === "sheet" ? "sheet" : "page",
+        provider: result.provider,
+        model: result.model,
+        cents: result.costCents,
+      });
+      if (!rec.ok) console.error(`[worker] ${job.kind} ${job.id}: ${rec.reason}`);
+    }
     console.log(`[worker] ${job.kind} ${job.id} → ${stored.length} candidatos (${adapter.name}, ${result.costCents} c)`);
   } catch (e) {
     await fail(e instanceof Error ? e.message.slice(0, 500) : "error");
