@@ -32,11 +32,12 @@ export function BookPreview({
             </div>
             <textarea
               value={p.text}
-              rows={5}
+              // alto según el texto (los cuentos de 5–8 años llegan a 65 palabras); field-sizing lo ajusta donde existe
+              rows={Math.max(5, Math.ceil(p.text.length / 26) + 1)}
               aria-label={`Texto de la página ${p.n}`}
-              maxLength={draft.hero.age <= 4 ? 120 : 360}
+              maxLength={draft.hero.age <= 4 ? 200 : 450}
               onChange={(e) => update({ textOverrides: { ...draft.textOverrides, [p.n]: e.target.value } })}
-              className="story min-h-32 w-full flex-1 resize-none rounded-[4px] border border-transparent bg-paper/60 p-3 text-[18px] leading-[1.5] text-ink outline-none transition-colors hover:border-line focus:border-ink/40 focus:bg-white"
+              className="story min-h-32 w-full flex-1 resize-none [field-sizing:content] rounded-[4px] border border-transparent bg-paper/60 p-3 text-[18px] leading-[1.5] text-ink outline-none transition-colors hover:border-line focus:border-ink/40 focus:bg-white"
             />
             {draft.textOverrides[p.n] !== undefined && (
               <button

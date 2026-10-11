@@ -8,6 +8,8 @@ const PORT = Number(process.env.PORT ?? 3017);
  */
 export default defineConfig({
   testDir: "./tests",
+  // los tests unitarios (node --test) viven en tests/unit: npm run test:unit
+  testIgnore: ["unit/**"],
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

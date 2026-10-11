@@ -142,6 +142,49 @@ export type Database = {
           },
         ]
       }
+      // Añadida a mano (brief 5) con las columnas acordadas; regenerar los tipos cuando la tabla exista.
+      cuentos_stories: {
+        Row: {
+          cost_cents: number
+          created_at: string
+          fallback: boolean
+          id: string
+          input: Json
+          input_hash: string
+          issues: Json
+          model: string
+          provider: string
+          story: Json
+          usage: Json
+        }
+        Insert: {
+          cost_cents?: number
+          created_at?: string
+          fallback?: boolean
+          id?: string
+          input: Json
+          input_hash: string
+          issues?: Json
+          model: string
+          provider: string
+          story: Json
+          usage?: Json
+        }
+        Update: {
+          cost_cents?: number
+          created_at?: string
+          fallback?: boolean
+          id?: string
+          input?: Json
+          input_hash?: string
+          issues?: Json
+          model?: string
+          provider?: string
+          story?: Json
+          usage?: Json
+        }
+        Relationships: []
+      }
       cuentos_leads: {
         Row: {
           created_at: string

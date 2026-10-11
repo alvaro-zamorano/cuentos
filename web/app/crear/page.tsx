@@ -11,6 +11,8 @@ import { COMPANIONS, SPECIALS, companionVariants, defaultVariant, randomTraits }
 import { BookPreview } from "@/components/BookPreview";
 import { EmailForm } from "@/components/EmailForm";
 import { buildBook, normalizeDraft } from "@/lib/story";
+import { MAX_DETAIL_CHARS, MAX_DETAILS, MIN_DETAILS_TO_CONTINUE, filledDetails } from "@/lib/story/hash";
+import { useStoryWriter } from "@/lib/useStoryWriter";
 import { setDraft, useDraft } from "@/lib/draftStore";
 import { saveBook, storeBookId } from "@/lib/bookSync";
 import { DRY_RUN_PAYMENT } from "@/lib/flags";
@@ -110,7 +112,10 @@ function CrearSteps({ draft, initialStep, notice }: { draft: Draft; initialStep:
   const [step, setStep] = useState<Step>(initialStep);
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const book = useMemo(() => buildBook(draft), [draft]);
-  const canContinue = step !== 1 || draft.hero.name.trim().length > 0;
+  const writer = useStoryWriter(draft, step === 3);
+  const detailsFilled = filledDetails(draft.details).length;
+  const canContinue =
+    step === 1 ? draft.hero.name.trim().length > 0 : step === 2 ? detailsFilled >= MIN_DETAILS_TO_CONTINUE : step === 3 ? !writer.writing : true;
   const name = draft.hero.name.trim();
   const go = (s: Step) => {
     setStep(s);
@@ -269,14 +274,37 @@ function CrearSteps({ draft, initialStep, notice }: { draft: Draft; initialStep:
                 ))}
               </div>
             </Section>
+
+            <DetailsSection draft={draft} update={update} filled={detailsFilled} />
           </div>
         )}
 
-        {step === 3 && (
+        {step === 3 && writer.writing && <WritingState name={name} />}
+
+        {step === 3 && !writer.writing && (
           <div className="grid gap-6">
             <div>
               <h1 className="display text-[34px] md:text-[44px]">{book.title}</h1>
               <p className="mt-2 text-ink-soft">Doce páginas. Puedes cambiar cualquier texto.</p>
+              {writer.isBase && (
+                <p className="mt-3 text-sm text-ink-soft" data-testid="story-base-note">
+                  No hemos podido escribir una versión nueva; este es el cuento base.
+                </p>
+              )}
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <button type="button" className="btn-ghost btn-sm" disabled={writer.rewritesLeft === 0} onClick={writer.rewrite} data-testid="story-rewrite">
+                  Escribirlo de otra manera
+                </button>
+                <span className="text-sm text-ink-soft">
+                  {writer.rewriteFailed
+                    ? "No hemos podido escribir otra versión; se mantiene esta."
+                    : writer.rewritesLeft === 2
+                      ? "Puedes pedir otra versión dos veces. Los cambios que hayas hecho al texto se pierden."
+                      : writer.rewritesLeft === 1
+                        ? "Puedes pedir otra versión una vez más."
+                        : "Ya has pedido las dos versiones nuevas de esta sesión."}
+                </span>
+              </div>
             </div>
             <BookPreview
               book={book}
@@ -439,5 +467,72 @@ function EditionCard({ on, onClick, title, price, desc, status }: { on: boolean;
         {status && <span className="mt-1 block text-xs text-ink-soft/80">{status}</span>}
       </span>
     </button>
+  );
+}
+
+const DETAIL_PROMPTS = [
+  "Lo que más le gusta ahora mismo",
+  "Una frase que repite",
+  "Un sitio al que le encanta ir",
+  "Una manía o un ritual",
+  "Su persona o animal favorito",
+];
+
+function DetailsSection({ draft, update, filled }: { draft: Draft; update: (p: Partial<Draft>) => void; filled: number }) {
+  const values = Array.from({ length: MAX_DETAILS }, (_, i) => draft.details[i] ?? "");
+  const set = (i: number, v: string) => {
+    const next = [...values];
+    next[i] = v.slice(0, MAX_DETAIL_CHARS);
+    update({ details: next });
+  };
+  return (
+    <section className="border-t border-line pt-6" data-testid="details">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="font-display text-xl font-medium">Lo que solo tú sabes</h2>
+        <span className="shrink-0 text-sm tabular-nums text-ink-soft" data-testid="details-count">
+          {filled} de {MAX_DETAILS}
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-ink-soft">Con esto el cuento habla de él, no de un niño cualquiera. Escribe al menos dos.</p>
+      <div className="mt-4 grid gap-3">
+        {values.map((v, i) => (
+          <label key={i} className="grid gap-1">
+            <span className="sr-only">{DETAIL_PROMPTS[i]}</span>
+            <input
+              value={v}
+              onChange={(e) => set(i, e.target.value)}
+              placeholder={DETAIL_PROMPTS[i]}
+              maxLength={MAX_DETAIL_CHARS}
+              className="input"
+              data-testid={`detail-${i + 1}`}
+            />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const WRITING_LINES = ["Leyendo lo que nos has contado", "Ordenando el día en doce páginas", "Escribiendo cada página con sus detalles"];
+
+function WritingState({ name }: { name: string }) {
+  const [line, setLine] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setLine((l) => Math.min(l + 1, WRITING_LINES.length - 1)), 1500);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="grid gap-6 py-6" role="status" aria-live="polite" data-testid="story-writing">
+      <h1 className="display text-[34px] md:text-[44px]">Escribiendo el cuento de {name || "tu hijo"}</h1>
+      <ol className="grid gap-3 text-ink-soft">
+        {WRITING_LINES.map((t, i) => (
+          <li key={t} className={`flex items-center gap-3 transition-colors duration-500 ${i < line ? "text-ink-soft/60" : i === line ? "text-ink" : "text-ink-soft/35"}`}>
+            <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${i === line ? "animate-pulse bg-accent" : i < line ? "bg-ink-soft/50" : "bg-ink-soft/25"}`} />
+            {t}
+          </li>
+        ))}
+      </ol>
+      <p className="text-sm text-ink-soft">Suele tardar unos segundos.</p>
+    </div>
   );
 }
