@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
 /**
@@ -118,14 +119,24 @@ test("Clásico: de /crear al PDF de 13 hojas", async ({ page, context }) => {
   await createClassic(page);
   await page.getByPlaceholder("tu@email.com").fill("prueba@example.com");
   await page.getByRole("checkbox").first().check();
-  const [tab] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Descargar PDF" }).click()]);
+  // PDF en servidor: la descarga llega como archivo (13 páginas A4 apaisadas); sin pestaña nueva
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 60_000 }), page.getByRole("button", { name: "Descargar PDF" }).click()]);
+  expect(download.suggestedFilename()).toBe("cuento-vera.pdf");
+  const pdfPath = await download.path();
+  const info = execFileSync("pdfinfo", [pdfPath!]).toString();
+  expect(info).toMatch(/Pages:\s+13/);
+  expect(info).toMatch(/Page size:\s+841\.\d+ x 595\.\d+ pts/);
+  await expect(page.getByTestId("pdf-ok")).toBeVisible();
   await expect(page.getByTestId("book-link")).toContainText("/crear?b=testbook01");
 
-  await tab.waitForLoadState();
+  // la vista de impresión sigue existiendo como alternativa
+  const tab = await context.newPage();
+  await tab.goto("/libro?print=1");
   await expect(tab.locator("section.sheet")).toHaveCount(13);
   await expect(tab.getByText("Vera se despertó antes que nadie.")).toBeVisible();
   await expect(tab.locator("[data-edition=classic]")).toBeVisible();
   await expect.poll(() => tab.evaluate(() => (window as unknown as { __prints: number }).__prints)).toBeGreaterThan(0);
+  await tab.close();
 
   // el texto editado persiste al recargar
   await page.goto("/crear?paso=3");

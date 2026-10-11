@@ -4,7 +4,9 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 
 ## 1. Estado real (9 oct 2026, tarde, verificado)
 
-**Funciona en la preview** (`https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app`, commit `2e091c3`):
+**Funciona en la preview** (`https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app`, commit `4c77ce7`, 11 oct):
+
+- Motor de historia (proveedor `mock`) y embudo de muestra/paywall (dry-run): ver B2 y B3.
 
 - Journey Clásico completo: `/` → `/crear` (quién, su mundo, el libro, edición) → PDF de 13 hojas por impresión del navegador. Recorrido automatizado sin errores de consola salvo el 503 de E2.
 - Figuras pintadas correctas en la preview (cabeza unida al cuerpo, sin cuello de la prenda original, sin hueco entre las piernas): las piezas se generan en el build de Vercel desde el catálogo (`web/scripts/pieces-build.mjs`, `prebuild`), así que ya no dependen de subir binarios.
@@ -60,27 +62,36 @@ Una cosa a la vez; cada tarea se cierra con evidencia.
 | Generar 1 hoja de personaje + 3 páginas de un mismo niño en gouache; mirar si la cara y la ropa aguantan; anotar coste real por imagen | Claude genera (≤ 6 imágenes) · los dos juzgan | Captura comparada y coste anotado aquí |
 | Decidir proveedor, precio del Ilustrado y qué se enseña gratis | Álvaro | Decisión en §6 |
 
-### B2. Motor de historia
+### B2. Motor de historia — hecho con proveedor mock (11 oct, `ad647f2`)
 
-| Tarea | Quién | Hecho cuando |
+| Tarea | Quién | Estado |
 |---|---|---|
-| Paso «Detalles reales» en `/crear` (3–5 campos de texto libre, con ejemplos) | Claude | En la preview |
-| Generación de las 12 páginas (texto + prompt de escena) con esqueleto de beats, validación y reintento; clave del LLM en Vercel | Álvaro clave · Claude | Tres cuentos de prueba leídos y distintos entre sí |
-| Edición de texto por el padre y guardado del cuento | Claude | Test Playwright |
+| Paso «Lo que solo tú sabes» en `/crear` (2–5 detalles de texto libre) | Claude | Hecho; en la preview |
+| Esqueleto de 12 beats, validación (longitud por franja, nombres, lista negra, detalles presentes), reintento y caída al arco | Claude | Hecho; 17 tests unitarios |
+| Proveedores `mock` (determinista), `anthropic`, `openai` por `STORY_PROVIDER`; `/api/story` con límite por IP y caché en `cuentos_stories` (tabla creada) | Claude | Hecho; `/api/story` responde en la preview con `mock` |
+| Edición de texto, «Escribirlo de otra manera» (máx. 2), portada y dedicatoria del cuento generado | Claude | Hecho; Playwright 9/9 |
+| Probar con proveedor real: `STORY_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` en Vercel (o `openai` + `OPENAI_API_KEY`); leer tres cuentos | Álvaro clave · los dos leen | Pendiente de clave |
 
-### B3. Muestra y conversión
+Ver `docs/STORY-ENGINE.md`.
 
-| Tarea | Quién | Hecho cuando |
+### B3. Muestra y conversión — hecho en dry-run (11 oct, `4c77ce7`)
+
+| Tarea | Quién | Estado |
 |---|---|---|
-| Hoja de personaje generada (1 imagen) tras el email; 1 página ilustrada real; resto bloqueado con el precio | Claude | Flujo completo en la preview con coste registrado por lead |
-| Registro de gasto por lead y tope diario en Supabase | Claude | Tabla `cuentos_generation_jobs` con coste; el tope corta |
+| Email → hoja de personaje + página 9 (`mesa-tarta`) → 11 páginas bloqueadas con precio → pago simulado → libro; «Otra versión» de la hoja (máx. 3) y de página (máx. 2) | Claude | Hecho; Playwright en verde contra las rutas reales con almacén en memoria |
+| Presupuesto por lead (`LEAD_CAP_CENTS`, 20 c), por día y por libro; `cuentos_spend` y `cuentos_generation_jobs` (SQL aplicado); nada se genera dos veces (`job_key` único) | Claude | Hecho |
+| Adaptador Gemini (`gemini-images`) y OpenAI; personaje canónico; guion de la Fase 0 (`web/scripts/fase0.mjs`) | Claude | Hecho; espera clave |
+| Probar con proveedor real (Fase 0) | Álvaro clave · los dos juzgan | Pendiente de clave |
+
+Ver `docs/GENERATION.md`.
 
 ### B4. Pago y entrega
 
 | Tarea | Quién | Hecho cuando |
 |---|---|---|
 | Stripe Checkout + webhook; generación de las 13 imágenes restantes tras el pago, con progreso y aprobación página a página | Álvaro claves · Claude | Pago de prueba completo; libro generado |
-| Email transaccional con enlace y PDF generado en servidor | Álvaro clave (Resend) · Claude | Email recibido con PDF de 13 páginas |
+| PDF generado en servidor (`/api/pdf`, puppeteer + pdf-lib; `docs/PDF.md`) | Claude | Hecho (11 oct): 13 páginas A4, ~5 MB, 10–20 s; test con `pdfinfo`. Pendiente verlo en Vercel (descarga de Chromium en el primer arranque) |
+| Email transaccional con enlace y PDF adjunto | Álvaro clave (Resend) · Claude | Email recibido con PDF de 13 páginas |
 
 ### B5. Legal, salida y distribución
 
@@ -102,11 +113,22 @@ Fuera de la v1 (se mantiene como respaldo y Clásico): fondos pintados y poses p
 6. **Errores:** URL + captura + qué se esperaba; entran en §1 antes de corregirse.
 7. **Copy:** registro adulto, sin diminutivos, sin emojis en interfaz.
 
-## 5. Próximos tres pasos
+## 5. Lista de Álvaro (11 oct)
 
-1. Álvaro: clave del proveedor de imagen (Gemini o OpenAI) en Vercel y en `web/.env.local`; app de GitHub en el repo; `SUPABASE_SERVICE_ROLE_KEY` en Vercel.
-2. Claude: Fase 0 (1 hoja + 3 páginas) y captura comparada con coste.
-3. Los dos: decidir proveedor y precio; Claude actualiza PRD y empieza B2.
+Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables, Production y Preview) o a un archivo local.
+
+Ahora (desbloquean):
+1. App de GitHub de Claude en el repo `cuentos` (o PAT fine-grained de 1 h en archivo: Contents + Workflows lectura/escritura) → CI y limpieza de PNG.
+2. `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API → service_role) en Vercel + Redeploy → `/api/books`.
+3. `GEMINI_API_KEY` (Google AI Studio; límite de gasto en Google Cloud) o `OPENAI_API_KEY` en Vercel → Fase 0.
+4. `ANTHROPIC_API_KEY` (o la de OpenAI) en Vercel → historia real; hasta entonces, simulada.
+5. Revocar el PAT antiguo y borrar `github-token.rtf`.
+
+Cuando pueda: 6. datos legales (responsable, NIF, domicilio, email de contacto/privacidad, autónomo o sociedad); 7. `NEXT_PUBLIC_CLARITY_ID`; 8. decisiones tras la Fase 0 (proveedor, precio 14,90/19,90, qué se enseña gratis).
+
+Más adelante (B4): 9. Stripe test (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`); 10. Resend (`RESEND_API_KEY`, dominio verificado).
+
+Claude, sin claves: motor de historia con adaptador simulado, prompts de personaje y escena, embudo de muestra con imágenes simuladas, contabilidad de gasto, PDF en servidor, limpieza de datos de prueba.
 
 ## 6. Registro de decisiones
 
@@ -116,4 +138,5 @@ Fuera de la v1 (se mantiene como respaldo y Clásico): fondos pintados y poses p
 - 9 oct: assets externos (fondos, poses) los genera Álvaro con ChatGPT; la sesión no genera imágenes de pago.
 - 9 oct: Clarity solo tras consentimiento; franja superior, no flotante.
 - 9 oct (tarde): la v1 pasa de plantillas a motor de generación (historia única por LLM + ilustración por character sheet) con gasto antes del pago acotado (≤ 0,10 € por lead, tras email). Fondos y poses por ChatGPT quedan como respaldo.
+- 11 oct: motor de historia en producción con `mock`; el proveedor real se activa por variable de entorno sin tocar código. Los nombres que el adulto escribe en los detalles cuentan como permitidos.
 - 9 oct (tarde): las piezas pintadas se generan en el build (`prebuild`) desde el catálogo; `web/public/pieces/` deja de versionarse.
