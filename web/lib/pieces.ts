@@ -105,8 +105,9 @@ export function figureFor(style: StyleId, traits: Traits | undefined, pose?: str
     head,
     headScale,
     headX: body.faceCx - head.faceCx * headScale,
-    // +7: el degradado inferior de la cabeza se solapa con la parte ya opaca del cuello (si no, queda una línea clara)
-    headY: body.chin - head.chin * headScale + 7,
+    // la base del cuello de la cabeza (head.chin) cae 2 px por debajo de la base del cuello del cuerpo (body.chin):
+    // la cabeza, con su propio cuello, tapa el del cuerpo, que queda opaco debajo
+    headY: body.chin - head.chin * headScale + 2,
   };
 }
 

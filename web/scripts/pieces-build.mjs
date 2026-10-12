@@ -171,7 +171,8 @@ function buildHead(src) {
     }
     if (n > w * 0.22) { chin = y; break; }
   }
-  const hh = Math.min(h, chin + 6);
+  // el recorte acaba 4 px por encima de la base del cuello: el tramo inferior del cuello lo pone el cuerpo (con su sombra)
+  const hh = Math.min(h, chin + 40);
   const out = new Uint8ClampedArray(data.subarray(0, hh * w * 4));
   // ropa del bust original bajo la barbilla (tercio inferior): se borra con 1 px de margen, salvo piel y pelo
   const garment = new Uint8Array(w * hh);
@@ -192,10 +193,59 @@ function buildHead(src) {
   }
   for (let y = 0; y < hh; y++) for (let x = 0; x < w; x++) {
     const p = y * w + x;
-    const dil = garment[p] || (x > 0 && garment[p - 1]) || (x < w - 1 && garment[p + 1]) || (y > 0 && garment[p - w]) || (y < hh - 1 && garment[p + w]);
-    if (dil && !keep[p]) out[p * 4 + 3] = 0;
+    let dil = garment[p];
+    for (let dy = -2; dy <= 2 && !dil; dy++) for (let dx = -2; dx <= 2 && !dil; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy >= 0 && yy < hh && xx >= 0 && xx < w && garment[yy * w + xx]) dil = 1;
+    }
+    // el borde difuminado de la prenda (mezcla con el fondo, semitransparente) tampoco es piel ni pelo
+    const i = p * 4;
+    const soft = out[i + 3] > 0 && out[i + 3] < 200 && y >= Math.floor(hh * 0.62);
+    if ((dil || soft) && !keep[p]) out[i + 3] = 0;
   }
-  for (let y = hh - 10; y < hh; y++) { const f = (hh - 1 - y) / 9; for (let x = 0; x < w; x++) out[(y * w + x) * 4 + 3] = Math.round(out[(y * w + x) * 4 + 3] * f); }
+  // bajo la mandíbula solo queda el cuello (franja central) y el pelo: lo demás a los lados (cuello de la prenda,
+  // sombras naranjas que la máscara de piel confunde) se borra
+  const g0 = faceGeom({ w, h: hh, data: out }, 1);
+  const span = new Int32Array(hh);
+  for (let y = 0; y < hh; y++) {
+    let x0 = -1, x1 = -1;
+    for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if (out[i + 3] > 0 && isSkin(out[i], out[i + 1], out[i + 2], out[i + 3])) { if (x0 < 0) x0 = x; x1 = x; } }
+    span[y] = x0 < 0 ? 0 : x1 - x0;
+  }
+  let jaw = chin;
+  for (let y = chin; y >= 0; y--) if (span[y] > g0.faceW * 0.6) { jaw = y; break; }
+  // Lo que no es piel y no está unido a la masa del pelo son restos del cuello de la prenda (puntas que suben hasta
+  // las orejas, sombras ocres que pasan por pelo): componentes pequeños (< 600 px) por debajo de la altura de las orejas
+  const nonSkin = new Uint8Array(w * hh);
+  for (let p = 0; p < w * hh; p++) { const i = p * 4; nonSkin[p] = out[i + 3] > 0 && !isSkin(out[i], out[i + 1], out[i + 2], out[i + 3]) ? 1 : 0; }
+  const { lab: nl, boxes: nb } = label(nonSkin, w, hh);
+  const earRow = Math.max(0, jaw - 40);
+  // se exceptúan los componentes dentro de la franja de piel de su fila (boca, orejas): son de la cara
+  const spanX = new Int32Array(hh * 2);
+  for (let y = 0; y < hh; y++) {
+    let x0 = -1, x1 = -1;
+    for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if (out[i + 3] > 0 && isSkin(out[i], out[i + 1], out[i + 2], out[i + 3])) { if (x0 < 0) x0 = x; x1 = x; } }
+    spanX[y * 2] = x0; spanX[y * 2 + 1] = x1;
+  }
+  const drop = new Uint8Array(nb.length);
+  for (let k = 1; k < nb.length; k++) {
+    const bx = nb[k];
+    if (bx.size >= 600 || bx.y0 < earRow - 10) continue;
+    const cy = Math.min(hh - 1, Math.round((bx.y0 + bx.y1) / 2)), cx = (bx.x0 + bx.x1) / 2;
+    const x0 = spanX[cy * 2], x1 = spanX[cy * 2 + 1];
+    const facial = x0 >= 0 && cx >= x0 - 4 && cx <= x1 + 4;
+    if (!facial) drop[k] = 1;
+  }
+  for (let y = earRow; y < hh; y++) for (let x = 0; x < w; x++) { const p = y * w + x; if (nl[p] && drop[nl[p]]) out[p * 4 + 3] = 0; }
+  // y bajo la mandíbula, fuera de la franja del cuello, solo puede quedar pelo
+  const band = g0.faceW * 0.3;
+  for (let y = jaw + 2; y < hh; y++) for (let x = 0; x < w; x++) {
+    const p = y * w + x, i = p * 4;
+    if (out[i + 3] === 0 || Math.abs(x - g0.faceCx) <= band) continue;
+    if (isSkin(out[i], out[i + 1], out[i + 2], out[i + 3])) out[i + 3] = 0;
+  }
+  // desvanecido en el borde inferior: el cuello sigue por debajo en el cuerpo
+  for (let y = hh - 6; y < hh; y++) { const f = (hh - 1 - y) / 5; for (let x = 0; x < w; x++) out[(y * w + x) * 4 + 3] = Math.round(out[(y * w + x) * 4 + 3] * f); }
   const head = { w, h: hh, data: out };
   const g = faceGeom(head, 1);
   return { img: head, geom: { w, h: hh, chin, faceW: g.faceW, faceCx: g.faceCx } };
@@ -205,11 +255,12 @@ function buildHead(src) {
 function headless(im) {
   const { w, h } = im;
   const g = faceGeom(im, 0.45);
-  const headTop = g.chin - 10; // cuello y arranque de la barbilla; por encima va la cabeza nueva
+  // g.chin es la fila más baja de piel: la base del cuello (donde empieza la prenda). Se deja el cuello entero (22 px),
+  // opaco y sin desvanecer: la cabeza nueva lo tapa por arriba y así no queda una franja translúcida en la unión
+  const headTop = Math.max(0, g.chin - 22);
   const out = new Uint8ClampedArray(im.data);
   for (let y = 0; y < headTop; y++) for (let x = 0; x < w; x++) out[(y * w + x) * 4 + 3] = 0;
-  for (let y = headTop; y < Math.min(h, headTop + 8); y++) { const f = (y - headTop) / 7; for (let x = 0; x < w; x++) out[(y * w + x) * 4 + 3] = Math.round(out[(y * w + x) * 4 + 3] * f); }
-  return { img: { w, h, data: out }, geom: { w, h, chin: headTop, faceW: g.faceW, faceCx: g.faceCx } };
+  return { img: { w, h, data: out }, geom: { w, h, chin: g.chin, faceW: g.faceW, faceCx: g.faceCx } };
 }
 
 const pngs = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".png")).sort() : []);
