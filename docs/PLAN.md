@@ -9,9 +9,9 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 - Motor de historia (proveedor `mock`) y embudo de muestra/paywall (dry-run): ver B2 y B3.
 
 - Journey Clásico completo: `/` → `/crear` (quién, su mundo, el libro, edición) → PDF de 13 hojas por impresión del navegador. Recorrido automatizado sin errores de consola salvo el 503 de E2.
-- Figuras pintadas correctas en la preview (cabeza unida al cuerpo, sin cuello de la prenda original, sin hueco entre las piernas): las piezas se generan en el build de Vercel desde el catálogo (`web/scripts/pieces-build.mjs`, `prebuild`), así que ya no dependen de subir binarios.
+- Figuras pintadas: las piezas se generan en el build de Vercel desde el catálogo (`web/scripts/pieces-build.mjs`, `prebuild`). Desde el 12 oct la cabeza se escala y centra por las pupilas (antes por la anchura de piel, que incluía pelo: la cabeza medía entre 0,33 y 0,54 del original según el peinado); la altura sigue por la base del cuello. Verificado con rejillas 12 peinados × 8 prendas en gouache, plano y lápiz, y en `/crear`.
 - Tres estilos disponibles: gouache, plano (flat) y lápiz de colores. Edición ilustrada con pago simulado: estilo, hoja de personaje, progreso, 12 escenas, PDF.
-- 12 escenas vectoriales rehechas (brief 4). Lead magnet `/gratis`, legales en borrador, consentimiento de cookies, 8 tests Playwright en verde.
+- 12 escenas vectoriales rehechas (brief 4). Lead magnet `/gratis`, legales en borrador, consentimiento de cookies, 10 tests Playwright y 47 unitarios en verde (12 oct, en local).
 
 **No funciona o está a medias:**
 
@@ -24,8 +24,10 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 | E6 | Legales con campos `Pending` | Faltan datos del responsable, DPA, email de contacto | Sí |
 | E7 | Pago simulado; sin Stripe; sin entrega por email | Fuera de alcance hasta ahora | Sí («Pago de prueba») |
 | E8 | PNG antiguos de `web/public/pieces/gouache` siguen en el repo | Ahora es carpeta de build (gitignore); borrar del índice cuando haya `git push` desde la sesión | No (el build los sobrescribe) |
+| E9 | Restos menores en las figuras | Pelo largo cortado en recto a la altura de los hombros (el busto del catálogo acaba ahí); trazos sueltos junto al cuello en lápiz; manos casi blancas con piel «muy clara» (recolor); catálogo de prendas a 400 px de alto (≈ 3,4× de ampliación en el PDF A4) | Sí, de cerca e impreso |
+| E10 | Nada real se ha ejecutado todavía | En Supabase (12 oct): 1 libro (8 oct), 0 historias en caché, 0 gasto. La preview corre con historia `mock` e imágenes `dry-run` | No (se ve igual que si funcionara) |
 
-Resueltos hoy: E1 (figuras) por generación en build.
+Resueltos: E1 (figuras) por generación en build (9 oct); reabierto el 12 oct (cabezas de tamaño distinto según el peinado, pestaña de la mandíbula original junto al cuello) y corregido por encaje en pupilas.
 
 ## 2. Objetivo de la v1 y cambio de rumbo (9 oct, tarde)
 

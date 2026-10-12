@@ -12,6 +12,10 @@ export interface PieceGeom {
   chin: number;
   faceW: number;
   faceCx: number;
+  /** Pupilas: distancia entre ellas, punto medio y altura. En los cuerpos, las de la cabeza original que se quitó. */
+  iod?: number;
+  eyeCx?: number;
+  eyeY?: number;
 }
 /**
  * Fondo pintado de una escena (1200×800, se dibuja en el viewBox 600×400).
@@ -93,7 +97,6 @@ export function figureFor(style: StyleId, traits: Traits | undefined, pose?: str
   const posed = pose ? m.poses?.[pose]?.[bodyId] : undefined;
   const body = posed ?? m.bodies[bodyId];
   const head = m.heads[hairId];
-  const headScale = body.faceW / head.faceW;
   const skinHex = SKINS.find((s) => s.id === t.skin)?.hex ?? null;
   const hairHex = t.hair.color === "castano" ? null : HAIR_COLORS.find((h) => h.id === t.hair.color)?.hex ?? null;
   return {
@@ -103,10 +106,24 @@ export function figureFor(style: StyleId, traits: Traits | undefined, pose?: str
     hairHex,
     body,
     head,
+    ...placeHead(body, head),
+  };
+}
+
+/**
+ * Escala y posición de la cabeza en el marco del cuerpo.
+ * Escala y centro horizontal salen de las pupilas: la cabeza nueva mide lo mismo que la original con la que se pintó
+ * el cuerpo, sea cual sea el peinado (la anchura de piel incluía mechones del pelo y la escala variaba hasta un 60 %).
+ * La altura sale de la base del cuello: la base del cuello de la cabeza (head.chin) cae 2 px por debajo de la del
+ * cuerpo (body.chin), así la mandíbula nueva tapa la franja de cuello que el cuerpo conserva.
+ * Sin pupilas (catálogos antiguos), escala y centro por anchura de piel.
+ */
+export function placeHead(body: PieceGeom, head: PieceGeom): { headScale: number; headX: number; headY: number } {
+  const eyed = !!(body.iod && head.iod && body.eyeCx != null && head.eyeCx != null);
+  const headScale = eyed ? body.iod! / head.iod! : body.faceW / head.faceW;
+  return {
     headScale,
-    headX: body.faceCx - head.faceCx * headScale,
-    // la base del cuello de la cabeza (head.chin) cae 2 px por debajo de la base del cuello del cuerpo (body.chin):
-    // la cabeza, con su propio cuello, tapa el del cuerpo, que queda opaco debajo
+    headX: eyed ? body.eyeCx! - head.eyeCx! * headScale : body.faceCx - head.faceCx * headScale,
     headY: body.chin - head.chin * headScale + 2,
   };
 }
