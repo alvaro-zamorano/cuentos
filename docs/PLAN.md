@@ -4,11 +4,11 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 
 ## 1. Estado real (13 oct 2026)
 
-**Fase 0 hecha** (`docs/FASE0.md`): con Nano Banana 2.1 un niño descrito con texto sale igual en todas las páginas, con disfraz, de noche o tumbado, junto a su mascota y con secundarios descritos en una frase. 7 imágenes a la primera, 2 créditos cada una a 2K. Esto decide el producto: la ilustración generada sustituye a las figuras recortadas.
+**Fase 0 hecha** (`docs/FASE0.md`): con Nano Banana 2.1 un niño descrito con texto sale igual en todas las páginas, con disfraz, de noche o tumbado, junto a su mascota y con secundarios descritos en una frase. 7 imágenes a la primera, 2 créditos cada una a 2K. Esto decide el producto: la ilustración generada sustituye a las figuras recortadas. **Libro de muestra hecho** (`docs/MUESTRA-LUNA.md`): 12 páginas + portada sin deriva del personaje.
 
 **Construido y reutilizable:** Next.js en Vercel; `/api/story` con proveedores intercambiables, validación, caché y límite por IP (hoy corre en `mock`); servicio de generación con trabajos idempotentes, presupuesto por lead/día/libro, `run`/`status` y worker; adaptador Gemini; PDF en servidor (13 páginas A4, verificado en Vercel); captura de email con declaración del tutor; pago simulado; legales en borrador; cookies; 10 tests Playwright y 47 unitarios.
 
-**Construido que sale del embudo si se aprueba D1:** constructor de avatar por piezas, figuras pintadas recortadas (`pieces-build`, el arreglo del 12 oct incluido), 12 escenas vectoriales, esqueleto fijo de 12 momentos de cumpleaños, edición Clásica con esas figuras. Motivo (Álvaro, 13 oct): queda plantilla y las combinaciones no cuadran.
+**Construido que sale del embudo (D1):** constructor de avatar por piezas, figuras pintadas recortadas (`pieces-build`, el arreglo del 12 oct incluido), 12 escenas vectoriales, esqueleto fijo de 12 momentos de cumpleaños, edición Clásica con esas figuras. Motivo (Álvaro, 13 oct): queda plantilla y las combinaciones no cuadran.
 
 **Abierto:**
 
@@ -21,16 +21,16 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 | E10 | Nada real se ha ejecutado en la app | Historia en `mock`, imágenes en `dry-run`; 0 € gastados en Supabase |
 | E11 | Proveedor de imágenes en producción sin decidir | La calibración fue por el conector de Higgsfield; la app necesita una API (D4) |
 
-## 2. Decisiones que tiene que tomar Álvaro (bloquean B2–B4)
+## 2. Decisiones (D1–D3, D5 y D6 tomadas el 13 oct; D4 pendiente)
 
-| # | Decisión | Recomendación | Por qué |
+| # | Decisión | Resultado | Por qué |
 |---|---|---|---|
-| D1 | Todo lo que ve el padre es ilustración generada; fuera del embudo las piezas y las escenas fijas | Sí | Fase 0: calidad de libro de verdad y consistencia; las piezas no llegan |
-| D2 | Gasto por lead antes del pago | Hoja (1K) + portada (2K) + hasta 2 cambios de hoja: ≈ 0,30 $; tope diario igual | El plan decía ≤ 0,10 € por lead (el código, 20 c): hoja + portada ya son ≈ 0,17 $ a precio de Gemini |
-| D3 | Qué es gratis | Cuento completo en texto + hoja + portada en la web, y PDF casero con portada ilustrada y el texto | Mantiene el puente gratis del bloque de distribución (8 oct) sin las figuras; el Ilustrado pasa a ser lo único de pago |
-| D4 | Proveedor en producción | API de Gemini (adaptador hecho, falta `GEMINI_API_KEY`) salvo que `hf models` muestre Nano Banana en la API de Higgsfield | Coste parecido (≈ 0,07–0,10 $ por imagen 2K); Gemini no depende de una suscripción |
-| D5 | Estilo y formato | Un estilo (el de la Fase 0). Página = imagen 3:2 arriba + texto en banda debajo: A4 vertical (casero) y 20×20 (tapa dura) | El hueco para texto dentro de la imagen no es fiable; 3:2 + banda sirve para los dos formatos |
-| D6 | Libro de muestra para la web y las redes | Uno completo (hoja + portada + 12 páginas = 14 imágenes ≈ 28 créditos; 13 si se reutiliza la hoja de Vera), historia a elegir | Sin ejemplos reales no hay landing ni Reels; además mide la deriva en 12 páginas |
+| D1 | Todo lo que ve el padre es ilustración generada; fuera del embudo las piezas y las escenas fijas | **Decidido: sí.** Un estilo para salir; habrá más estilos en el futuro (la arquitectura los admite: `styles.json` + ancla por estilo) | Fase 0: calidad de libro de verdad y consistencia; las piezas no llegan |
+| D2 | Gasto por lead antes del pago | **Decidido: ≈ 0,30 $** (hoja 1K + portada 2K + hasta 2 cambios de hoja); tope diario igual | El plan decía ≤ 0,10 € por lead (el código, 20 c): hoja + portada ya son ≈ 0,17 $ a precio de Gemini |
+| D3 | Qué es gratis | **Decidido:** cuento completo en texto + hoja + portada en la web, y PDF casero con portada ilustrada y el texto | Mantiene el puente gratis del bloque de distribución (8 oct) sin las figuras; el Ilustrado pasa a ser lo único de pago |
+| D4 | Proveedor en producción | **Pendiente.** Recomendación: API de Gemini, modelo `gemini-3.1-flash-image` (adaptador hecho, falta `GEMINI_API_KEY`), salvo que `hf models` muestre Nano Banana en la API de Higgsfield | Coste parecido (≈ 0,07–0,10 $ por imagen 2K); Gemini no depende de una suscripción |
+| D5 | Estilo y formato | **Decidido:** un estilo (el de la Fase 0) y página = imagen 3:2 arriba + texto en banda debajo: A4 vertical (casero) y 20×20 (tapa dura) | El hueco para texto dentro de la imagen no es fiable; 3:2 + banda sirve para los dos formatos |
+| D6 | Libro de muestra para la web y las redes | **Decidido:** «Vera y Toby viajan a la Luna», con la hoja de Vera (12 páginas + portada = 13 imágenes ≈ 26 créditos). Ver `docs/MUESTRA-LUNA.md` | Sin ejemplos reales no hay landing ni Reels; además mide la deriva en 12 páginas |
 
 ## 3. Producto: el padre cuenta la historia que quiere, nosotros hacemos el libro
 
@@ -85,12 +85,13 @@ Gratis (D3): pasos 1–4 y PDF con portada + texto. El email del paso 4 es la ca
 5. La maqueta no depende de huecos dentro de la imagen.
 6. Control de calidad automático tras cada imagen: un modelo de visión comprueba rasgos clave (gafas, pelo, número de personajes, texto espurio) contra la ficha; si falla, un reintento antes de enseñarla.
 7. Ancla de estilo propia: una de nuestras páginas (la Luna o la portada) en lugar del gouache genérico.
+8. Objetos recurrentes (el cohete del libro de muestra): una descripción fija en cada página mantiene colores y rasgos, no la forma. Si la forma importa, el objeto entra en la hoja o lleva su propia imagen de referencia.
 
 ## 4. Contenidos que necesitamos
 
 | Contenido | Para qué | Coste aprox. |
 |---|---|---|
-| Libro de muestra completo (D6) | Landing, carrusel de Instagram, Reel «de una frase a un libro», prueba de deriva | 13–14 imágenes ≈ 26–28 créditos |
+| Libro de muestra completo (D6) | Landing, carrusel de Instagram, Reel «de una frase a un libro», prueba de deriva | **Hecho (13 oct):** 13 imágenes, 26 créditos, todas a la primera; PDF A4 de 15 páginas (`docs/MUESTRA-LUNA.md`) |
 | 4 portadas de ocasiones distintas con niños diversos (Navidad, primer día de cole, hermanito, aventura) | Landing y anuncios | 4 hojas + 4 portadas ≈ 16 créditos |
 | 20 ideas de arranque | Paso 1 | Texto (Claude) |
 | Ancla de estilo propia | Consistencia entre libros | Elegir entre las de la Fase 0 |
@@ -102,7 +103,7 @@ Una cosa a la vez; cada tarea se cierra con evidencia.
 
 | Bloque | Qué | Quién | Hecho cuando |
 |---|---|---|---|
-| B0 | Decisiones D1–D6 | Álvaro | Anotadas en §8 |
+| B0 | Decisiones D1–D6 | Álvaro | D1–D3, D5, D6 hechas (13 oct); falta D4 |
 | B1 | Ficha + planificador de historia: esquema, prompt, validador, moderación, mock; prueba con proveedor real | Claude · clave de Anthropic u OpenAI de Álvaro | 10 ideas de prueba dan 10 libros válidos; los leemos los dos |
 | B2 | Nuevo flujo de creación (pasos 1–3) en lugar de `/crear` con piezas | Claude | Playwright: de una frase al cuento escrito sin errores |
 | B3 | Hoja de reparto + portada tras el email; cambios con palabras; control de calidad | Claude · D4 resuelto | 3 niños distintos con hoja aprobada en la preview y coste anotado |
@@ -127,7 +128,7 @@ Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de
 
 Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables, Production y Preview) o a un archivo local.
 
-1. Decidir D1–D6 (§2).
+1. Decidir D4 (§2).
 2. Clave del LLM de historia (`ANTHROPIC_API_KEY` o `OPENAI_API_KEY`) en Vercel → B1 con proveedor real.
 3. Proveedor de imágenes (D4): `GEMINI_API_KEY` en Vercel, o en el Mac `~/.higgsfield-cli/venv/bin/hf models --kind image` para ver si la API de Higgsfield tiene Nano Banana.
 4. App de GitHub de Claude en el repo → CI y binarios (E3).
@@ -142,5 +143,6 @@ Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environ
 - 9 oct (tarde): la v1 pasa de plantillas a motor de generación (historia única por LLM + ilustración por hoja de personaje) con gasto antes del pago acotado.
 - 11 oct: motor de historia con `mock`; el proveedor real se activa por variable de entorno. Los nombres que el adulto escribe en los detalles cuentan como permitidos.
 - 13 oct (Álvaro): el look de piezas queda plantilla y las combinaciones no cuadran; los padres tienen que poder hacer la historia que quieran con poco esfuerzo; calibrar con Nano Banana desde Higgsfield como si fuera la clave de Gemini.
-- 13 oct: Fase 0 hecha y positiva (`docs/FASE0.md`). D1–D6 propuestas, pendientes de Álvaro.
-- Sustituidas: «Clásico e Ilustrado comparten las figuras pintadas» (9 oct) y «las piezas se generan en el build» (9 oct) quedan sin efecto si se aprueba D1.
+- 13 oct: Fase 0 hecha y positiva (`docs/FASE0.md`).
+- 13 oct (Álvaro): todo lo que ve el padre es ilustración generada, un estilo para salir y más estilos en el futuro; gratis = texto + hoja + portada + PDF casero; hasta ≈ 0,30 $ por lead antes del pago; página con imagen 3:2 y texto en banda; libro de muestra «Vera y Toby viajan a la Luna».
+- Sustituidas por D1 (13 oct): «Clásico e Ilustrado comparten las figuras pintadas» (9 oct) y «las piezas se generan en el build» (9 oct).
