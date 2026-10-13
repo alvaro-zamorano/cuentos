@@ -140,7 +140,8 @@ export function StepBook({ bookId, confirming = false, onBack, onPlan }: { bookI
       <BookImage job={cover} alt="Portada" title={plan.title} testId="book-cover" />
 
       {!view.paid && !busy && <Paywall bookId={bookId} payment={view.payment ?? "none"} onPaid={() => void paintPages()} />}
-      {busy && (
+      {/* el aviso se va en cuanto el libro está completo (el navegador puede seguir unos segundos esperando a jobs que ya ha terminado el servidor) */}
+      {busy && !(view.paid && allDone && !busy.startsWith("Pintando otra versión")) && (
         <p className="notice" aria-live="polite" data-testid="pages-busy">
           {busy}
         </p>
