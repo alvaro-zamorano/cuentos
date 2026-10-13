@@ -19,7 +19,7 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 | E6 | Legales con campos `Pending` | Faltan datos del responsable |
 | E7 | Pago simulado; sin entrega por email | Faltan Stripe y Resend |
 | E10 | Nada real se ha ejecutado en la app | Historia en `mock`, imágenes en `dry-run`; 0 € gastados en Supabase |
-| E11 | Claves en la preview (13 oct, `/api/health?deep=1`) | Gemini: válida con `gemini-3.1-flash-image`. Anthropic: rechazada porque la clave no pertenece a un workspace. `STORY_PROVIDER` y `SUPABASE_SERVICE_ROLE_KEY`: no llegan a Preview |
+| E11 | Claves en la preview (13 oct, `/api/health?deep=1`) | Anthropic (`claude-sonnet-4-5`) y Gemini (`gemini-3.1-flash-image`): verificadas, la historia ya va por Anthropic sin `STORY_PROVIDER`. Supabase: la clave estaba como `service_role`; Álvaro la añade como `SUPABASE_SERVICE_ROLE_KEY`, pendiente de verificar (el health dice además si es la de servicio o la pública). Antes de producción: proteger `/api/health` o quitarle `similarNames` |
 
 ## 2. Decisiones (D1–D6 tomadas el 13 oct)
 
@@ -128,10 +128,10 @@ Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de
 
 Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables, Production y Preview) o a un archivo local.
 
-1. ~~Clave del LLM de historia~~ (`ANTHROPIC_API_KEY` + `STORY_PROVIDER=anthropic`): añadida 13 oct.
+1. ~~Clave del LLM de historia~~ (`ANTHROPIC_API_KEY`; `STORY_PROVIDER` ya no hace falta): añadida 13 oct, con workspace.
 2. ~~Proveedor de imágenes~~ (`GEMINI_API_KEY`): añadida 13 oct.
 3. ~~App de GitHub de Claude en el repo~~: hecha 13 oct (`git push` funciona desde la sesión).
-4. ~~`SUPABASE_SERVICE_ROLE_KEY`~~: añadida 13 oct.
+4. ~~`SUPABASE_SERVICE_ROLE_KEY`~~: añadida 13 oct con ese nombre (antes estaba como `service_role`, que se puede borrar).
 5. Más adelante: datos legales, Stripe, Resend, `NEXT_PUBLIC_CLARITY_ID`.
 
 ## 8. Registro de decisiones
