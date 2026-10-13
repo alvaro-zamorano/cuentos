@@ -63,6 +63,14 @@ const FAQ = [
 
 const SPREADS = [3, 7, 12];
 
+/** Portadas hechas con el flujo de /crear a partir de las fichas de prueba (docs/ILUSTRACION.md, 13 oct). */
+const COVERS = [
+  { src: "/muestra/portada-navidad.webp", title: "Daniela y el ruido del tejado", who: "Daniela, 4 años, y su hermano Leo · Nochebuena" },
+  { src: "/muestra/portada-cole.webp", title: "Hugo y la mochila de dinosaurio", who: "Hugo, 3 años · primer día de cole" },
+  { src: "/muestra/portada-cumpleanos.webp", title: "Lucía y las pistas de la abuela", who: "Lucía, 8 años, y su abuela · su cumpleaños" },
+  { src: "/muestra/portada-nubes.webp", title: "Mateo y la torre que tocaba las nubes", who: "Mateo, 5 años, y su gata Misu · «Sorpréndeme»" },
+];
+
 export default function Landing() {
   return (
     <main className="flex-1">
@@ -92,6 +100,7 @@ export default function Landing() {
         <figure className="-mx-4 sm:mx-0">
           <div className="relative overflow-hidden sm:rounded-[8px] shadow-[0_1px_2px_rgba(31,26,23,0.1),0_12px_32px_-12px_rgba(31,26,23,0.35)]">
             <img src={muestraImage(0)} alt={`Portada de «${MUESTRA.title}»: Vera y su perro Toby vuelan en un cohete de cartón hacia la Luna`} width={1400} height={939} className="block aspect-[3/2] w-full object-cover" fetchPriority="high" />
+            <div aria-hidden className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-[rgba(15,20,40,0.45)] to-transparent" />
             <p className="display absolute left-5 right-5 top-4 text-[28px] text-[#fbf3df] sm:left-7 sm:top-6 sm:text-[40px]" style={{ textShadow: "0 2px 14px rgba(10,20,50,.55)" }}>
               {MUESTRA.title}
             </p>
@@ -147,7 +156,26 @@ export default function Landing() {
               </figure>
             ))}
           </div>
-          <div className="mt-10 flex flex-wrap gap-2" aria-label="Más páginas del libro de muestra">
+          <h3 className="mt-16 font-display text-2xl">Otras portadas</h3>
+          <p className="mt-2 max-w-[62ch] leading-relaxed text-ink-soft">Hechas con el mismo proceso, cada una a partir de una frase y unos rasgos. Ningún niño se parece a otro y ninguna historia es una plantilla.</p>
+          <ul className="mt-6 grid gap-6 sm:grid-cols-2">
+            {COVERS.map((c) => (
+              <li key={c.src}>
+                <figure>
+                  <div className="relative overflow-hidden rounded-[6px] shadow-[0_1px_2px_rgba(31,26,23,0.1),0_10px_24px_-12px_rgba(31,26,23,0.3)]">
+                    <img src={c.src} alt={`Portada de «${c.title}»`} width={1000} height={671} loading="lazy" className="block aspect-[3/2] w-full object-cover" />
+                    <div aria-hidden className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-[rgba(15,20,40,0.5)] to-transparent" />
+                    <p className="display absolute left-4 right-4 top-3 text-[22px] text-[#fbf3df]" style={{ textShadow: "0 2px 12px rgba(10,20,50,.6)" }}>
+                      {c.title}
+                    </p>
+                  </div>
+                  <figcaption className="mt-2 text-sm text-ink-soft">{c.who}</figcaption>
+                </figure>
+              </li>
+            ))}
+          </ul>
+          <h3 className="mt-16 font-display text-2xl">Más páginas del libro de Vera</h3>
+          <div className="mt-6 flex flex-wrap gap-2" aria-label="Más páginas del libro de muestra">
             {[1, 2, 4, 5, 6, 8, 9, 10, 11].map((n) => (
               <img key={n} src={muestraImage(n)} alt={`Página ${n}`} width={140} height={94} loading="lazy" className="h-[60px] w-[90px] rounded-[4px] object-cover sm:h-[94px] sm:w-[140px]" />
             ))}

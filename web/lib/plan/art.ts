@@ -83,6 +83,7 @@ function heroChildWord(f: Ficha): string {
 
 const ART_SYSTEM = [
   "You are the art director of a children's picture book. You turn Spanish descriptions into concise, concrete English visual descriptions for an image model.",
+  "Invented creatures must look original: never like a famous film or cartoon character (a small green creature with big pointed ears reads as a famous one: change colour, ears or shape).",
   "Rules: keep every concrete visual detail from the Spanish (colours, hairstyles, clothes, marks like freckles or a missing tooth); add only neutral filler needed to make it drawable; never add new story elements.",
   "Never write numbers that force counting (write 'some candles', not 'five candles'). Never ask for text, letters or signs in the image.",
   "No brands, no copyrighted characters, no real famous people.",
@@ -287,6 +288,7 @@ export function sheetPrompt(art: CastArt, style: StyleDef): string {
       ? `Bottom third, smaller: ${rest.map((c) => `${castLine(c)}, in two views (front and three-quarter)`).join("; ")}.`
       : `Bottom third: two more full-body poses of ${hero.name} (waving, running).`,
     `Keep each character's proportions, face, hair, skin tone, eyes and clothes identical in every view.`,
+    `Do not write names, captions or labels under the figures.`,
     STYLE_REF_ONLY,
     NO_TEXT,
   ].join(" ");

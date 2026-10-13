@@ -178,7 +178,11 @@ export function validatePlan(plan: Plan, f: Ficha): PlanValidation {
   }
   if (plan.places.length > MAX_PLACES) issues.push({ msg: `Hay más de ${MAX_PLACES} lugares recurrentes.`, hard: true });
   if (plan.objects.length > MAX_OBJECTS) issues.push({ msg: `Hay más de ${MAX_OBJECTS} objetos recurrentes.`, hard: true });
-  for (const x of [...plan.places, ...plan.objects]) commonChecks(x.id, `${x.name}. ${x.desc}`, issues);
+  for (const x of [...plan.places, ...plan.objects]) {
+    commonChecks(x.id, `${x.name}. ${x.desc}`, issues);
+    const letters = textInImage(x.desc);
+    if (letters) issues.push({ msg: `${x.id}: la descripción pide letras en la imagen («${letters}»).`, hard: true });
+  }
 
   const ns = plan.pages.map((p) => p.n);
   const expected = Array.from({ length: PAGES }, (_, i) => i + 1);

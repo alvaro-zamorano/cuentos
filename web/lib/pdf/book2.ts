@@ -43,6 +43,7 @@ body { background: #fbf7ef; color: #2b2520; font-family: Fraunces, Georgia, seri
 .free .band { height: 297mm; padding: 40mm 30mm; }
 .free .band p { font-size: 21pt; }
 .num { position: absolute; bottom: 14mm; left: 0; right: 0; text-align: center; font-family: Geist, sans-serif; font-size: 9pt; letter-spacing: .12em; color: #8a7d6e; }
+.cover:not(.noimg)::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 70mm; background: linear-gradient(to bottom, rgba(15,20,40,.5), rgba(15,20,40,0)); }
 .cover h1 { position: absolute; top: 9mm; left: 14mm; right: 14mm; font-size: 38pt; line-height: 1.05; font-weight: 600; color: #fbf3df; font-variation-settings: "opsz" 144; text-shadow: 0 1mm 4mm rgba(10,20,50,.5); }
 .cover .sub { height: 157mm; display: flex; flex-direction: column; justify-content: center; text-align: center; padding-bottom: 12mm; }
 .cover .sub .para { font-style: italic; font-size: 20pt; }

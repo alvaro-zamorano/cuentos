@@ -63,7 +63,7 @@ export function countingIn(scene: string): string | null {
 }
 
 /** Peticiones de letras dentro de la imagen (el modelo las pinta mal; el texto va en la banda). */
-const TEXT_IN_IMAGE = [/\bletreros?\b/, /\bcartel(es)?\b/, /\bpancartas?\b/, /\brotulos?\b/, /\bque pone\b/, /\bque dice\b/, /\bcon (su|el) nombre\b/, /\bescrito\b/];
+const TEXT_IN_IMAGE = [/\bletreros?\b/, /\bcartel(es)?\b/, /\bpancartas?\b/, /\brotulos?\b/, /\bque pone\b/, /\bque dice\b/, /\bcon (su|el) nombre\b/, /\bescrito\b/, /\bde letras\b/, /\bcon letras\b/];
 export function textInImage(scene: string): string | null {
   const t = norm(scene);
   const re = TEXT_IN_IMAGE.find((r) => r.test(t));

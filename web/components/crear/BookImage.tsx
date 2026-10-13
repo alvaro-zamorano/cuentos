@@ -30,6 +30,7 @@ export function BookImage({ job, alt, testId, title }: { job?: BookJobView; alt:
   return (
     <div className={box} data-testid={testId} data-state="done">
       <img src={job.url} alt={alt} className="h-full w-full object-cover" />
+      {title && <div aria-hidden className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-[rgba(15,20,40,0.5)] to-transparent" />}
       {title && (
         <span className="display absolute left-5 right-5 top-4 text-2xl text-[#fbf3df] sm:text-4xl" style={{ textShadow: "0 2px 12px rgba(10,20,50,.5)" }}>
           {title}
