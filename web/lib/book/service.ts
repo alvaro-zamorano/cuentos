@@ -11,7 +11,7 @@
 import { selectLlm, type Llm } from "../llm";
 import { hashString } from "../story/hash";
 import { getStyle } from "../generation/styles";
-import { gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
+import { MAX_ATTEMPTS, gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
 import { jobKey } from "../generation/keys";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
@@ -140,6 +140,8 @@ export interface StartResult {
   sheetJobId: string;
   coverJobId: string;
   created: number;
+  /** Jobs fallidos que se han vuelto a poner en cola (un intento más). */
+  reopened?: number;
 }
 
 /** Guarda ficha + plan con el email, prepara la dirección de arte del reparto y encola hoja + portada (una vez). */
@@ -179,11 +181,15 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   const sheets = sheetJobs(existing);
   const current = d.castArt?.key === key ? sheets.filter((j) => j.prompt === sheetPrompt(d.castArt!, getStyle(ficha.styleId)!)) : [];
 
-  // ya hay hoja para este reparto: no se gasta otra vez
+  // ya hay hoja para este reparto: no se gasta otra vez (si falló y le queda un intento, se reabre)
   if (current.length > 0) {
     const sheet = current[current.length - 1];
     const cover = coverJobs(existing).find((c) => sheetRefOf(c) === sheet.id);
-    if (cover) return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 0 };
+    if (cover) {
+      let reopened = 0;
+      for (const j of [sheet, cover]) if (j.status === "failed" && j.attempts < MAX_ATTEMPTS && (await store.reopen(j))) reopened++;
+      return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 0, reopened };
+    }
   }
   if (sheets.length >= MAX_SHEETS) return fail(409, "max_versions", "Ya has usado las versiones de la hoja de este libro.");
 
@@ -354,6 +360,7 @@ export async function requestPages(
   }
 
   const wanted: NewJob[] = [];
+  const reopenedIds: string[] = [];
   if (input.page !== undefined) {
     const n = Number(input.page);
     if (!Number.isInteger(n) || n < 1 || n > 12) return fail(400, "page");
@@ -362,7 +369,13 @@ export async function requestPages(
     wanted.push(pageRow(book, d, n, all.length + 1, sheet.id));
   } else {
     for (let n = 1; n <= 12; n++) {
-      if (currentPageJobs(jobs, d, n, sheet.id).length > 0) continue;
+      const cur = currentPageJobs(jobs, d, n, sheet.id);
+      if (cur.some((j) => j.status !== "failed")) continue;
+      const retry = cur.find((j) => j.attempts < MAX_ATTEMPTS);
+      if (retry) {
+        if (await store.reopen(retry)) reopenedIds.push(retry.id);
+        continue;
+      }
       const all = jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j));
       if (all.length >= MAX_PAGE_JOBS) continue;
       wanted.push(pageRow(book, d, n, all.length + 1, sheet.id));
@@ -376,7 +389,7 @@ export async function requestPages(
   if (wanted.length > 0) await store.markIllustrating(book.id);
   const keys = new Set(wanted.map((w) => w.job_key));
   const after = await store.listJobs(book.id);
-  return { ok: true, bookId: book.public_id, jobs: after.filter((j) => keys.has(j.job_key)).map((j) => j.id), created: wanted.length };
+  return { ok: true, bookId: book.public_id, jobs: [...after.filter((j) => keys.has(j.job_key)).map((j) => j.id), ...reopenedIds], created: wanted.length };
 }
 
 

@@ -1,71 +1,67 @@
+/* eslint-disable @next/next/no-img-element -- imágenes estáticas ya optimizadas (WebP 1400 px) */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookCover, BookSheet } from "@/components/BookSheet";
-import { Scene } from "@/components/Scene";
 import { SiteHeader } from "@/components/SiteHeader";
-import { DEFAULT_PAINTED_STYLE } from "@/lib/pieces";
-import { DEMO_DRAFT } from "@/lib/demo";
 import { DRY_RUN_PAYMENT } from "@/lib/flags";
-import { PRICE_CLASSIC, PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
-import { buildBook } from "@/lib/story";
+import { MUESTRA, muestraImage } from "@/lib/muestra";
+import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
 
 export const metadata: Metadata = {
-  title: { absolute: "Cuento personalizado para niños, un regalo de cumpleaños para imprimir · cuentos" },
+  title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · cuentos" },
   description:
-    "Cuento personalizado con tu hijo o tu hija como protagonista: su nombre, cómo es y quién le acompaña. Un regalo de cumpleaños escrito e ilustrado para él, en PDF para imprimir en casa o en tapa dura.",
+    "Un cuento personalizado con tu hijo o tu hija de protagonista y la historia que tú quieras: su cumpleaños, un viaje a la Luna o el primer día de cole. Lo escribimos y lo ilustramos; lo lees gratis y lo imprimes en casa.",
 };
 
-const book = buildBook(DEMO_DRAFT);
-const SAMPLE = book.pages[8]; // la tarta
-
 const STEPS = [
-  { n: 1, title: "Quién", body: "Su nombre, su edad y cómo es: pelo, piel, ojos, gafas y ropa. Sin fotos." },
-  { n: 2, title: "Su mundo", body: "Quién le acompaña —su perro, la abuela, una hermana— y lo que más le gusta. Todo entra en la historia." },
-  { n: 3, title: "El libro", body: "Lees las doce páginas, cambias lo que quieras y eliges la edición." },
+  { n: 1, title: "La idea", body: "Una frase basta: «Vera construye un cohete y viaja a la Luna con su perro». O elige una idea para empezar." },
+  { n: 2, title: "Quién", body: "Su nombre, cómo es y quién le acompaña. Sin fotos: lo describes con unos toques." },
+  { n: 3, title: "El cuento", body: "Las doce páginas escritas en medio minuto. Cambias lo que quieras, a mano o con una frase." },
+  { n: 4, title: "Los personajes", body: "Con tu email te enseñamos la hoja de personajes y la portada. Si algo no encaja, lo pides con palabras." },
+  { n: 5, title: "El libro", body: "Las doce ilustraciones, página a página, y el PDF para imprimir en casa." },
 ];
 
 const EDITIONS = [
-  {
-    name: "Clásico · PDF",
-    price: PRICE_CLASSIC,
-    body: "Las doce páginas ilustradas en gouache, en A4 para imprimir en casa.",
-    status: "Disponible",
-  },
+  { name: "Cuento y portada · PDF", price: "Gratis", body: "El cuento entero, la hoja de personajes y la portada ilustrada, en un PDF para imprimir en A4.", status: "Disponible" },
   {
     name: "Ilustrado · PDF",
     price: PRICE_ILLUSTRATED,
-    body: "Eliges el estilo de ilustración, revisas la hoja de personaje y puedes pedir otra versión de cada página.",
-    status: DRY_RUN_PAYMENT ? "Disponible en prueba" : "Próximamente",
+    body: "Las doce páginas ilustradas con tus personajes. Revisas cada una y tienes una versión más de cada ilustración incluida.",
+    status: DRY_RUN_PAYMENT ? "Disponible en prueba" : "Muy pronto",
   },
-  {
-    name: "Tapa dura",
-    price: PRICE_HARDCOVER,
-    body: "El libro ilustrado, impreso y encuadernado, enviado a tu casa.",
-    status: "Próximamente",
-  },
+  { name: "Tapa dura", price: PRICE_HARDCOVER, body: "El libro ilustrado, impreso y encuadernado, enviado a tu casa.", status: "Próximamente" },
 ];
 
 const HOW = [
-  { title: "Un avatar, no una foto", body: "Describes a tu hijo o a tu hija con rasgos. No pedimos fotografías ni usamos reconocimiento facial." },
-  { title: "Una historia a su medida", body: "El texto se adapta a su edad, a quién le acompaña y a lo que más le gusta. Puedes reescribir cualquier página." },
-  { title: "El mismo personaje de principio a fin", body: "Una hoja de personaje fija sus rasgos antes de pintar, para que se le reconozca en las doce páginas." },
-  { title: "En casa o encuadernado", body: "El PDF se imprime en A4 en cinco minutos. La tapa dura llegará encuadernada a tu puerta." },
+  { title: "La historia que tú quieras", body: "Sin catálogo de plantillas: su cumpleaños, la llegada de un hermano, un dragón en el jardín. Si lo puedes contar en una frase, se puede escribir." },
+  { title: "El mismo personaje de principio a fin", body: "Antes de pintar fijamos una hoja de personajes. Con ella se le reconoce en las doce páginas, con pijama o con traje de astronauta." },
+  { title: "Sin fotos", body: "Describes a tu hijo o a tu hija con rasgos: pelo, piel, ojos, gafas y lo que le hace único. No pedimos fotografías." },
+  { title: "Tú tienes la última palabra", body: "Lees el cuento antes de ilustrarlo, cambias cualquier página y revisas cada ilustración antes de imprimir." },
 ];
 
 const FAQ = [
   {
+    q: "¿Quién escribe e ilustra el cuento?",
+    a: "Una inteligencia artificial que hemos preparado para escribir e ilustrar cuentos infantiles en castellano, con reglas propias (nada de miedo, marcas ni personajes con derechos) y controles automáticos en cada página. Tú lo lees y lo revisas todo antes de imprimir.",
+  },
+  {
     q: "¿Qué datos del menor pedís?",
-    a: "Su nombre, su edad y los rasgos del avatar. No pedimos fotos, apellidos ni fecha de nacimiento.",
+    a: "Su nombre, su edad y cómo es, más lo que tú quieras contar en la historia. No pedimos fotos, apellidos ni fecha de nacimiento.",
   },
   {
     q: "¿Qué hacéis con esos datos?",
-    a: "Mientras creas el cuento, todo se queda en tu navegador. Si descargas el PDF, guardamos el cuento 30 días para que puedas recuperarlo con un enlace; después se borra. Tu email solo se usa para avisos si lo aceptas.",
+    a: "Mientras escribes, todo se queda en tu navegador. Cuando nos das tu email para ver los personajes, guardamos el libro 30 días para que puedas recuperarlo con un enlace; después se borra. Tu email solo se usa para avisos si lo aceptas.",
+  },
+  {
+    q: "¿Cuánto tarda?",
+    a: "El cuento escrito, medio minuto. La hoja de personajes y la portada, alrededor de un minuto. Las doce ilustraciones, unos minutos; puedes cerrar la página y volver con el enlace.",
   },
   {
     q: "¿Se puede devolver?",
     a: "Un libro personalizado se hace a medida y no admite desistimiento (art. 103.c TRLGDCU). Si el PDF no se abre o la tapa dura llega dañada, lo reponemos.",
   },
 ];
+
+const SPREADS = [3, 7, 12];
 
 export default function Landing() {
   return (
@@ -82,42 +78,38 @@ export default function Landing() {
           <h1 className="display text-[44px] md:text-[64px]" style={{ fontVariationSettings: '"opsz" 144' }}>
             Un libro escrito y pintado para un solo lector.
           </h1>
-          <p className="mt-6 max-w-[36ch] text-lg leading-relaxed text-ink-soft">
-            Elige cómo es. Elige quién le acompaña. Nosotros escribimos y pintamos el resto.
-          </p>
+          <p className="mt-6 max-w-[38ch] text-lg leading-relaxed text-ink-soft">Cuéntanos la historia que quieras, con una frase. La escribimos y la ilustramos con tu hijo o tu hija de protagonista.</p>
           <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-4">
             <Link href="/crear" className="btn-primary">
               Crear el libro
             </Link>
-            <Link href="/gratis" className="link text-[15px]">
-              Ver un cuento de muestra
-            </Link>
+            <a href="#muestra" className="link text-[15px]">
+              Ver un libro de muestra
+            </a>
           </div>
-          <p className="mt-6 text-sm text-ink-soft">Se imprime en casa en cinco minutos. Pronto, también en tapa dura.</p>
+          <p className="mt-6 text-sm text-ink-soft">El cuento y la portada son gratis. El libro ilustrado se imprime en casa; pronto, también en tapa dura.</p>
         </div>
         <figure className="-mx-4 sm:mx-0">
-          <div className="bg-paper-deep px-4 py-6 sm:rounded-[8px] sm:px-8 sm:py-10">
-            <BookCover
-              title={book.title}
-              dedication={book.dedication}
-              traits={DEMO_DRAFT.hero.traits}
-              styleId={DEFAULT_PAINTED_STYLE}
-              titleAs="p"
-              className="!aspect-[297/210] !h-auto !w-full shadow-[0_1px_2px_rgba(31,26,23,0.1),0_12px_32px_-12px_rgba(31,26,23,0.25)]"
-            />
+          <div className="relative overflow-hidden sm:rounded-[8px] shadow-[0_1px_2px_rgba(31,26,23,0.1),0_12px_32px_-12px_rgba(31,26,23,0.35)]">
+            <img src={muestraImage(0)} alt={`Portada de «${MUESTRA.title}»: Vera y su perro Toby vuelan en un cohete de cartón hacia la Luna`} width={1400} height={939} className="block aspect-[3/2] w-full object-cover" fetchPriority="high" />
+            <p className="display absolute left-5 right-5 top-4 text-[28px] text-[#fbf3df] sm:left-7 sm:top-6 sm:text-[40px]" style={{ textShadow: "0 2px 14px rgba(10,20,50,.55)" }}>
+              {MUESTRA.title}
+            </p>
           </div>
-          <figcaption className="mt-3 px-4 text-sm text-ink-soft sm:px-0">Portada del cuento de Lucas, 5 años.</figcaption>
+          <figcaption className="mt-3 px-4 text-sm text-ink-soft sm:px-0">
+            Portada del libro de muestra, hecho con esta frase: «{MUESTRA.idea}»
+          </figcaption>
         </figure>
       </section>
 
-      {/* Tres pasos */}
+      {/* Cómo se hace */}
       <section className="border-t border-line">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-24">
           <h2 className="display text-[32px] md:text-[40px]">Cómo se hace</h2>
-          <ol className="mt-10 grid gap-10 md:grid-cols-3 md:gap-12">
+          <ol className="mt-10 grid gap-10 md:grid-cols-5 md:gap-8">
             {STEPS.map((s) => (
               <li key={s.n} className="grid grid-cols-[2.5rem_1fr] gap-x-2 md:block">
-                <span className="display text-[40px] leading-none text-ink-soft/70 italic" aria-hidden>
+                <span className="display text-[40px] leading-none italic text-ink-soft/70" aria-hidden>
                   {s.n}
                 </span>
                 <div className="md:mt-4">
@@ -134,30 +126,31 @@ export default function Landing() {
       </section>
 
       {/* Muestra */}
-      <section className="border-t border-line bg-paper-deep">
+      <section className="border-t border-line bg-paper-deep" id="muestra">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-24">
-          <h2 className="display text-[32px] md:text-[40px]">Una doble página</h2>
-          <p className="mt-3 max-w-[60ch] leading-relaxed text-ink-soft">
-            Así se imprime cada hoja: la ilustración a la izquierda y el texto enfrente, en A4 apaisado. Página {SAMPLE.n} de «{book.title}».
+          <h2 className="display text-[32px] md:text-[40px]">Un libro de muestra</h2>
+          <p className="mt-3 max-w-[62ch] leading-relaxed text-ink-soft">
+            «{MUESTRA.title}»: doce páginas y la portada, con Vera igual en todas, con pijama, con peto o con traje de astronauta. Cada página es una ilustración y su texto debajo, en A4.
           </p>
-          <div className="-mx-4 mt-10 sm:mx-0">
-            <BookSheet
-              n={SAMPLE.n}
-              text={SAMPLE.text}
-              className="!aspect-[297/210] !h-auto !w-full shadow-[0_1px_2px_rgba(31,26,23,0.1),0_16px_40px_-16px_rgba(31,26,23,0.3)]"
-              image={
-                <Scene
-                  style={DEFAULT_PAINTED_STYLE}
-                  scene={SAMPLE.scene}
-                  traits={DEMO_DRAFT.hero.traits}
-                  expression={SAMPLE.expression}
-                  companion={SAMPLE.withCompanion ? DEMO_DRAFT.companion : undefined}
-                  special={DEMO_DRAFT.special}
-                  age={DEMO_DRAFT.hero.age}
-                  className="block w-full"
-                />
-              }
-            />
+          <div className="mt-10 grid gap-12 md:grid-cols-3 md:gap-8">
+            {SPREADS.map((n) => (
+              <figure key={n} className="grid content-start gap-4 bg-[#fbf7ef] pb-6 shadow-[0_1px_2px_rgba(31,26,23,0.1),0_16px_40px_-16px_rgba(31,26,23,0.3)]">
+                <img src={muestraImage(n)} alt={`Página ${n} del libro de muestra`} width={1400} height={939} loading="lazy" className="block aspect-[3/2] w-full object-cover" />
+                <figcaption className="story px-6 text-[17px] leading-relaxed">
+                  {MUESTRA.pages[n - 1].split("\n").map((l, i) => (
+                    <p key={i} className="mb-2">
+                      {l}
+                    </p>
+                  ))}
+                  <span className="mt-2 block text-center font-sans text-xs tracking-[0.12em] text-ink-soft">{n}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <div className="mt-10 flex flex-wrap gap-2" aria-label="Más páginas del libro de muestra">
+            {[1, 2, 4, 5, 6, 8, 9, 10, 11].map((n) => (
+              <img key={n} src={muestraImage(n)} alt={`Página ${n}`} width={140} height={94} loading="lazy" className="h-[60px] w-[90px] rounded-[4px] object-cover sm:h-[94px] sm:w-[140px]" />
+            ))}
           </div>
         </div>
       </section>

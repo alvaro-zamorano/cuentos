@@ -42,7 +42,7 @@ test("Landing: estructura editorial y SEO", async ({ page }) => {
   await expect(page).toHaveTitle(/Cuento personalizado/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Un libro escrito y pintado para un solo lector.");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-  for (const h of ["Cómo se hace", "Una doble página", "Ediciones", "Cómo lo hacemos", "Preguntas"]) await expect(page.getByRole("heading", { name: h, level: 2 })).toBeVisible();
+  for (const h of ["Cómo se hace", "Un libro de muestra", "Ediciones", "Cómo lo hacemos", "Preguntas"]) await expect(page.getByRole("heading", { name: h, level: 2 })).toBeVisible();
   await expect(page.getByText("14,90 €").first()).toBeVisible();
   await expect(page.getByText("desde 39,90 €").first()).toBeVisible();
   await expect(page.getByText(/\bpeques?\b/i)).toHaveCount(0);

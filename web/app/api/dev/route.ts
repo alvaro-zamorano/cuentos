@@ -132,6 +132,13 @@ export async function GET(req: Request) {
       const r = await runJob(store, url.searchParams.get("job"), adapter);
       return NextResponse.json(r.ok ? { ok: true, ran: r.ran, status: r.job.status, error: r.job.error, cost: r.job.cost_cents, candidates: r.job.candidates } : r);
     }
+    if (url.searchParams.get("again") === "1" && task === "view") {
+      // repetir el paso 4 con lo guardado: reabre la hoja y la portada si fallaron
+      const v = await bookView(store, url.searchParams.get("b"));
+      const book = v.ok ? await store.findBook({ publicId: v.bookId }) : null;
+      if (!v.ok || !book) return NextResponse.json(v);
+      return NextResponse.json(await startBook(store, { bookId: v.bookId, email: book.email, ficha: v.ficha, plan: v.plan }, adapter));
+    }
     if (task === "revise") {
       return NextResponse.json(await reviseSheet(store, { bookId: url.searchParams.get("b"), instruction: url.searchParams.get("ask") }, adapter));
     }
