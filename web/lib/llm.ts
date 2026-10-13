@@ -38,12 +38,17 @@ export interface Llm {
 }
 
 export const DEFAULT_MODEL: Record<Exclude<LlmName, "mock">, Record<Task, string>> = {
-  anthropic: { plan: "claude-sonnet-4-5", art: "claude-sonnet-4-5", qc: "claude-sonnet-4-5" },
+  // 13 oct: los más recientes disponibles para la clave (/api/dev?task=models). Haiku 5.5 basta para traducir y revisar.
+  anthropic: { plan: "claude-sonnet-5-5", art: "claude-haiku-5-5", qc: "claude-haiku-5-5" },
   openai: { plan: "gpt-4.1-mini", art: "gpt-4.1-mini", qc: "gpt-4.1-mini" },
 };
 
 /** Precio por millón de tokens (USD) de los modelos que usamos; sin precio conocido, coste 0 y sin estimar. */
 const PRICES: Record<string, { in: number; out: number }> = {
+  // platform.claude.com/docs/en/about-claude/pricing (13 oct 2026); Haiku 5.5 con prompts < 100k tokens
+  "claude-sonnet-5-5": { in: 2, out: 10 },
+  "claude-haiku-5-5": { in: 0.1, out: 0.5 },
+  "claude-opus-5-5": { in: 4, out: 20 },
   "claude-sonnet-4-5": { in: 3, out: 15 },
   "claude-haiku-4-5": { in: 1, out: 5 },
   "claude-opus-4-5": { in: 5, out: 25 },
@@ -67,8 +72,8 @@ class LlmError extends Error {
 
 const TIMEOUT_MS = 120_000;
 
-/** Modelos que no aceptan `temperature` (se rellena tras probarlos con /api/dev?task=ping). */
-const NO_TEMPERATURE: RegExp[] = [];
+/** Modelos que no aceptan `temperature` («`temperature` is deprecated for this model», /api/dev?task=ping, 13 oct). */
+const NO_TEMPERATURE: RegExp[] = [/^claude-(sonnet|haiku|opus|fable|mythos)-5/];
 function noTemperature(model: string): boolean {
   return NO_TEMPERATURE.some((re) => re.test(model));
 }

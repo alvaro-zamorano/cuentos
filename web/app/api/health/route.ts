@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { keyKind, serviceRoleKey } from "@/lib/supabase/admin";
+import { DEFAULT_MODEL, selectLlm } from "@/lib/llm";
 import { selectProvider } from "@/lib/story/provider";
 import { geminiModel } from "@/lib/generation/adapter";
 
@@ -34,10 +35,11 @@ export async function GET(req: Request) {
   const token = process.env.HEALTH_TOKEN?.trim();
   const deep = url.searchParams.get("deep") === "1" && (!prod || (!!token && url.searchParams.get("token") === token));
   const { provider, requested } = selectProvider();
-  const storyModel = process.env.STORY_MODEL || (provider.name === "anthropic" ? "claude-sonnet-4-5" : provider.name === "openai" ? "gpt-4.1-mini" : "mock");
+  const planLlm = selectLlm("plan");
+  const storyModel = planLlm.model;
   const imageProvider = process.env.GENERATION_PROVIDER || "dry-run";
   // la clave de Anthropic se comprueba aunque STORY_PROVIDER no la active todavía
-  const anthropicModel = provider.name === "anthropic" ? storyModel : process.env.STORY_MODEL || "claude-sonnet-4-5";
+  const anthropicModel = planLlm.name === "anthropic" ? planLlm.model : DEFAULT_MODEL.anthropic.plan;
   const out = {
     supabase: {
       url: has("NEXT_PUBLIC_SUPABASE_URL"),
@@ -48,7 +50,7 @@ export async function GET(req: Request) {
       similarNames: prod ? [] : Object.keys(process.env).filter((k) => /supabase|service|role/i.test(k) && k !== "NEXT_PUBLIC_SUPABASE_URL").sort(),
       check: "skipped" as Check,
     },
-    story: { requested, active: provider.name, model: storyModel, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },
+    story: { requested, active: provider.name, model: storyModel, artModel: selectLlm("art").model, qcModel: selectLlm("qc").model, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },
     anthropic: { model: anthropicModel, check: "skipped" as Check },
     images: { provider: imageProvider, geminiKey: has("GEMINI_API_KEY"), geminiModel: geminiModel(), check: "skipped" as Check },
   };
