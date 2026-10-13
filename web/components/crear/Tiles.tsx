@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- miniaturas estáticas de 240 px (WebP) que además se recolorean en canvas */
 
 import { useEffect, useState } from "react";
+import { Icon } from "@/components/brand";
 import { recolorPiece } from "@/lib/recolor";
 import type { Pick } from "@/lib/crearPicks";
 
@@ -26,8 +27,13 @@ function Tile({ pick, on, tall, tint, onClick }: { pick: Pick; on: boolean; tall
   const src = useTinted(pick.src, tint?.skin, tint?.hair);
   return (
     <button type="button" aria-pressed={on} className={`tile ${on ? "tile-on" : ""}`} onClick={onClick} data-pick={pick.id}>
-      <img src={src} alt="" loading="lazy" draggable={false} className={`w-full bg-white object-cover object-top ${tall ? "aspect-[3/4]" : "aspect-square"}`} />
+      <img src={src} alt="" loading="lazy" draggable={false} className={`w-full object-cover object-top ${tall ? "aspect-[3/4]" : "aspect-square"}`} />
       <span className="tile-label">{pick.label}</span>
+      {on && (
+        <span aria-hidden className="rise absolute top-1.5 right-1.5 grid h-6 w-6 place-items-center rounded-full bg-accent text-white shadow-[0_0_0_2px_#fff]">
+          <Icon.check size={13} />
+        </span>
+      )}
     </button>
   );
 }
