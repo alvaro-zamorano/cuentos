@@ -24,7 +24,7 @@ const LOCAL_CANDIDATES = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 ].filter((p): p is string => !!p);
 
-async function launch(): Promise<Browser> {
+export async function launch(): Promise<Browser> {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const t = Date.now();
     const chromium = (await import("@sparticuz/chromium-min")).default;

@@ -89,6 +89,7 @@ export async function GET(req: Request) {
       usage: r.usage,
       costCents: r.costCents,
       warnings: r.warnings,
+      firstIssues: r.firstIssues,
       title: p.title,
       dedication: p.dedication,
       tone: p.tone,

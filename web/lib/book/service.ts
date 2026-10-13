@@ -35,6 +35,8 @@ export interface BookDraftV2 {
   castArt?: CastArt;
   pagesArt?: PagesArt;
   approvedSheetJobId?: string;
+  /** Versión elegida de cada página (id del job); sin elegir, la última pintada de la escena actual. */
+  pageChoice?: Record<number, string>;
   updatedAt: number;
 }
 
@@ -278,6 +280,18 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
   return { ok: true };
 }
 
+/** El padre elige qué versión de una página va al libro. */
+export async function choosePage(store: GenStore, input: { bookId?: unknown; jobId?: unknown }): Promise<{ ok: true } | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  const { book, d } = loaded;
+  const job = (await store.listJobs(book.id)).find((j) => j.id === input.jobId && j.kind === "page" && v2Of(j));
+  if (!job || job.status !== "done" || !job.page_n) return fail(409, "page_not_ready");
+  d.pageChoice = { ...(d.pageChoice ?? {}), [job.page_n]: job.id };
+  await save(store, book, d);
+  return { ok: true };
+}
+
 /* ------------------------------ pago simulado ------------------------------ */
 
 export async function payDryRun(store: GenStore, input: { bookId?: unknown }): Promise<{ ok: true } | Fail> {
@@ -391,6 +405,8 @@ export interface BookView {
   approvedSheetJobId: string | null;
   sheetsLeft: number;
   jobs: BookJobView[];
+  /** Lo que va al libro: portada de la hoja aprobada (o la última) y la versión elegida de cada página. */
+  chosen: { sheet: string | null; cover: string | null; pages: Record<number, string | null> };
 }
 
 export async function bookView(store: GenStore, bookId: unknown): Promise<BookView | Fail> {
@@ -416,6 +432,15 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
       sheetJobId: sheetId,
     });
   }
+  const doneSheets = out.filter((j) => j.kind === "sheet" && j.status === "done");
+  const sheet = doneSheets.find((j) => j.id === d.approvedSheetJobId) ?? doneSheets[doneSheets.length - 1] ?? null;
+  const cover = sheet ? [...out].reverse().find((j) => j.kind === "cover" && j.status === "done" && j.sheetJobId === sheet.id) ?? null : null;
+  const pages: Record<number, string | null> = {};
+  for (let n = 1; n <= 12; n++) {
+    const options = out.filter((j) => j.kind === "page" && j.page === n && j.status === "done" && j.current);
+    const pick = options.find((j) => j.id === d.pageChoice?.[n]) ?? options[options.length - 1] ?? null;
+    pages[n] = pick?.id ?? null;
+  }
   return {
     ok: true,
     bookId: book.public_id,
@@ -425,5 +450,6 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     approvedSheetJobId: d.approvedSheetJobId ?? null,
     sheetsLeft: Math.max(0, MAX_SHEETS - sheets.length),
     jobs: out,
+    chosen: { sheet: sheet?.id ?? null, cover: cover?.id ?? null, pages },
   };
 }

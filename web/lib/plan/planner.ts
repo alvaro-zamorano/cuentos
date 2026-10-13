@@ -25,6 +25,8 @@ export interface PlanOk {
   usage: Usage;
   costCents: number | null;
   ms: number;
+  /** Motivos del primer intento cuando hubo corrección (diagnóstico; no se devuelve al cliente). */
+  firstIssues?: string[];
 }
 
 export interface PlanFail {
@@ -63,6 +65,7 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
   const messages: Message[] = [{ role: "user", content: plannerUser(f) }];
   let last: { plan: Plan; validation: PlanValidation; model: string } | null = null;
   let attempts = 0;
+  let firstIssues: string[] | undefined;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     attempts++;
@@ -94,7 +97,8 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
     const plan = normalizePlan(parsed, f);
     const validation = validatePlan(plan, f);
     last = { plan, validation, model };
-    if (validation.ok) break;
+    if (!needsFix(validation.issues)) break;
+    if (attempt === 0) firstIssues = msgs(validation.issues);
     messages.push({ role: "assistant", content: raw }, { role: "user", content: fixMessage(msgs(validation.issues)) });
   }
 
@@ -111,7 +115,13 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
     usage,
     costCents: llmCostCents(last.model, usage),
     ms,
+    firstIssues,
   };
+}
+
+/** ¿Merece otra vuelta? Lo grave sí; también si faltan detalles reales o hay nombres inventados. Longitudes, no. */
+function needsFix(issues: Issue[]): boolean {
+  return issues.some((i) => i.hard || /detalles reales|nombres propios/.test(i.msg));
 }
 
 /* ------------------------------ cambiar una página ------------------------------ */
