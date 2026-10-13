@@ -30,6 +30,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # los tipos de rutas (RouteContext, LayoutProps) los genera Next: primero typegen
+      - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npx eslint .
       - run: npm run test:unit
