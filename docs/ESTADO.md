@@ -6,7 +6,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 
 ## 1. Foco actual
 
-- **Ahora:** que Álvaro revise el estilo nuevo en la preview de su rama (`feat/estilo-hora-del-cuento`, PR hacia la rama de trabajo) y decida unirlo. Y que pueda recorrer la preview con imágenes reales y juzgar la UX y el recorrido. El código está subido y la preview funciona de punta a punta con las imágenes en modo sin coste. Falta una variable que solo puede poner él (§4, pregunta 1).
+- **Ahora:** que Álvaro revise el estilo nuevo en la preview de su rama (`feat/estilo-hora-del-cuento`, PR #2 hacia la rama de trabajo) y decida unirlo. Y que pueda recorrer la preview con imágenes reales y juzgar la UX y el recorrido. El código está subido y la preview funciona de punta a punta con las imágenes en modo sin coste. Falta una variable que solo puede poner él (§4, pregunta 1).
 - **Después:** claves de Stripe y Resend (B5), legales (E6), prueba con tres personas ajenas (B7) y salida a producción.
 - **Fuera de foco ahora:** tapa dura, más estilos de ilustración, el Reel (B6), el flujo antiguo (`/clasico`, `/ilustrado`, `/libro`, `/gratis`).
 
@@ -77,7 +77,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 9. **Marca comercial y dominio** (el PRD la deja pendiente).
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
-12. **¿Se une el PR del estilo a la rama de trabajo?** Álvaro, después de mirarlo en la preview de `feat/estilo-hora-del-cuento` en móvil y escritorio. Las maquetas del lienzo conservan Fraunces; la referencia es ya el código.
+12. **¿Se une el PR #2 (estilo) a la rama de trabajo?** Álvaro, después de mirarlo en la preview de `feat/estilo-hora-del-cuento` en móvil y escritorio. Las maquetas del lienzo conservan Fraunces; la referencia es ya el código.
 
 ## 5. Próxima sesión — empezar por
 
@@ -88,7 +88,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
 5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
 6. Con los datos legales: rellenar E6.
-7. Preguntar a Álvaro qué le parece el estilo en la preview de `feat/estilo-hora-del-cuento` (pregunta 12) y apuntarlo aquí. Si da el visto bueno, unir ese PR a la rama de trabajo; si la rama de trabajo ha avanzado, rebasar antes y repetir build y Playwright.
+7. Preguntar a Álvaro qué le parece el estilo en la preview de `feat/estilo-hora-del-cuento` (pregunta 12) y apuntarlo aquí. Si da el visto bueno, unir el PR #2 a la rama de trabajo; si la rama de trabajo ha avanzado, rebasar antes y repetir build y Playwright.
 8. Antes de unir el PR #1:
    - `CRON_SECRET` y `SITE_URL` en producción.
    - Quitar `/api/dev` si se decide.

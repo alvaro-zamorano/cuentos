@@ -27,7 +27,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `ILUSTRACION.md` — B3–B4: hoja, portada, páginas, control de calidad, PDF; prueba real y costes medidos · vigente
 - `PLANIFICADOR.md` — B1: de la ficha al plan del libro; evaluación con 10 fichas · vigente
 - `MUESTRA-LUNA.md` — el libro de muestra «Vera y Toby viajan a la Luna» · vigente
-- `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía (Lora + Figtree + Patrick Hand), cambios por paso e implementación · **aprobado e implementado** en la rama `feat/estilo-hora-del-cuento` (PR pendiente de unir)
+- `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía (Lora + Figtree + Patrick Hand), cambios por paso e implementación · **aprobado e implementado** en la rama `feat/estilo-hora-del-cuento` (PR #2, pendiente de unir)
 - `FASE0.md` — calibración inicial con Nano Banana, la base de D1–D6 · histórico
 - `ASSETS.md` — fondos y poses para el compositor de piezas · **superado por D1** (pendiente de retirar del Project)
 
