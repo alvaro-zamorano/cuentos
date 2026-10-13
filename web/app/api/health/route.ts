@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { serviceRoleKey } from "@/lib/supabase/admin";
+import { keyKind, serviceRoleKey } from "@/lib/supabase/admin";
 import { selectProvider } from "@/lib/story/provider";
 import { geminiModel } from "@/lib/generation/adapter";
 
@@ -38,6 +38,8 @@ export async function GET(req: Request) {
     supabase: {
       url: has("NEXT_PUBLIC_SUPABASE_URL"),
       serviceRole: Boolean(serviceRoleKey()),
+      // "secret" o "jwt:service_role" es lo correcto; "publishable"/"jwt:anon" = se pegó la clave pública
+      serviceRoleKind: keyKind(serviceRoleKey()),
       // solo NOMBRES de variables parecidas (nunca valores), para detectar erratas en Vercel
       similarNames: Object.keys(process.env).filter((k) => /supabase|service|role/i.test(k) && k !== "NEXT_PUBLIC_SUPABASE_URL").sort(),
       check: "skipped" as Check,
