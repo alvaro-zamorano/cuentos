@@ -53,11 +53,12 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Imágenes en el formulario (Álvaro):** el paso 2 era difícil de rellenar sin ver qué se elegía. Hecho: 35 miniaturas (275 KB en total). Al elegir piel y color de pelo, los peinados se repintan. Comprobado con capturas en móvil y escritorio y con un test nuevo en Playwright. En las gafas no se repinta el pelo, porque el repintado teñía también las monturas marrones.
 - **Aviso «Pintando las páginas»:** se quedaba unos segundos con el libro ya completo. Arreglado.
 - **Recorrido completo en la preview por la interfaz** (textos reales, imágenes sin coste): de la idea al PDF en 47 s con el cuento en caché, sin errores. Un cuento nuevo tarda 26 s.
+- **Nano Banana en la preview, por la interfaz:** del paso 1 al 4 con imágenes reales. La hoja tardó 45 s y la portada 81 s desde el email; las dos están bien y no hubo errores. Gasto ≈ 0,11 $ (el cuento estaba en caché). `GENERATION_PROVIDER` admite ahora también «gemini» y «nano-banana»: con un valor distinto de `gemini-images`, las rutas de imágenes daban 503. El libro pagado con imágenes reales y el segundo plano todavía no se han probado: lo hará Álvaro.
 - **Gasto de pruebas de esta noche:** ≈ 0,30 $ (3 planes con Sonnet, una hoja con Gemini que se repitió por el control de calidad, varias llamadas a Haiku).
 
 ## 4. Preguntas abiertas (priorizadas)
 
-1. **Imágenes reales en la preview:** poner `GENERATION_PROVIDER=gemini-images` en Vercel → Environment Variables → Preview, rama `feat/fase-1-journey-clasico`, y volver a desplegar. **Álvaro**: el acceso de Claude a Vercel da 403 al crear variables y esta sesión no está enlazada a su ordenador.
+1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
 2. **Stripe y Resend:** claves y dominio de envío (pasos en `PAGO.md`). Álvaro.
 3. **Legales (E6):** datos del responsable para privacidad, condiciones y aviso legal (21 campos `Pending`). Falta también fijar el plazo de los emails de leads sin consentimiento de marketing (E18). Álvaro.
 4. **Fiscal:** IVA aplicable y facturas, antes de cobrar. Álvaro con su gestoría.
@@ -73,8 +74,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. Preguntar a Álvaro qué le parece el paso 2 con imágenes en la preview y apuntarlo aquí.
 3. `curl https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/health` y mirar:
-   - Si `images.provider` es `gemini-images`: hacer **un** libro completo por la interfaz (≈ 1 $), revisar la UX con imágenes reales en móvil y escritorio, y anotar aquí lo que se vea.
-   - Si sigue en `dry-run`: recordar a Álvaro la pregunta 1.
+   - `images.provider` debe ser `gemini-images`. Comprobar que el libro pagado de prueba de Álvaro (12 páginas con imágenes reales y segundo plano) terminó bien; si no, mirar los logs de Vercel. Anotar aquí lo que se vea de la UX.
 4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
 5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
 6. Con los datos legales: rellenar E6.
