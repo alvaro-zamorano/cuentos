@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { keyKind, serviceRoleKey } from "@/lib/supabase/admin";
 import { DEFAULT_MODEL, selectLlm } from "@/lib/llm";
 import { selectProvider } from "@/lib/story/provider";
-import { geminiModel } from "@/lib/generation/adapter";
+import { geminiModel, providerName } from "@/lib/generation/adapter";
 import { mailEnabled } from "@/lib/mail";
 import { paymentMode } from "@/lib/stripe";
 
@@ -39,7 +39,8 @@ export async function GET(req: Request) {
   const { provider, requested } = selectProvider();
   const planLlm = selectLlm("plan");
   const storyModel = planLlm.model;
-  const imageProvider = process.env.GENERATION_PROVIDER || "dry-run";
+  // nombre canónico («gemini» y «nano-banana» cuentan como gemini-images); uno desconocido sale tal cual y las rutas dan 503
+  const imageProvider = providerName();
   // la clave de Anthropic se comprueba aunque STORY_PROVIDER no la active todavía
   const anthropicModel = planLlm.name === "anthropic" ? planLlm.model : DEFAULT_MODEL.anthropic.plan;
   const out = {

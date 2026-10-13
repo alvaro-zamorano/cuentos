@@ -155,3 +155,12 @@ test("el email que falla no se da por mandado", async () => {
   assert.equal(await notifyBookReady(store, start.bookId, link, async () => ({ sent: false })), false);
   assert.equal(await notifyBookReady(store, start.bookId, link, async () => ({ sent: true })), true, "se reintenta la siguiente vez");
 });
+
+test("GENERATION_PROVIDER: «gemini» y «nano-banana» son Nano Banana (gemini-images); lo desconocido falla", async () => {
+  const { getAdapter, providerName, estimatedCostCents } = await import("../../lib/generation/adapter");
+  for (const v of ["gemini-images", "gemini", "Gemini", " nano-banana ", "nanobanana"]) assert.equal(getAdapter(v).name, "gemini-images", v);
+  assert.equal(getAdapter(undefined).name, process.env.GENERATION_PROVIDER ? providerName() : "dry-run");
+  assert.equal(getAdapter("").name, "dry-run");
+  assert.equal(estimatedCostCents("gemini", "2K"), 6, "el alias no puede saltarse el coste");
+  assert.throws(() => getAdapter("midjourney"), /desconocido/);
+});

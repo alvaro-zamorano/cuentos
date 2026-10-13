@@ -1,9 +1,10 @@
 /**
  * Adaptador de generación de imágenes (RF-9). Interfaz única, implementaciones sustituibles.
- * Selección por GENERATION_PROVIDER: "dry-run" (por defecto, sin coste) | "gemini-images" | "openai-images".
+ * Selección por GENERATION_PROVIDER: "dry-run" (por defecto, sin coste) | "gemini-images" (Nano Banana por la API de
+ * Gemini; también vale "gemini" o "nano-banana") | "openai-images".
  *
- * IMPORTANTE: gemini-images y openai-images hacen llamadas de pago. Solo se ejecutan desde el worker del
- * Mac Mini o desde scripts/fase0.mjs, con la clave en el entorno. Nunca desde el cliente.
+ * IMPORTANTE: gemini-images y openai-images hacen llamadas de pago. Se ejecutan en el servidor (rutas /api/libro/*,
+ * /api/generate/run, segundo plano con after()), con la clave en el entorno. Nunca desde el cliente.
  * Las funciones build*Request construyen la petición sin enviarla (se testean sin red).
  */
 import { sheetPrompt, scenePrompt } from "./prompts";
@@ -67,6 +68,23 @@ export interface GenerationAdapter {
 
 export const MAX_REFS = 3;
 
+const PROVIDER_ALIASES: Record<string, string> = {
+  "": "dry-run",
+  dryrun: "dry-run",
+  gemini: "gemini-images",
+  "gemini-image": "gemini-images",
+  "nano-banana": "gemini-images",
+  nanobanana: "gemini-images",
+  "nano banana": "gemini-images",
+  openai: "openai-images",
+};
+
+/** Nombre canónico del proveedor a partir de GENERATION_PROVIDER (admite «gemini», «nano-banana», mayúsculas…). */
+export function providerName(raw: string | undefined = process.env.GENERATION_PROVIDER): string {
+  const v = (raw ?? "dry-run").trim().toLowerCase();
+  return PROVIDER_ALIASES[v] ?? v;
+}
+
 /** Coste estimado por imagen en céntimos por proveedor si GENERATION_COST_CENTS_PER_IMAGE no está definida. */
 export const DEFAULT_COST_CENTS: Record<string, number> = { "gemini-images": 4, "openai-images": 8, "dry-run": 0 };
 
@@ -84,7 +102,8 @@ export const COST_CENTS_BY_SIZE: Record<string, Record<ImageSize, number>> = {
  * Coste estimado por imagen en céntimos. Con resolución (flujo nuevo), la tabla por tamaño. Sin ella (flujo antiguo),
  * GENERATION_COST_CENTS_PER_IMAGE si está definida y, si no, el valor por defecto del proveedor (gemini 4, openai 8).
  */
-export function estimatedCostCents(provider = process.env.GENERATION_PROVIDER ?? "dry-run", size?: ImageSize): number {
+export function estimatedCostCents(providerIn: string = providerName(), size?: ImageSize): number {
+  const provider = providerName(providerIn);
   // flujo nuevo: la resolución manda (la variable antigua es una tarifa plana del flujo de piezas)
   if (size && COST_CENTS_BY_SIZE[provider]) return COST_CENTS_BY_SIZE[provider][size];
   const raw = process.env.GENERATION_COST_CENTS_PER_IMAGE;
@@ -367,7 +386,8 @@ export const geminiImagesAdapter: GenerationAdapter = {
   },
 };
 
-export function getAdapter(provider = process.env.GENERATION_PROVIDER ?? "dry-run"): GenerationAdapter {
+export function getAdapter(raw: string | undefined = process.env.GENERATION_PROVIDER): GenerationAdapter {
+  const provider = providerName(raw);
   if (provider === "gemini-images") return geminiImagesAdapter;
   if (provider === "openai-images") return openAIImagesAdapter;
   if (provider === "dry-run") return dryRunAdapter;
