@@ -2,7 +2,12 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { selectLlm, type Llm } from "@/lib/llm";
 import { EVAL_CASES } from "@/lib/plan/evalCases";
+import { bookView, payDryRun, requestPages, reviseSheet, startBook } from "@/lib/book/service";
+import { dryRunAdapter, geminiImagesAdapter } from "@/lib/generation/adapter";
+import { runJob } from "@/lib/generation/service";
+import { supabaseStore } from "@/lib/generation/store";
 import { normalizeFicha } from "@/lib/plan/ficha";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { planBook } from "@/lib/plan/planner";
 import { plannerSystem, plannerUser } from "@/lib/plan/prompt";
 
@@ -13,6 +18,12 @@ import { plannerSystem, plannerUser } from "@/lib/plan/prompt";
  *   GET /api/dev?task=models               ids de los modelos de Anthropic disponibles para la clave
  *   GET /api/dev?task=plan&case=1..10      planificador con una ficha de lib/plan/evalCases.ts (de pago: ~5 c)
  *        &model=claude-…                   otro modelo para comparar (solo ids claude-* o gpt-*)
+ *   GET /api/dev?task=b3start&case=N       plan + hoja y portada encoladas con Gemini (email prueba-b3-N@cuentos.test)
+ *   GET /api/dev?task=run&job=<id>         pinta un job con Gemini (de pago: 4–6 c), con control de calidad
+ *   GET /api/dev?task=view&b=<id>          estado, URLs firmadas, coste y control de calidad de cada job
+ *   GET /api/dev?task=revise&b=<id>&ask=…  cambio de la hoja con palabras
+ *   GET /api/dev?task=pages&b=<id>[&page=] pago de prueba + páginas encoladas (o otra versión de una)
+ * Gemini aquí no depende de GENERATION_PROVIDER: así se prueba sin activar el gasto en la interfaz.
  */
 export const maxDuration = 300;
 
@@ -102,5 +113,51 @@ export async function GET(req: Request) {
     });
   }
 
-  return NextResponse.json({ ok: false, error: "task=models|plan" }, { status: 400 });
+  /* ---------- B3 de verdad (Gemini) sin depender de GENERATION_PROVIDER: hoja + portada de una ficha de prueba ---------- */
+  if (task === "b3start" || task === "run" || task === "view" || task === "revise" || task === "pages") {
+    const db = supabaseAdmin();
+    if (!db) return NextResponse.json({ ok: false, error: "sin supabase" }, { status: 503 });
+    const store = supabaseStore(db);
+    const adapter = url.searchParams.get("provider") === "dry-run" ? dryRunAdapter : geminiImagesAdapter;
+    if (task === "b3start") {
+      const i = Number(url.searchParams.get("case")) - 1;
+      const ficha = EVAL_CASES[i];
+      if (!ficha) return NextResponse.json({ ok: false, error: "case 1..10" }, { status: 400 });
+      const plan = await planBook(ficha, selectLlm("plan"));
+      if (!plan.ok) return NextResponse.json(plan);
+      const r = await startBook(store, { email: `prueba-b3-${i + 1}@cuentos.test`, ficha, plan: plan.record.plan, planMeta: { provider: plan.record.provider, model: plan.record.model } }, adapter);
+      return NextResponse.json({ ...r, planMs: plan.ms, planCents: plan.costCents, title: plan.record.plan.title });
+    }
+    if (task === "run") {
+      const r = await runJob(store, url.searchParams.get("job"), adapter);
+      return NextResponse.json(r.ok ? { ok: true, ran: r.ran, status: r.job.status, error: r.job.error, cost: r.job.cost_cents, candidates: r.job.candidates } : r);
+    }
+    if (task === "revise") {
+      return NextResponse.json(await reviseSheet(store, { bookId: url.searchParams.get("b"), instruction: url.searchParams.get("ask") }, adapter));
+    }
+    if (task === "pages") {
+      const b = url.searchParams.get("b");
+      const book = b ? await store.findBook({ publicId: b }) : null;
+      if (book && !(await store.hasPaidOrder(book.id))) await payDryRun(store, { bookId: b });
+      return NextResponse.json(await requestPages(store, { bookId: b, page: url.searchParams.get("page") ?? undefined }, adapter, { dryRunPayment: false }));
+    }
+    const v = await bookView(store, url.searchParams.get("b"));
+    if (!v.ok) return NextResponse.json(v);
+    const book = await store.findBook({ publicId: v.bookId });
+    const raw = book ? await store.listJobs(book.id) : [];
+    const draft = book?.raw as { castArt?: unknown } | undefined;
+    return NextResponse.json({
+      ok: true,
+      bookId: v.bookId,
+      title: v.plan.title,
+      castArt: draft?.castArt,
+      chosen: v.chosen,
+      jobs: v.jobs.map((j) => {
+        const r = raw.find((x) => x.id === j.id);
+        return { id: j.id, kind: j.kind, page: j.page, variant: j.variant, status: j.status, url: j.url, cost: r?.cost_cents, error: r?.error, candidates: r?.candidates, prompt: url.searchParams.get("prompts") ? r?.prompt : undefined };
+      }),
+    });
+  }
+
+  return NextResponse.json({ ok: false, error: "task=models|ping|raw|plan|b3start|run|view|revise|pages" }, { status: 400 });
 }
