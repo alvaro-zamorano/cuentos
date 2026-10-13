@@ -9,14 +9,18 @@ import { geminiModel } from "@/lib/generation/adapter";
  *   Supabase: un count sobre cuentos_books · Anthropic: ficha del modelo configurado · Gemini: ficha del modelo de imagen.
  * Respuesta de cada comprobación: "ok", el código HTTP del proveedor o "error".
  */
-type Check = "ok" | "skipped" | "error" | number;
+type Check = "ok" | "skipped" | "error" | number | { status: number; type?: string; message?: string };
 
 const has = (k: string) => Boolean(process.env[k]?.trim());
 
 async function status(url: string, headers: Record<string, string>): Promise<Check> {
   try {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(6000), cache: "no-store" });
-    return res.ok ? "ok" : res.status;
+    if (res.ok) return "ok";
+    // tipo y mensaje del error del proveedor (nunca incluyen la clave), recortados
+    const body = (await res.json().catch(() => null)) as { error?: { type?: string; status?: string; message?: string } } | null;
+    const e = body?.error;
+    return { status: res.status, type: e?.type ?? e?.status, message: e?.message?.slice(0, 200) };
   } catch {
     return "error";
   }
