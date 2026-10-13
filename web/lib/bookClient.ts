@@ -16,10 +16,14 @@ export async function postJson<T = Record<string, unknown>>(url: string, body: u
   return { status: res.status, json };
 }
 
-/** Pinta un job: llama a /api/generate/run hasta que termina. */
-export async function runJob(jobId: string, signal?: { cancelled: boolean }): Promise<JobOutcome> {
+/**
+ * Pinta un job: llama a /api/generate/run hasta que termina. Si lo está pintando el servidor en segundo plano (o otra
+ * pestaña), espera a que acabe: hasta 6 minutos en total (una imagen con su repetición tarda ~1–2 min).
+ */
+export async function runJob(jobId: string, signal?: { cancelled: boolean }, maxMs = 6 * 60_000): Promise<JobOutcome> {
   let networkErrors = 0;
-  for (let i = 0; i < 12; i++) {
+  const until = Date.now() + maxMs;
+  while (Date.now() < until) {
     if (signal?.cancelled) return "error";
     let r: { status: number; json: { job?: { status?: string }; error?: string } };
     try {
@@ -92,6 +96,12 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return "Revisa el email.";
     case "payment_unavailable":
       return "El pago todavía no está disponible.";
+    case "already_paid":
+      return "Este libro ya está pagado. Recarga la página.";
+    case "stripe":
+      return "No hemos podido abrir el pago. Inténtalo de nuevo en un momento.";
+    case "not_paid":
+      return "El pago aún no nos ha llegado. Recarga la página en un momento.";
     case "storage_unavailable":
       return "Ahora mismo no podemos guardar el libro. Inténtalo más tarde.";
     default:

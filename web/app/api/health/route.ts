@@ -4,6 +4,8 @@ import { keyKind, serviceRoleKey } from "@/lib/supabase/admin";
 import { DEFAULT_MODEL, selectLlm } from "@/lib/llm";
 import { selectProvider } from "@/lib/story/provider";
 import { geminiModel } from "@/lib/generation/adapter";
+import { mailEnabled } from "@/lib/mail";
+import { paymentMode } from "@/lib/stripe";
 
 /**
  * GET /api/health — qué configuración tiene este despliegue. Nunca devuelve valores, solo si existen.
@@ -53,7 +55,10 @@ export async function GET(req: Request) {
     story: { requested, active: provider.name, model: storyModel, artModel: selectLlm("art").model, qcModel: selectLlm("qc").model, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },
     anthropic: { model: anthropicModel, check: "skipped" as Check },
     images: { provider: imageProvider, geminiKey: has("GEMINI_API_KEY"), geminiModel: geminiModel(), check: "skipped" as Check },
-    payment: { dryRun: process.env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1", stripe: has("STRIPE_SECRET_KEY") },
+    // mode: "stripe" con STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET; "dry-run" nunca en producción
+    payment: { mode: paymentMode(), dryRun: process.env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1", stripeKey: has("STRIPE_SECRET_KEY"), stripeWebhookSecret: has("STRIPE_WEBHOOK_SECRET") },
+    mail: { enabled: mailEnabled(), resendKey: has("RESEND_API_KEY"), from: has("MAIL_FROM"), siteUrl: has("SITE_URL") },
+    background: process.env.BACKGROUND_PAINT !== "0",
   };
 
   if (deep) {

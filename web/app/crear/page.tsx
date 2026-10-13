@@ -38,6 +38,7 @@ function Crear() {
   const s = useCrear();
   const params = useSearchParams();
   const b = params.get("b");
+  const pagado = params.get("pagado") === "1";
   const [recovering, setRecovering] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -55,15 +56,15 @@ function Crear() {
       }
       setCrear((prev) => ({
         v: 2,
-        step: v.paid || v.approvedSheetJobId ? 5 : 4,
+        step: v.paid || v.approvedSheetJobId || pagado ? 5 : 4,
         ficha: v.ficha,
         record: { plan: v.plan, provider: "guardado", model: "", fichaHash: fichaHash(v.ficha), createdAt: Date.now() },
         bookId: v.bookId,
         email: prev.email,
       }));
-      setNotice("Libro recuperado.");
+      setNotice(pagado ? null : "Libro recuperado.");
     });
-  }, [b]);
+  }, [b, pagado]);
 
   // tras el email, los textos editados se guardan en el libro (con un respiro entre teclas)
   const plan = s?.record?.plan;
@@ -146,7 +147,7 @@ function Crear() {
             onNext={() => go(5)}
           />
         )}
-        {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} onBack={() => go(4)} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
+        {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} onBack={() => go(4)} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
       </div>
     </main>
   );

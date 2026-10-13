@@ -74,6 +74,9 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
   await expect(page.getByTestId("cover")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
   await expect(page.getByTestId("free-pdf")).toBeVisible();
+  // el enlace para volver se enseña en pantalla (y va por email si Resend está configurado; aquí no)
+  await expect(page.getByTestId("book-link")).toContainText("/crear?b=");
+  await expect(page.getByTestId("book-link")).toContainText("Guárdalo.");
 
   // un cambio con palabras: hoja y portada nuevas
   await page.getByPlaceholder(/más rizos/).fill("más rizos");
@@ -94,6 +97,11 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   expect(kinds).toEqual({ sheet: 2, cover: 2, page: 12 });
   const sheet2 = (view.jobs as { id: string; kind: string; variant: number }[]).find((j) => j.kind === "sheet" && j.variant === 2)!;
   expect(view.approvedSheetJobId).toBe(sheet2.id);
+  expect(view.payment).toBe("dry-run");
+
+  // sin claves de Stripe: ni checkout ni webhook
+  expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
+  expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);
 
   // PDF del libro: portada, dedicatoria, 12 páginas y «Fin» (15 A4 verticales)
   const res = await page.request.get(`/api/libro/pdf?b=${bookId}&kind=full`);

@@ -37,6 +37,8 @@ export interface BookDraftV2 {
   approvedSheetJobId?: string;
   /** Versión elegida de cada página (id del job); sin elegir, la última pintada de la escena actual. */
   pageChoice?: Record<number, string>;
+  /** Email de «tu libro está listo» enviado (una vez). */
+  readyMailedAt?: number;
   updatedAt: number;
 }
 
@@ -142,6 +144,10 @@ export interface StartResult {
   created: number;
   /** Jobs fallidos que se han vuelto a poner en cola (un intento más). */
   reopened?: number;
+  /** Primera hoja de este libro: se manda el email con el enlace para volver. */
+  fresh?: boolean;
+  email?: string;
+  title?: string;
 }
 
 /** Guarda ficha + plan con el email, prepara la dirección de arte del reparto y encola hoja + portada (una vez). */
@@ -172,6 +178,7 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
     castArt: prev?.castArt,
     pagesArt: prev?.pagesArt,
     approvedSheetJobId: prev?.approvedSheetJobId,
+    readyMailedAt: prev?.readyMailedAt,
     updatedAt: Date.now(),
   };
   book = await store.saveBook({ publicId: book?.public_id, email, draft: d, edition: "illustrated" });
@@ -211,7 +218,7 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   await store.insertJobs([coverRow(book, d, variant, sheet.id)]);
   const cover = coverJobs(await store.listJobs(book.id)).find((c) => sheetRefOf(c) === sheet.id);
   if (!cover) return fail(500, "db");
-  return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 2 };
+  return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 2, fresh: variant === 1, email, title: plan.title };
 }
 
 /** Comprueba que `cents` caben en el tope del lead y del día. */
@@ -303,8 +310,69 @@ export async function choosePage(store: GenStore, input: { bookId?: unknown; job
 export async function payDryRun(store: GenStore, input: { bookId?: unknown }): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  if (!(await store.hasPaidOrder(loaded.book.id))) await store.addPaidOrder(loaded.book.id, { amountCents: PRICE_CENTS, edition: "illustrated", sessionId: "dry-run" });
+  if (!(await store.hasPaidOrder(loaded.book.id))) await store.addPaidOrder(loaded.book.id, { amountCents: PRICE_CENTS, edition: "illustrated", sessionId: `dry-run:${loaded.book.public_id}` });
   return { ok: true };
+}
+
+/* ------------------------------ pago con Stripe (webhook) ------------------------------ */
+
+export interface PaidEvent {
+  type: string;
+  data: { object: { id?: string; payment_status?: string; amount_total?: number | null; metadata?: Record<string, string> | null; client_reference_id?: string | null } };
+}
+
+export type PaymentOutcome =
+  | { action: "paid"; bookId: string }
+  | { action: "duplicate"; bookId: string }
+  | { action: "ignored"; reason: string };
+
+/**
+ * Registra el pedido de un `checkout.session.completed` (o `async_payment_succeeded`) ya verificado.
+ * Idempotente: la misma sesión dos veces (Stripe reintenta) no crea otro pedido.
+ */
+export async function recordStripePayment(store: GenStore, event: PaidEvent): Promise<PaymentOutcome> {
+  if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return { action: "ignored", reason: event.type };
+  const s = event.data?.object ?? {};
+  if (s.payment_status !== "paid") return { action: "ignored", reason: `payment_status:${s.payment_status ?? "?"}` };
+  const bookId = s.metadata?.bookId ?? s.client_reference_id ?? null;
+  const loaded = await loadBook(store, bookId);
+  if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
+  if (await store.hasPaidOrder(loaded.book.id)) return { action: "duplicate", bookId: loaded.book.public_id };
+  await store.addPaidOrder(loaded.book.id, { amountCents: typeof s.amount_total === "number" ? s.amount_total : PRICE_CENTS, edition: "illustrated", sessionId: s.id ?? null });
+  return { action: "paid", bookId: loaded.book.public_id };
+}
+
+/** Datos para el pago: el libro existe, tiene email y aún no está pagado. */
+export async function checkoutInfo(store: GenStore, bookId: unknown): Promise<{ ok: true; bookId: string; email: string | null; title: string } | Fail> {
+  const loaded = await loadBook(store, bookId);
+  if (isFail(loaded)) return loaded;
+  if (await store.hasPaidOrder(loaded.book.id)) return fail(409, "already_paid");
+  return { ok: true, bookId: loaded.book.public_id, email: loaded.book.email, title: loaded.d.plan.title };
+}
+
+/**
+ * Cuando las 12 páginas están pintadas, manda una vez el email de «tu libro está listo» (el envío se inyecta: Resend en
+ * la ruta, un doble en los tests). Devuelve si lo ha mandado.
+ */
+export async function notifyBookReady(store: GenStore, bookId: string, link: (id: string) => string, send: (to: string, title: string, link: string) => Promise<{ sent: boolean }>): Promise<boolean> {
+  const loaded = await loadBook(store, bookId);
+  if (isFail(loaded)) return false;
+  const { book, d } = loaded;
+  if (d.readyMailedAt || !book.email) return false;
+  const view = await bookView(store, bookId);
+  if (!view.ok || !view.paid || !Object.values(view.chosen.pages).every(Boolean)) return false;
+  const r = await send(book.email, d.plan.title, link(book.public_id));
+  if (!r.sent) return false;
+  const fresh = draftV2((await store.findBook({ publicId: bookId })) ?? book) ?? d;
+  await save(store, book, { ...fresh, readyMailedAt: Date.now() });
+  return true;
+}
+
+/** Ids de las páginas que esperan a pintarse (para el segundo plano). */
+export async function pendingPageJobs(store: GenStore, bookId: string): Promise<string[]> {
+  const book = await store.findBook({ publicId: bookId });
+  if (!book) return [];
+  return (await store.listJobs(book.id)).filter((j) => j.kind === "page" && v2Of(j) && j.status === "pending").sort((a, b) => (a.page_n ?? 0) - (b.page_n ?? 0)).map((j) => j.id);
 }
 
 /* ------------------------------ tras el pago: páginas ------------------------------ */
@@ -347,7 +415,7 @@ export async function requestPages(
   const { d } = loaded;
   if (!(await store.hasPaidOrder(book.id)) && !dryRunPayment) return fail(402, "not_paid");
   if (!d.castArt) return fail(409, "no_sheet");
-  const jobs = await store.listJobs(book.id);
+  let jobs = await store.listJobs(book.id);
   const sheets = sheetJobs(jobs).filter((j) => j.status === "done");
   const sheet = sheets.find((j) => j.id === d.approvedSheetJobId) ?? sheets[sheets.length - 1];
   if (!sheet) return fail(409, "sheet_not_ready");
@@ -357,6 +425,9 @@ export async function requestPages(
     const r = await pagesArt(d.ficha, d.plan, d.castArt, llm);
     d.pagesArt = r.art;
     book = await save(store, book, d);
+    // la dirección de arte tarda: si otra petición (el webhook del pago y el navegador a la vez) ya ha encolado las
+    // páginas mientras, se ven aquí y no se pintan dos veces
+    jobs = await store.listJobs(book.id);
   }
 
   const wanted: NewJob[] = [];
@@ -420,6 +491,10 @@ export interface BookView {
   jobs: BookJobView[];
   /** Lo que va al libro: portada de la hoja aprobada (o la última) y la versión elegida de cada página. */
   chosen: { sheet: string | null; cover: string | null; pages: Record<number, string | null> };
+  /** Los pone la ruta /api/libro/view: cómo se paga aquí, si se mandan emails y si se pinta en segundo plano. */
+  payment?: "stripe" | "dry-run" | "none";
+  mail?: boolean;
+  background?: boolean;
 }
 
 export async function bookView(store: GenStore, bookId: unknown): Promise<BookView | Fail> {

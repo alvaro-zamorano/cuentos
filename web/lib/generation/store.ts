@@ -206,7 +206,8 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
     },
     async addPaidOrder(bookId, { amountCents, edition, sessionId }) {
       const { error } = await db.from("cuentos_orders").insert({ book_id: bookId, amount_cents: amountCents, edition, status: "paid", stripe_session_id: sessionId ?? null });
-      if (error) throw new Error(`orders: ${error.message}`);
+      // la misma sesión de Stripe dos veces (reintento del webhook): ya está registrada
+      if (error && error.code !== "23505") throw new Error(`orders: ${error.message}`);
     },
   };
 }

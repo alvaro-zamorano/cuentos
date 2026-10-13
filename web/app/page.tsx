@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { DRY_RUN_PAYMENT } from "@/lib/flags";
+import { paymentMode } from "@/lib/stripe";
 import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
 
@@ -26,7 +26,8 @@ const EDITIONS = [
     name: "Ilustrado · PDF",
     price: PRICE_ILLUSTRATED,
     body: "Las doce páginas ilustradas con tus personajes. Revisas cada una y tienes una versión más de cada ilustración incluida.",
-    status: DRY_RUN_PAYMENT ? "Disponible en prueba" : "Muy pronto",
+    // se fija al construir la página (estática): Stripe configurado → disponible
+    status: { stripe: "Disponible", "dry-run": "Disponible en prueba", none: "Muy pronto" }[paymentMode()],
   },
   { name: "Tapa dura", price: PRICE_HARDCOVER, body: "El libro ilustrado, impreso y encuadernado, enviado a tu casa.", status: "Próximamente" },
 ];

@@ -2,18 +2,34 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookJobView, BookView } from "@/lib/book/service";
-import { errorMessage, fetchView, postJson, runJobs } from "@/lib/bookClient";
-import { DRY_RUN_PAYMENT } from "@/lib/flags";
+import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
 import { PRICE_ILLUSTRATED } from "@/lib/pricing";
 import type { Plan, PlanPage } from "@/lib/plan/types";
 import { AutoTextarea } from "./AutoTextarea";
 import { BookImage } from "./BookImage";
+import { BookLink } from "./BookLink";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isPage = (j: BookJobView) => j.kind === "page";
+const inFlight = (j: BookJobView) => j.status === "pending" || j.status === "running";
+
+/** Alguna página no tiene una ilustración de su escena actual hecha o en marcha: hay que pedirla. */
+function needsRequest(v: BookView): boolean {
+  return v.plan.pages.some((p) => !v.jobs.some((j) => isPage(j) && j.page === p.n && j.current && j.status !== "failed"));
+}
+
+function paintingCopy(v: BookView | null): string {
+  if (!v?.background) return "Pintando las páginas: tarda unos minutos. Deja esta pestaña abierta hasta que terminen.";
+  return `Pintando las páginas: tarda unos minutos. Puedes cerrar esta pestaña: seguimos pintando${v.mail ? " y te avisamos por email cuando esté" : ""}, y con tu enlace vuelves al libro.`;
+}
 
 /**
  * Paso 5: el libro. Antes del pago, la portada y las 12 páginas veladas con el precio. Tras el pago, las 12
- * ilustraciones (tres a la vez), revisión página a página con una versión más incluida, y el PDF.
+ * ilustraciones (el servidor las pinta en segundo plano y el navegador, si sigue abierto, también tira de ellas),
+ * revisión página a página con una versión más incluida, y el PDF.
+ * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
-export function StepBook({ bookId, onBack, onPlan }: { bookId: string; onBack: () => void; onPlan: (p: Plan) => void }) {
+export function StepBook({ bookId, confirming = false, onBack, onPlan }: { bookId: string; confirming?: boolean; onBack: () => void; onPlan: (p: Plan) => void }) {
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +47,25 @@ export function StepBook({ bookId, onBack, onPlan }: { bookId: string; onBack: (
     return v;
   }, [bookId]);
 
+  /** Tira de las páginas en cola o pintándose hasta que terminan. */
+  const drive = useCallback(
+    async (label?: string) => {
+      const v = await refresh();
+      const ids = (v?.jobs ?? []).filter((j) => isPage(j) && inFlight(j)).map((j) => j.id);
+      if (ids.length === 0) return;
+      setBusy(label ?? paintingCopy(v));
+      const outcomes: JobOutcome[] = [];
+      await runJobs(ids, 3, (_, o) => {
+        outcomes.push(o);
+        void refresh();
+      }, cancel.current);
+      await refresh();
+      setBusy(null);
+      if (outcomes.includes("budget")) setError(errorMessage({ error: "budget", reason: "diario" }));
+    },
+    [refresh],
+  );
+
   const paintPages = useCallback(
     async (body: { page?: number } = {}) => {
       setError(null);
@@ -41,32 +76,48 @@ export function StepBook({ bookId, onBack, onPlan }: { bookId: string; onBack: (
         setError(errorMessage(r.json));
         return;
       }
-      await refresh();
-      const pending = r.json.jobs;
-      if (!body.page) setBusy(`Pintando las páginas: tarda unos minutos. Puedes cerrar esta pestaña; el libro te espera en el enlace del email.`);
-      // las que ya existían a medias también se terminan
-      const v = await fetchView(bookId);
-      const resume = (v?.jobs ?? []).filter((j) => j.kind === "page" && (j.status === "pending" || j.status === "running") && !pending.includes(j.id)).map((j) => j.id);
-      await runJobs([...pending, ...resume], 3, () => void refresh(), cancel.current);
-      await refresh();
+      await drive(body.page ? `Pintando otra versión de la página ${body.page}…` : undefined);
       setBusy(null);
     },
-    [bookId, refresh],
+    [bookId, drive],
   );
 
   const started = useRef(false);
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    const c = cancel.current;
     void (async () => {
-      const v = await refresh();
-      // pagado y con páginas por pintar (primera vez o pestaña cerrada a medias)
-      if (v?.paid) {
-        const missing = Object.values(v.chosen.pages).some((id) => !id) || v.jobs.some((j) => j.kind === "page" && (j.status === "pending" || j.status === "running"));
-        if (missing) await paintPages();
+      let v = await refresh();
+      if (!v) return;
+      if (!v.paid && confirming) {
+        // vuelta de Stripe: el webhook registra el pago en unos segundos
+        setBusy("Confirmando el pago…");
+        for (let i = 0; i < 40 && !v.paid && !c.cancelled; i++) {
+          await sleep(3000);
+          v = (await refresh()) ?? v;
+        }
+        setBusy(null);
+        if (!v.paid) {
+          setError("El pago aún no nos ha llegado. Si ya se ha cobrado, el libro aparecerá aquí en unos minutos: recarga esta página o vuelve con tu enlace.");
+          return;
+        }
       }
+      if (!v.paid) return;
+      // con Stripe las páginas las encola el webhook: se le da un momento antes de pedirlas desde aquí
+      if (v.payment === "stripe" && !v.jobs.some(isPage)) {
+        setBusy("Preparando las ilustraciones…");
+        for (let i = 0; i < 15 && !v.jobs.some(isPage) && !c.cancelled; i++) {
+          await sleep(3000);
+          v = (await refresh()) ?? v;
+        }
+        setBusy(null);
+      }
+      if (c.cancelled) return;
+      if (needsRequest(v)) await paintPages();
+      else await drive();
     })();
-  }, [paintPages, refresh]);
+  }, [confirming, drive, paintPages, refresh]);
 
   if (!view) return <p className="text-ink-soft">Cargando el libro…</p>;
   const { plan } = view;
@@ -88,7 +139,7 @@ export function StepBook({ bookId, onBack, onPlan }: { bookId: string; onBack: (
       </div>
       <BookImage job={cover} alt="Portada" title={plan.title} testId="book-cover" />
 
-      {!view.paid && <Paywall bookId={bookId} onPaid={() => void paintPages()} />}
+      {!view.paid && !busy && <Paywall bookId={bookId} payment={view.payment ?? "none"} onPaid={() => void paintPages()} />}
       {busy && (
         <p className="notice" aria-live="polite" data-testid="pages-busy">
           {busy}
@@ -115,6 +166,8 @@ export function StepBook({ bookId, onBack, onPlan }: { bookId: string; onBack: (
         ))}
       </ol>
 
+      <BookLink bookId={bookId} mail={view.mail} />
+
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn-ghost" onClick={onBack}>
           Volver a los personajes
@@ -133,14 +186,37 @@ export function StepBook({ bookId, onBack, onPlan }: { bookId: string; onBack: (
   );
 }
 
-function Paywall({ bookId, onPaid }: { bookId: string; onPaid: () => void }) {
+function Paywall({ bookId, payment, onPaid }: { bookId: string; payment: NonNullable<BookView["payment"]>; onPaid: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   return (
     <div className="card grid gap-3" data-testid="paywall">
       <p className="display text-2xl">Edición ilustrada · {PRICE_ILLUSTRATED}</p>
       <p className="text-ink-soft">Doce ilustraciones con tus personajes, revisión página a página (una versión más de cada ilustración incluida) y el PDF para imprimir en casa en A4.</p>
-      {DRY_RUN_PAYMENT ? (
+      {payment === "stripe" && (
+        <>
+          <button
+            className="btn-primary justify-self-start"
+            disabled={busy}
+            data-testid="pay"
+            onClick={async () => {
+              setBusy(true);
+              setErr(null);
+              const r = await postJson<{ url?: string }>("/api/libro/checkout", { bookId });
+              if (r.status === 200 && r.json.url) {
+                window.location.assign(r.json.url);
+                return;
+              }
+              setBusy(false);
+              setErr(errorMessage(r.json));
+            }}
+          >
+            {busy ? "Abriendo el pago…" : `Pagar ${PRICE_ILLUSTRATED}`}
+          </button>
+          <p className="text-xs text-ink-soft">Pago seguro con Stripe. Al terminar vuelves aquí y empezamos a pintar.</p>
+        </>
+      )}
+      {payment === "dry-run" && (
         <button
           className="btn-primary justify-self-start"
           disabled={busy}
@@ -156,9 +232,8 @@ function Paywall({ bookId, onPaid }: { bookId: string; onPaid: () => void }) {
         >
           {busy ? "Procesando…" : `Pagar ${PRICE_ILLUSTRATED} (pago de prueba)`}
         </button>
-      ) : (
-        <p className="text-sm text-ink-soft">El pago estará disponible muy pronto. Te avisaremos por email; tu libro queda guardado 30 días.</p>
       )}
+      {payment === "none" && <p className="text-sm text-ink-soft">El pago estará disponible muy pronto. Tu libro queda guardado 30 días en tu enlace.</p>}
       {err && <p className="text-sm text-[#8a2a1c]">{err}</p>}
     </div>
   );

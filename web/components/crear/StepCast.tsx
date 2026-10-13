@@ -7,6 +7,7 @@ import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/l
 import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookImage } from "./BookImage";
+import { BookLink } from "./BookLink";
 
 /**
  * Paso 4: con el email (captura del lead, D3) pintamos la hoja de personajes y la portada (≈ 10 c, D2). El padre las
@@ -146,6 +147,8 @@ export function StepCast({
           }}
         />
       )}
+
+      <BookLink bookId={bookId} mail={view?.mail} />
 
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn-ghost" onClick={onBack}>

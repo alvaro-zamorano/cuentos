@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/generate/**": ["./public/styles/*.jpg"],
     "/api/libro/**": ["./public/styles/*.jpg"],
+    "/api/stripe/**": ["./public/styles/*.jpg"],
     "/api/dev": ["./public/styles/*.jpg"],
   },
   partialPrefetching: true,

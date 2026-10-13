@@ -28,6 +28,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
     // los tests nunca llaman a proveedores de pago aunque haya claves en .env.local
-    env: { ...(process.env as Record<string, string>), STORY_PROVIDER: "mock", GENERATION_PROVIDER: "dry-run" },
+    // ni Stripe ni Resend: el pago es el de prueba y no se manda ningún email
+    env: { ...(process.env as Record<string, string>), STORY_PROVIDER: "mock", GENERATION_PROVIDER: "dry-run", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "", RESEND_API_KEY: "" },
   },
 });
