@@ -68,6 +68,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
 9. **Marca comercial y dominio** (el PRD la deja pendiente).
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
+11. **Estilo nuevo, «La hora del cuento»** (Álvaro pidió el 13 oct una web menos sobria, más suave y con mejor tipografía, a partir de tiendas infantiles): propuesta en `ESTILO.md` y maquetas en el lienzo de diseño «Cuentos · La hora del cuento» (landing en escritorio y móvil y los pasos de `/crear`). Si se aprueba, sustituye la estética del 9 oct (Fraunces de revista + Geist + verde botella). Decisión de Álvaro.
 
 ## 5. Próxima sesión — empezar por
 
@@ -78,7 +79,8 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
 5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
 6. Con los datos legales: rellenar E6.
-7. Antes de unir el PR #1:
+7. Si Álvaro aprueba el estilo (pregunta 11): implementarlo por fases (`ESTILO.md` §6), sin tocar la lógica ni los `data-testid`.
+8. Antes de unir el PR #1:
    - `CRON_SECRET` y `SITE_URL` en producción.
    - Quitar `/api/dev` si se decide.
    - Actualizar la descripción del PR.
