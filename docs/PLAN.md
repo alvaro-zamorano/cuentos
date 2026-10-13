@@ -2,23 +2,28 @@
 
 Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión; lo que no está aquí no está en marcha. PRD: `PRD.md` (v0.2, se reescribe tras las decisiones de §2). Rama de trabajo: `feat/fase-1-journey-clasico` → PR #1 → `main`.
 
-## 1. Estado real (13 oct 2026)
+## 1. Estado real (13 oct 2026, tarde)
 
-**Fase 0 hecha** (`docs/FASE0.md`): con Nano Banana 2.1 un niño descrito con texto sale igual en todas las páginas, con disfraz, de noche o tumbado, junto a su mascota y con secundarios descritos en una frase. 7 imágenes a la primera, 2 créditos cada una a 2K. Esto decide el producto: la ilustración generada sustituye a las figuras recortadas. **Libro de muestra hecho** (`docs/MUESTRA-LUNA.md`): 12 páginas + portada sin deriva del personaje.
+**El flujo nuevo funciona de punta a punta en la preview** (rama `feat/fase-1-journey-clasico`):
 
-**Construido y reutilizable:** Next.js en Vercel; `/api/story` con proveedores intercambiables, validación, caché y límite por IP (hoy corre en `mock`); servicio de generación con trabajos idempotentes, presupuesto por lead/día/libro, `run`/`status` y worker; adaptador Gemini; PDF en servidor (13 páginas A4, verificado en Vercel); captura de email con declaración del tutor; pago simulado; legales en borrador; cookies; 10 tests Playwright y 47 unitarios.
+- **B1 hecho** (`docs/PLANIFICADOR.md`): ficha + planificador con Claude Sonnet 5.5, moderación, validador y una corrección. 10 fichas de prueba → 10 libros válidos, ≈ 33 s y ≈ 6 c cada uno.
+- **B2 hecho**: `/crear` nuevo en cinco pasos (idea → quién → cuento en 12 tarjetas → personajes con email → libro). Se edita cualquier texto y cada página se rehace con una frase. Playwright: de una frase al cuento escrito, personajes y libro sin coste con PDF, recuperar por enlace.
+- **B3 hecho** (`docs/ILUSTRACION.md`): hoja de personajes + portada tras el email, cambios con palabras, control de calidad. Tres niños reales en la preview (Lucía, Mateo, Inés) con hoja y portada; 10 c por lead, 20 c con un cambio.
+- **B4 hecho**: libro pagado con 12 ilustraciones a 2K (Mateo, idéntico en las 12), revisión por página, PDF A4 vertical de 15 páginas generado en Vercel (6,75 MB, 8 s). ≈ 1 $ por libro.
+- **B6 en parte**: landing nueva con el libro de muestra «Vera y Toby viajan a la Luna», cinco pasos, ediciones (gratis = cuento + hoja + portada + PDF casero, D3) y transparencia sobre la IA; 20 ideas de arranque en el paso 1.
+- **CI** (E3): GitHub Actions con tsc, eslint, 64 unitarios, build y 7 Playwright.
 
-**Construido que sale del embudo (D1):** constructor de avatar por piezas, figuras pintadas recortadas (`pieces-build`, el arreglo del 12 oct incluido), 12 escenas vectoriales, esqueleto fijo de 12 momentos de cumpleaños, edición Clásica con esas figuras. Motivo (Álvaro, 13 oct): queda plantilla y las combinaciones no cuadran.
+**Fuera del embudo (D1):** constructor de piezas y edición Clásica (`/clasico`, `/ilustrado`, `/libro`, `/gratis` siguen existiendo pero nada enlaza a ellos salvo `/gratis` desde su propio formulario).
 
 **Abierto:**
 
 | # | Qué | Causa |
 |---|---|---|
-| E3 | Sin CI | El acceso de GitHub ya está (13 oct, `git push` desde la sesión); falta un workflow que pase unitarios y Playwright en cada PR |
 | E6 | Legales con campos `Pending` | Faltan datos del responsable |
-| E7 | Pago simulado; sin entrega por email | Faltan Stripe y Resend |
-| E10 | Nada real se ha ejecutado en el flujo | La historia ya iría por Anthropic en la preview, pero el flujo que la usa es el antiguo; imágenes en `dry-run` hasta tener el flujo nuevo y los topes de D2 (B2–B3) |
-| E11 | Antes de producción, `/api/health` es público | Protegerlo o quitarle `similarNames`. Claves verificadas en la preview el 13 oct: Supabase (clave de servicio, lectura ok; `/api/books/<id>` da 404 y no 503), Anthropic `claude-sonnet-4-5` y Gemini `gemini-3.1-flash-image`. La variable antigua `service_role` sobra |
+| E7 | Pago simulado; sin entrega por email | Faltan Stripe y Resend (B5) |
+| E10 | En la interfaz de la preview las imágenes siguen en modo sin coste | Falta `GENERATION_PROVIDER=gemini-images` en Preview (la prueba real se hizo con `/api/dev`, que fuerza Gemini) |
+| E11 | `/api/health` en producción | Ya no enseña nombres de variables y la comprobación profunda pide `HEALTH_TOKEN`. La variable antigua `service_role` sobra en Vercel |
+| E12 | `/api/dev` solo existe fuera de producción | Correcto así; quitarlo antes del merge si se prefiere |
 
 ## 2. Decisiones (D1–D6 tomadas el 13 oct)
 
@@ -27,7 +32,7 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 | D1 | Todo lo que ve el padre es ilustración generada; fuera del embudo las piezas y las escenas fijas | **Decidido: sí.** Un estilo para salir; habrá más estilos en el futuro (la arquitectura los admite: `styles.json` + ancla por estilo) | Fase 0: calidad de libro de verdad y consistencia; las piezas no llegan |
 | D2 | Gasto por lead antes del pago | **Decidido: ≈ 0,30 $** (hoja 1K + portada 2K + hasta 2 cambios de hoja); tope diario igual | El plan decía ≤ 0,10 € por lead (el código, 20 c): hoja + portada ya son ≈ 0,17 $ a precio de Gemini |
 | D3 | Qué es gratis | **Decidido:** cuento completo en texto + hoja + portada en la web, y PDF casero con portada ilustrada y el texto | Mantiene el puente gratis del bloque de distribución (8 oct) sin las figuras; el Ilustrado pasa a ser lo único de pago |
-| D4 | Proveedor en producción | **Decidido (13 oct): API de Gemini**, modelo `gemini-3.1-flash-image` (clave puesta por Álvaro y verificada; modelo por defecto en el código) | Coste parecido (≈ 0,07–0,10 $ por imagen 2K); Gemini no depende de una suscripción |
+| D4 | Proveedor en producción | **Decidido (13 oct): API de Gemini**, modelo `gemini-nano-banana-2.1` (el de la Fase 0; cambiado por la tarde desde `gemini-3.1-flash-image`: mitad de precio, 0,0504 $ la imagen 2K) | Coste ≈ 4 c la hoja 1K y 6 c la portada o página 2K; Gemini no depende de una suscripción |
 | D5 | Estilo y formato | **Decidido:** un estilo (el de la Fase 0) y página = imagen 3:2 arriba + texto en banda debajo: A4 vertical (casero) y 20×20 (tapa dura) | El hueco para texto dentro de la imagen no es fiable; 3:2 + banda sirve para los dos formatos |
 | D6 | Libro de muestra para la web y las redes | **Decidido:** «Vera y Toby viajan a la Luna», con la hoja de Vera (12 páginas + portada = 13 imágenes ≈ 26 créditos). Ver `docs/MUESTRA-LUNA.md` | Sin ejemplos reales no hay landing ni Reels; además mide la deriva en 12 páginas |
 
@@ -103,12 +108,12 @@ Una cosa a la vez; cada tarea se cierra con evidencia.
 | Bloque | Qué | Quién | Hecho cuando |
 |---|---|---|---|
 | B0 | Decisiones D1–D6 | Álvaro | Hechas (13 oct) |
-| B1 | Ficha + planificador de historia: esquema, prompt, validador, moderación, mock; prueba con proveedor real | Claude · clave de Anthropic u OpenAI de Álvaro | 10 ideas de prueba dan 10 libros válidos; los leemos los dos |
-| B2 | Nuevo flujo de creación (pasos 1–3) en lugar de `/crear` con piezas | Claude | Playwright: de una frase al cuento escrito sin errores |
-| B3 | Hoja de reparto + portada tras el email; cambios con palabras; control de calidad | Claude · D4 resuelto | 3 niños distintos con hoja aprobada en la preview y coste anotado |
-| B4 | Libro tras el pago: 12 páginas, revisión por página, maqueta 3:2 + banda, PDF | Claude | PDF de 13 páginas con ilustraciones reales |
+| B1 | Ficha + planificador de historia: esquema, prompt, validador, moderación, mock; prueba con proveedor real | Claude · clave de Anthropic u OpenAI de Álvaro | **Hecho (13 oct)**: 10/10 libros válidos (`docs/PLANIFICADOR.md`). Falta leerlos juntos |
+| B2 | Nuevo flujo de creación (pasos 1–3) en lugar de `/crear` con piezas | Claude | **Hecho (13 oct)**: Playwright de una frase al cuento escrito |
+| B3 | Hoja de reparto + portada tras el email; cambios con palabras; control de calidad | Claude · D4 resuelto | **Hecho (13 oct)**: 3 niños con hoja y portada en la preview, 10 c por lead (`docs/ILUSTRACION.md`) |
+| B4 | Libro tras el pago: 12 páginas, revisión por página, maqueta 3:2 + banda, PDF | Claude | **Hecho (13 oct)**: libro de Mateo, 12 páginas reales, PDF de 15 A4 en Vercel |
 | B5 | Pago y entrega: Stripe + email con PDF | Álvaro claves · Claude | Pago de prueba completo y email recibido |
-| B6 | Contenidos (§4) y landing nueva | Claude genera · Álvaro elige | Landing con el libro de muestra |
+| B6 | Contenidos (§4) y landing nueva | Claude genera · Álvaro elige | **Landing hecha (13 oct)** con el libro de muestra; faltan las 4 portadas de ocasiones y el Reel |
 | B7 | Legales, dominio, prueba con 3 personas ajenas, merge a `main` | Álvaro · Claude | Tres libros sin ayuda |
 
 Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de mediados de noviembre y llegar a Navidad con el PDF casero; tapa dura después.
@@ -123,15 +128,17 @@ Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de
 6. **Errores:** URL + captura + qué se esperaba; entran en §1 antes de corregirse.
 7. **Copy:** registro adulto, sin diminutivos, sin emojis en interfaz.
 
-## 7. Lista de Álvaro (13 oct; claves y GitHub hechos por Álvaro el 13 oct, verificación en §1)
+## 7. Lista de Álvaro (actualizada 13 oct, tarde)
 
-Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables, Production y Preview) o a un archivo local.
+Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables) o a un archivo local.
 
-1. ~~Clave del LLM de historia~~ (`ANTHROPIC_API_KEY`; `STORY_PROVIDER` ya no hace falta): añadida 13 oct, con workspace.
-2. ~~Proveedor de imágenes~~ (`GEMINI_API_KEY`): añadida 13 oct.
-3. ~~App de GitHub de Claude en el repo~~: hecha 13 oct (`git push` funciona desde la sesión).
-4. ~~`SUPABASE_SERVICE_ROLE_KEY`~~: añadida 13 oct con ese nombre (antes estaba como `service_role`, que se puede borrar).
-5. Más adelante: datos legales, Stripe, Resend, `NEXT_PUBLIC_CLARITY_ID`.
+Hecho el 13 oct: `ANTHROPIC_API_KEY` (con workspace), `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, app de GitHub de Claude en el repo.
+
+Pendiente:
+1. **Preview:** `GENERATION_PROVIDER=gemini-images` (imágenes de verdad en la interfaz) y `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` (pago de prueba) si no está. Borrar la variable antigua `service_role`.
+2. **Probar el recorrido entero** en la preview con un niño real y leer los 10 cuentos de prueba (criterio de B1).
+3. **B5:** cuenta de Stripe (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) y Resend (`RESEND_API_KEY` + dominio de envío).
+4. **B7:** datos legales del responsable (E6), dominio, tres personas ajenas que hagan un libro sin ayuda. Antes de producción: `HEALTH_TOKEN` si se quiere la comprobación profunda.
 
 ## 8. Registro de decisiones
 
@@ -144,3 +151,7 @@ Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environ
 - 13 oct: Fase 0 hecha y positiva (`docs/FASE0.md`).
 - 13 oct (Álvaro): todo lo que ve el padre es ilustración generada, un estilo para salir y más estilos en el futuro; gratis = texto + hoja + portada + PDF casero; hasta ≈ 0,30 $ por lead antes del pago; página con imagen 3:2 y texto en banda; libro de muestra «Vera y Toby viajan a la Luna».
 - Sustituidas por D1 (13 oct): «Clásico e Ilustrado comparten las figuras pintadas» (9 oct) y «las piezas se generan en el build» (9 oct).
+- 13 oct (tarde): textos con Claude Sonnet 5.5 (razonamiento mínimo, esfuerzo medio); dirección de arte con Haiku 5.5; control de calidad con Sonnet 5.5. Los modelos 5.x no admiten `temperature`.
+- 13 oct (tarde): moderación local + del planificador. Se permiten emociones pequeñas (nervios, miedo a la oscuridad) que se resuelven; siguen fuera muerte, violencia, armas, sexo, drogas, marcas, personajes con derechos y famosos reales (se sustituyen y se avisa al padre).
+- 13 oct (tarde): el aspecto (pelo, piel, ropa) no cambia el cuento escrito; lo corrige la hoja de personajes con palabras.
+- 13 oct (tarde): la landing dice en las preguntas que el cuento lo escribe e ilustra una IA y que el padre lo revisa todo.
