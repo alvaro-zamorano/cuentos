@@ -9,6 +9,7 @@
  * lib/generation/server.ts, que sí es solo servidor.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { newPublicId } from "../ids";
 import { normalizeDraft } from "../story";
 import type { Database, Json } from "../supabase/types";
 import type { Draft } from "../types";
@@ -48,6 +49,16 @@ export interface BookRecord {
   public_id: string;
   email: string | null;
   draft: Draft;
+  /** El borrador tal como está guardado (el flujo nuevo guarda `{ v: 2, ficha, plan, … }`, ver lib/book). */
+  raw: unknown;
+}
+
+/** Libro del flujo nuevo para crear o actualizar (sin public_id se crea uno). */
+export interface SaveBook {
+  publicId?: string;
+  email: string | null;
+  draft: unknown;
+  edition: string;
 }
 
 export interface GenStore {
@@ -71,6 +82,10 @@ export interface GenStore {
   signedUrl(path: string, seconds: number): Promise<string | null>;
   hasPaidOrder(bookId: string): Promise<boolean>;
   markIllustrating(bookId: string): Promise<void>;
+  /** Flujo nuevo: crea o actualiza el libro con su borrador v2. */
+  saveBook(b: SaveBook): Promise<BookRecord>;
+  /** Pedido pagado (pago simulado o, más adelante, el webhook de Stripe). */
+  addPaidOrder(bookId: string, o: { amountCents: number; edition: string; sessionId?: string | null }): Promise<void>;
 }
 
 const JOB_COLUMNS =
@@ -90,6 +105,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
     public_id: row.public_id,
     email: row.email,
     draft: normalizeDraft(row.draft as unknown as Partial<Draft>),
+    raw: row.draft,
   });
   return {
     mode: "supabase",
@@ -164,6 +180,34 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
     async markIllustrating(bookId) {
       await db.from("cuentos_books").update({ status: "illustrating" }).eq("id", bookId);
     },
+    async saveBook({ publicId, email, draft, edition }) {
+      const json = JSON.parse(JSON.stringify(draft)) as Json;
+      if (publicId) {
+        const { data, error } = await db
+          .from("cuentos_books")
+          .update({ draft: json, edition, ...(email ? { email } : {}) })
+          .eq("public_id", publicId)
+          .gt("expires_at", new Date().toISOString())
+          .select("id, public_id, email, draft")
+          .maybeSingle();
+        if (error) throw new Error(`books: ${error.message}`);
+        if (data) return toBook(data);
+      }
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error } = await db
+          .from("cuentos_books")
+          .insert({ public_id: newPublicId(), draft: json, edition, email })
+          .select("id, public_id, email, draft")
+          .single();
+        if (!error && data) return toBook(data);
+        if (error && error.code !== "23505") throw new Error(`books: ${error.message}`);
+      }
+      throw new Error("books: id_collision");
+    },
+    async addPaidOrder(bookId, { amountCents, edition, sessionId }) {
+      const { error } = await db.from("cuentos_orders").insert({ book_id: bookId, amount_cents: amountCents, edition, status: "paid", stripe_session_id: sessionId ?? null });
+      if (error) throw new Error(`orders: ${error.message}`);
+    },
   };
 }
 
@@ -173,6 +217,7 @@ interface MemoryState {
   books: Map<string, BookRecord>;
   jobs: Map<string, GenJob>;
   tick: number;
+  paid?: Set<string>;
 }
 
 /** Estado en globalThis: las rutas de Next pueden cargar el módulo más de una vez en el mismo proceso. */
@@ -199,9 +244,19 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async saveMemoryBook({ publicId, email, draft }) {
       const prev = state.books.get(publicId);
-      const book: BookRecord = { id: publicId, public_id: publicId, email: email ?? prev?.email ?? null, draft };
+      const book: BookRecord = { id: publicId, public_id: publicId, email: email ?? prev?.email ?? null, draft, raw: draft };
       state.books.set(publicId, book);
       return book;
+    },
+    async saveBook({ publicId, email, draft }) {
+      const id = publicId && state.books.has(publicId) ? publicId : newPublicId();
+      const prev = state.books.get(id);
+      const book: BookRecord = { id, public_id: id, email: email ?? prev?.email ?? null, draft: normalizeDraft({}), raw: JSON.parse(JSON.stringify(draft)) };
+      state.books.set(id, book);
+      return book;
+    },
+    async addPaidOrder(bookId) {
+      (state.paid ??= new Set()).add(bookId);
     },
     async listJobs(bookId) {
       return [...state.jobs.values()].filter((j) => j.book_id === bookId).map(clone);
@@ -253,8 +308,8 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     async signedUrl() {
       return null;
     },
-    async hasPaidOrder() {
-      return false;
+    async hasPaidOrder(bookId) {
+      return !!state.paid?.has(bookId);
     },
     async markIllustrating() {},
   };

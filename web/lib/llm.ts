@@ -29,6 +29,8 @@ export interface LlmResult {
   usage: { input: number; output: number };
   ms: number;
   stop?: string;
+  /** Tipos de bloque de la respuesta (diagnóstico: text, thinking…). */
+  blocks?: string[];
 }
 
 export interface Llm {
@@ -109,6 +111,7 @@ function anthropic(apiKey: string, model: string): Llm {
         usage: { input: json.usage?.input_tokens ?? 0, output: json.usage?.output_tokens ?? 0 },
         ms: Date.now() - t0,
         stop: json.stop_reason,
+        blocks: (json.content ?? []).map((c) => c.type),
       };
     },
   };

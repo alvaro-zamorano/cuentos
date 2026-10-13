@@ -214,8 +214,12 @@ export function pagesArtUser(f: Ficha, plan: Plan, art: CastArt): string {
   ].join("\n");
 }
 
+export function pagesArtKey(cast: CastArt, plan: Pick<Plan, "pages">): string {
+  return hashString(JSON.stringify(["pages-art-v1", cast.key, cast.revisions, plan.pages.map((p) => [p.n, p.scene, p.who, p.extras, p.outfit, p.shot, p.time])]));
+}
+
 export async function pagesArt(f: Ficha, plan: Plan, cast: CastArt, llm: Llm = selectLlm("art")): Promise<{ art: PagesArt; costCents: number | null }> {
-  const key = hashString(JSON.stringify(["pages-art-v1", cast.key, cast.revisions, plan.pages.map((p) => [p.n, p.scene, p.who, p.extras, p.outfit, p.shot, p.time])]));
+  const key = pagesArtKey(cast, plan);
   if (llm.name === "mock") {
     return { art: { key, pages: plan.pages.map((p) => ({ n: p.n, sceneEn: p.scene, outfitEn: p.outfit, extrasEn: p.extras })) }, costCents: 0 };
   }

@@ -13,7 +13,9 @@
 import { newPublicId } from "../ids";
 import { buildBook, normalizeDraft } from "../story";
 import { characterBible } from "./character";
-import { estimatedCostCents, type GenerationAdapter, type GenerationResult, type ImageRef } from "./adapter";
+import { estimatedCostCents, type GenerationAdapter, type GenerationResult, type ImageRef, type ImageSize } from "./adapter";
+import { thumbnail, toJpeg } from "./postprocess";
+import { qcImage, type QcResult } from "../plan/qc";
 import { canSpend, recordSpend, type SpendCheck, type SpendKind } from "./budget";
 import {
   MAX_PAGE_VERSIONS,
@@ -34,8 +36,11 @@ import type { Database } from "../supabase/types";
 import type { Draft, StyleId } from "../types";
 
 export const MAX_ATTEMPTS = 2;
-/** Un job `running` sin cambios en este tiempo se da por perdido (función cortada a los 60 s) y se puede reclamar. */
-export const STALE_RUNNING_MS = 120_000;
+/**
+ * Un job `running` sin cambios en este tiempo se da por perdido (función cortada) y se puede reclamar. La ruta de
+ * ejecución tiene maxDuration 300 s; con margen para no pintar dos veces la misma imagen.
+ */
+export const STALE_RUNNING_MS = 330_000;
 
 export type Fail = { ok: false; status: number; error: string; reason?: string };
 
@@ -59,9 +64,9 @@ export function cleanEmail(v: unknown): string | null {
  */
 export async function gateSpend(
   db: SupabaseClient<Database> | null,
-  { leadId, images, provider, paid = false, now }: { leadId: string; images: number; provider: string; paid?: boolean; now?: Date },
+  { leadId, images, provider, paid = false, now, size }: { leadId: string; images: number; provider: string; paid?: boolean; now?: Date; size?: ImageSize },
 ): Promise<SpendCheck & { cents: number }> {
-  const cents = images * estimatedCostCents(provider);
+  const cents = images * estimatedCostCents(provider, size);
   if (cents === 0) return { ok: true, cents };
   return { ...(await canSpend(db, { leadId, cents, paid, now })), cents };
 }
@@ -305,10 +310,32 @@ export async function requestBook(
 
 const SPEND_KIND: Record<JobKind, SpendKind> = { sheet: "sheet", sample: "sample", page: "page", cover: "page" };
 
-export function storagePath(bookId: string, job: Pick<GenJob, "kind" | "page_n" | "variant" | "job_key">): string {
+export function storagePath(bookId: string, job: Pick<GenJob, "kind" | "page_n" | "variant" | "job_key">, ext = "png", attempt?: number): string {
   // la huella al final evita pisar la imagen de una versión anterior si cambian los rasgos o el cuento
   const key = job.job_key.split(":").pop()!.slice(0, 8);
-  return `books/${bookId}/${job.kind}-${job.page_n ?? 0}-${job.variant}-${key}.png`;
+  return `books/${bookId}/${job.kind}-${job.page_n ?? 0}-${job.variant}-${key}${attempt && attempt > 1 ? `-r${attempt}` : ""}.${ext}`;
+}
+
+/** Marca de los jobs del flujo nuevo en `references`: formato, resolución y si pasa control de calidad. */
+export interface V2Spec {
+  kind: "v2";
+  aspect: "3:2" | "1:1";
+  size: ImageSize;
+  qc?: boolean;
+}
+
+export function v2Of(job: Pick<GenJob, "references">): V2Spec | null {
+  const refs = Array.isArray(job.references) ? (job.references as unknown as Partial<V2Spec>[]) : [];
+  const r = refs.find((x) => x && x.kind === "v2");
+  return r && (r.aspect === "3:2" || r.aspect === "1:1") && (r.size === "1K" || r.size === "2K" || r.size === "4K") ? (r as V2Spec) : null;
+}
+
+/** Candidatas guardadas de un job (cada intento con su control de calidad). */
+export interface Candidate {
+  path: string;
+  qc?: Pick<QcResult, "pass" | "problems"> | null;
+  width?: number;
+  height?: number;
 }
 
 function perBookCap(): number {
@@ -346,7 +373,8 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
   // presupuesto antes de reclamar: si no hay, el job pagado espera (429) y el de muestra falla con el motivo
   const lead = job.paid ? book.id : book.email;
   if (!lead) return finish(store, job, "failed", "lead sin email");
-  const gate = await gateSpend(store.db, { leadId: lead, images: 1, provider: adapter.name, paid: job.paid });
+  const v2 = v2Of(job);
+  const gate = await gateSpend(store.db, { leadId: lead, images: 1, provider: adapter.name, paid: job.paid, size: v2?.size });
   if (!gate.ok) return job.paid ? fail(429, "budget", gate.reason) : finish(store, job, "failed", `presupuesto: ${gate.reason}`);
   if (job.paid && gate.cents > 0) {
     const spent = (await store.listJobs(book.id)).reduce((a, j) => a + (j.cost_cents ?? 0), 0);
@@ -358,24 +386,55 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
 
   try {
     let result: GenerationResult;
-    if (job.kind === "sheet") result = await adapter.generateSheet(job.prompt, style, { candidates: 1 });
+    if (v2) {
+      const refs: ImageRef[] = [...(sheetRef ? [sheetRef.ref] : []), { path: style.anchorPath }];
+      result = await adapter.generateImage(job.prompt, refs, { aspect: v2.aspect, size: v2.size });
+    } else if (job.kind === "sheet") result = await adapter.generateSheet(job.prompt, style, { candidates: 1 });
     else result = await adapter.generateScene(sheetRef!.ref, style, job.prompt, { candidates: 1, bible: sheetRef!.bible });
     const img = result.images[0];
     if (!img) throw new Error("el proveedor no devolvió imagen");
+    const record = async () => {
+      if (result.costCents <= 0) return;
+      const rec = await recordSpend(store.db, { leadId: lead, kind: SPEND_KIND[job.kind], provider: result.provider, model: result.model, cents: result.costCents });
+      if (!rec.ok) console.error(`[generate] gasto sin registrar (${job.kind} ${job.id}): ${rec.reason}`);
+    };
+    const prevCandidates = Array.isArray(claimed.candidates) ? (claimed.candidates as unknown as (Candidate | string)[]) : [];
+    const cost = (claimed.cost_cents ?? 0) + result.costCents;
     let chosen: string;
     let storage: string | null = null;
-    if (img.data) {
+    let candidate: Candidate | string;
+    if (img.data && v2) {
+      const jpg = await toJpeg(img.data);
+      storage = storagePath(book.id, job, "jpg", claimed.attempts);
+      await store.upload(storage, jpg.data, jpg.mimeType);
+      chosen = storage;
+      const qc = v2.qc === false ? null : await qcImage(await thumbnail(jpg.data), job.prompt);
+      candidate = { path: storage, qc: qc ? { pass: qc.pass, problems: qc.problems } : null, width: jpg.width, height: jpg.height };
+      if (qc && !qc.pass && claimed.attempts < MAX_ATTEMPTS) {
+        // un intento más antes de enseñarla: vuelve a pendiente con el motivo (el cliente la vuelve a pedir)
+        await store.updateJob(job.id, { status: "pending", candidates: [...prevCandidates, candidate] as unknown as GenJob["candidates"], cost_cents: cost, error: `qc: ${qc.problems.join("; ")}`.slice(0, 300) });
+        await record();
+        const again = await store.getJob(job.id);
+        return { ok: true, job: again ?? job, ran: true };
+      }
+    } else if (img.data) {
       storage = storagePath(book.id, job);
       await store.upload(storage, img.data, img.mimeType ?? "image/png");
       chosen = storage;
+      candidate = chosen;
     } else {
       chosen = img.placeholder ?? `dry-run/${style.id}/${job.kind}-${job.page_n ?? 0}-${job.variant}.png`;
+      candidate = chosen;
     }
-    await store.updateJob(job.id, { status: "done", candidates: [chosen], chosen, storage_path: storage, cost_cents: result.costCents, error: null });
-    if (result.costCents > 0) {
-      const rec = await recordSpend(store.db, { leadId: lead, kind: SPEND_KIND[job.kind], provider: result.provider, model: result.model, cents: result.costCents });
-      if (!rec.ok) console.error(`[generate] gasto sin registrar (${job.kind} ${job.id}): ${rec.reason}`);
-    }
+    await store.updateJob(job.id, {
+      status: "done",
+      candidates: (v2 ? [...prevCandidates, candidate] : [chosen]) as unknown as GenJob["candidates"],
+      chosen,
+      storage_path: storage,
+      cost_cents: cost,
+      error: null,
+    });
+    await record();
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     await store.updateJob(job.id, { status: "failed", error: msg.slice(0, 300) });

@@ -2,7 +2,9 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { selectLlm, type Llm } from "@/lib/llm";
 import { EVAL_CASES } from "@/lib/plan/evalCases";
+import { normalizeFicha } from "@/lib/plan/ficha";
 import { planBook } from "@/lib/plan/planner";
+import { plannerSystem, plannerUser } from "@/lib/plan/prompt";
 
 /**
  * Pruebas internas en las previews (B1). En producción no existe (404). La preview está detrás de la protección de
@@ -48,6 +50,21 @@ export async function GET(req: Request) {
       }
     }
     return NextResponse.json(out);
+  }
+
+  if (task === "raw") {
+    // una sola llamada del planificador, sin validar: tiempo, tokens, motivo de parada y el principio y el final del texto
+    const i = Number(url.searchParams.get("case")) - 1;
+    const ficha = EVAL_CASES[i];
+    if (!ficha) return NextResponse.json({ ok: false, error: "case 1..10" }, { status: 400 });
+    const llm = withModel(selectLlm("plan"), url.searchParams.get("model"));
+    const maxTokens = Math.min(16000, Number(url.searchParams.get("max")) || 6000);
+    try {
+      const r = await llm.complete({ system: plannerSystem(), messages: [{ role: "user", content: plannerUser(normalizeFicha(ficha)) }], maxTokens });
+      return NextResponse.json({ ok: true, model: r.model, ms: r.ms, stop: r.stop, usage: r.usage, blocks: r.blocks, length: r.raw.length, head: r.raw.slice(0, 600), tail: r.raw.slice(-300) });
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "error" });
+    }
   }
 
   if (task === "plan") {

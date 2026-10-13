@@ -74,6 +74,8 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
       usage.output += res.usage.output;
       raw = res.raw;
       model = res.model;
+      // solo métricas, nunca el contenido
+      console.info(`[plan] ${model} intento ${attempt + 1}: ${res.ms} ms, ${res.usage.output} tokens de salida, parada ${res.stop ?? "?"}, bloques ${(res.blocks ?? []).join("+")}`);
     } catch (e) {
       console.warn(`[plan] proveedor: ${e instanceof Error ? e.message : "error"}`);
       if (attempt === 0) continue;

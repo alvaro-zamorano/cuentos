@@ -48,8 +48,17 @@ export interface SceneOptions {
   bible?: string;
 }
 
+/** Imagen v2 (flujo nuevo): el prompt llega completo y las referencias ya resueltas. */
+export interface ImageOptions {
+  aspect: "3:2" | "1:1";
+  size: ImageSize;
+}
+export type ImageSize = "1K" | "2K" | "4K";
+
 export interface GenerationAdapter {
   name: string;
+  /** Flujo nuevo (lib/plan/art.ts): prompt final + referencias (hoja, ancla), formato y resolución explícitos. */
+  generateImage(prompt: string, refs: ImageRef[], opts: ImageOptions): Promise<GenerationResult>;
   /** Hoja de personaje: turnaround + 6 expresiones, con el ancla del estilo como referencia. `traitsEn` = characterBible. */
   generateSheet(traitsEn: string, style: StyleDef, opts?: { candidates?: number }): Promise<GenerationResult>;
   /** Escena: hoja aprobada + ancla como referencias (máx. 3 refs, RF-10). */
@@ -59,18 +68,29 @@ export interface GenerationAdapter {
 export const MAX_REFS = 3;
 
 /** Coste estimado por imagen en céntimos por proveedor si GENERATION_COST_CENTS_PER_IMAGE no está definida. */
-export const DEFAULT_COST_CENTS: Record<string, number> = { "gemini-images": 4, "openai-images": 8, "dry-run": 0 };
+export const DEFAULT_COST_CENTS: Record<string, number> = { "gemini-images": 6, "openai-images": 8, "dry-run": 0 };
+
+/**
+ * Coste por resolución (céntimos de dólar, redondeado hacia arriba con la entrada de referencias, ~3k tokens a 1,5 $/M).
+ * gemini-nano-banana-2.1: 0,0336 $ (1K) · 0,0504 $ (2K) · 0,113 $ (4K) por imagen (ai.google.dev/gemini-api/docs/pricing, 13 oct).
+ */
+export const COST_CENTS_BY_SIZE: Record<string, Record<ImageSize, number>> = {
+  "gemini-images": { "1K": 4, "2K": 6, "4K": 12 },
+  "openai-images": { "1K": 8, "2K": 8, "4K": 8 },
+  "dry-run": { "1K": 0, "2K": 0, "4K": 0 },
+};
 
 /**
  * Coste estimado por imagen en céntimos. GENERATION_COST_CENTS_PER_IMAGE manda si está definida (no vacía);
  * si no, el valor por defecto del proveedor (gemini 4, openai 8). Son estimaciones hasta medir el real en la Fase 0.
  */
-export function estimatedCostCents(provider = process.env.GENERATION_PROVIDER ?? "dry-run"): number {
+export function estimatedCostCents(provider = process.env.GENERATION_PROVIDER ?? "dry-run", size?: ImageSize): number {
   const raw = process.env.GENERATION_COST_CENTS_PER_IMAGE;
   if (raw !== undefined && raw.trim() !== "") {
     const v = Number(raw);
     if (Number.isFinite(v) && v >= 0) return v;
   }
+  if (size && COST_CENTS_BY_SIZE[provider]) return COST_CENTS_BY_SIZE[provider][size];
   return DEFAULT_COST_CENTS[provider] ?? 8;
 }
 
@@ -122,6 +142,9 @@ async function refToBlob(ref: ImageRef): Promise<Blob> {
 
 export const dryRunAdapter: GenerationAdapter = {
   name: "dry-run",
+  async generateImage(prompt, _refs, opts) {
+    return { images: [{ data: null, placeholder: `dry-run/${opts.aspect === "1:1" ? "square" : "landscape"}.png` }], costCents: 0, provider: "dry-run", model: "none", prompt };
+  },
   async generateSheet(traitsEn, style, opts) {
     const prompt = sheetPrompt(traitsEn, style);
     const n = opts?.candidates ?? 1;
@@ -201,6 +224,9 @@ async function executeOpenAI(req: OpenAIImageRequest): Promise<GenerationResult>
 
 export const openAIImagesAdapter: GenerationAdapter = {
   name: "openai-images",
+  async generateImage(prompt, refs, opts) {
+    return executeOpenAI(buildOpenAIImageRequest(prompt, refs, 1, opts.aspect === "1:1" ? "square" : "landscape"));
+  },
   async generateSheet(traitsEn, style, opts) {
     const req = buildOpenAIImageRequest(sheetPrompt(traitsEn, style), [{ path: style.anchorPath }], opts?.candidates ?? 1, "square");
     return executeOpenAI(req);
@@ -227,7 +253,7 @@ export interface GeminiImageRequest {
   headers: Record<string, string>;
   body: {
     contents: { parts: GeminiPart[] }[];
-    generationConfig: { responseModalities: string[] };
+    generationConfig: { responseModalities: string[]; imageConfig?: { aspectRatio?: string; imageSize?: string } };
   };
 }
 
@@ -241,7 +267,7 @@ export function geminiModel(): string {
  * Construye la petición a generateContent sin ejecutarla. Las referencias (ancla, hoja) van primero como inline_data
  * y el prompt al final. Una llamada = una imagen. El formato (cuadrado / 3:2) se pide en el prompt.
  */
-export function buildGeminiImageRequest(prompt: string, refs: InlineImage[]): GeminiImageRequest {
+export function buildGeminiImageRequest(prompt: string, refs: InlineImage[], opts?: ImageOptions): GeminiImageRequest {
   if (refs.length > MAX_REFS) throw new Error("máximo 3 referencias por llamada (RF-10)");
   const model = geminiModel();
   const modalities = (process.env.GEMINI_RESPONSE_MODALITIES || "IMAGE").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
@@ -258,7 +284,11 @@ export function buildGeminiImageRequest(prompt: string, refs: InlineImage[]): Ge
           ],
         },
       ],
-      generationConfig: { responseModalities: modalities },
+      generationConfig: {
+        responseModalities: modalities,
+        // formato y resolución explícitos (flujo nuevo); el flujo antiguo los pedía solo en el prompt
+        ...(opts ? { imageConfig: { aspectRatio: opts.aspect, imageSize: opts.size } } : {}),
+      },
     },
   };
 }
@@ -287,11 +317,11 @@ export function parseGeminiImageResponse(json: GeminiResponse): { images: Genera
   return { images, usage: json.usageMetadata };
 }
 
-async function executeGemini(prompt: string, refs: ImageRef[]): Promise<GenerationResult> {
+async function executeGemini(prompt: string, refs: ImageRef[], opts?: ImageOptions): Promise<GenerationResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY no está definida en el entorno");
   if (refs.length > MAX_REFS) throw new Error("máximo 3 referencias por llamada (RF-10)");
-  const req = buildGeminiImageRequest(prompt, await Promise.all(refs.map(loadRef)));
+  const req = buildGeminiImageRequest(prompt, await Promise.all(refs.map(loadRef)), opts);
   const res = await fetch(req.url, { method: "POST", headers: { ...req.headers, "x-goog-api-key": key }, body: JSON.stringify(req.body) });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -300,7 +330,7 @@ async function executeGemini(prompt: string, refs: ImageRef[]): Promise<Generati
   const { images, usage } = parseGeminiImageResponse((await res.json()) as GeminiResponse);
   return {
     images: images.slice(0, 1),
-    costCents: estimatedCostCents("gemini-images"),
+    costCents: estimatedCostCents("gemini-images", opts?.size),
     provider: "gemini-images",
     model: req.model,
     prompt,
@@ -323,6 +353,9 @@ async function geminiN(prompt: string, refs: ImageRef[], n: number): Promise<Gen
 
 export const geminiImagesAdapter: GenerationAdapter = {
   name: "gemini-images",
+  async generateImage(prompt, refs, opts) {
+    return executeGemini(prompt, refs, opts);
+  },
   async generateSheet(traitsEn, style, opts) {
     return geminiN(sheetPrompt(traitsEn, style), [{ path: style.anchorPath }], opts?.candidates ?? 1);
   },

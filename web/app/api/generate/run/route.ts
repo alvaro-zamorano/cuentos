@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { generationContext } from "@/lib/generation/server";
 import { runJob } from "@/lib/generation/service";
 
-/** Una imagen por llamada; con proveedor real tarda 10–40 s. */
-export const maxDuration = 60;
+/** Una imagen por llamada; con proveedor real tarda 30–70 s (Fase 0), más el control de calidad. */
+export const maxDuration = 300;
 
 /**
  * POST /api/generate/run { jobId } → { ok, job: { id, status } , ran }.

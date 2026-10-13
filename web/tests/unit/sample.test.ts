@@ -204,6 +204,7 @@ test("runJob: un proveedor que falla deja el job en failed con el mensaje recort
       throw new Error("x".repeat(1000));
     },
     generateScene: dryRunAdapter.generateScene,
+    generateImage: dryRunAdapter.generateImage,
   };
   const a = await requestSample(s, { email: d.email, styleId: "gouache", draft: d }, dryRunAdapter);
   assert.ok(a.ok);
