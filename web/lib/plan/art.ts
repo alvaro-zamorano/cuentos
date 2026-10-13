@@ -63,6 +63,20 @@ export function pageArtKey(cast: CastArt, p: Pick<PlanPage, "n" | "scene" | "who
 
 /* ------------------------------ LLM: reparto y portada ------------------------------ */
 
+/** Una llamada que tiene que devolver JSON; si no lo es, otra vez (la segunda falla hacia arriba). */
+async function completeJson<T>(llm: Llm, user: string, maxTokens: number): Promise<{ res: Awaited<ReturnType<Llm["complete"]>>; raw: T }> {
+  let last: unknown;
+  for (let i = 0; i < 2; i++) {
+    const res = await llm.complete({ system: ART_SYSTEM, messages: [{ role: "user", content: user }], maxTokens, temperature: 0.3 });
+    try {
+      return { res, raw: extractJsonObject(res.raw) as T };
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last instanceof Error ? last : new Error("art_json");
+}
+
 function heroChildWord(f: Ficha): string {
   return f.hero.gender === "nina" ? "girl" : f.hero.gender === "nino" ? "boy" : "child";
 }
@@ -185,8 +199,7 @@ function bareIdentity(c: ArtCast): string {
 export async function castArt(f: Ficha, plan: Plan, llm: Llm = selectLlm("art")): Promise<{ art: CastArt; costCents: number | null }> {
   const key = castArtKey(f, plan);
   if (llm.name === "mock") return { art: mockCastArt(f, plan, key), costCents: 0 };
-  const res = await llm.complete({ system: ART_SYSTEM, messages: [{ role: "user", content: castArtUser(f, plan) }], maxTokens: 2000, temperature: 0.3 });
-  const raw = extractJsonObject(res.raw) as RawCast;
+  const { res, raw } = await completeJson<RawCast>(llm, castArtUser(f, plan), 2000);
   const art: CastArt = {
     key,
     cast: mergeCast(f, plan, raw),
@@ -205,8 +218,7 @@ export async function reviseCast(f: Ficha, plan: Plan, art: CastArt, instruction
     return { art: { ...art, cast, revisions: [...art.revisions, instruction] }, costCents: 0 };
   }
   const bare = { ...art, cast: art.cast.map((c) => ({ ...c, identityEn: bareIdentity(c) })) };
-  const res = await llm.complete({ system: ART_SYSTEM, messages: [{ role: "user", content: reviseCastUser(bare, instruction) }], maxTokens: 1500, temperature: 0.2 });
-  const raw = extractJsonObject(res.raw) as RawCast;
+  const { res, raw } = await completeJson<RawCast>(llm, reviseCastUser(bare, instruction), 1500);
   // para el protagonista, el modelo devuelve la descripción completa: se quitan los rasgos fijos para no duplicarlos
   const chips = describeLookEn(f.hero.look);
   const cleaned: RawCast = {
@@ -242,8 +254,7 @@ export async function pagesArt(f: Ficha, plan: Plan, cast: CastArt, llm: Llm = s
   if (llm.name === "mock") {
     return { art: { key, pages: plan.pages.map((p) => ({ n: p.n, sceneEn: p.scene, outfitEn: p.outfit, extrasEn: p.extras })) }, costCents: 0 };
   }
-  const res = await llm.complete({ system: ART_SYSTEM, messages: [{ role: "user", content: pagesArtUser(f, plan, cast) }], maxTokens: 4000, temperature: 0.3 });
-  const raw = extractJsonObject(res.raw) as { pages?: { n?: number; sceneEn?: string; outfitEn?: string | null; extrasEn?: string[] }[] };
+  const { res, raw } = await completeJson<{ pages?: { n?: number; sceneEn?: string; outfitEn?: string | null; extrasEn?: string[] }[] }>(llm, pagesArtUser(f, plan, cast), 4000);
   const byN = new Map((raw.pages ?? []).map((p) => [p.n, p]));
   const pages = plan.pages.map((p) => {
     const r = byN.get(p.n);

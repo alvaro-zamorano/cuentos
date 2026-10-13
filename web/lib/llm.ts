@@ -214,10 +214,30 @@ export function selectLlm(task: Task, env: Record<string, string | undefined> = 
   return MOCK_LLM;
 }
 
-/** Extrae el primer objeto JSON de una respuesta (tolerante a texto o bloque de código alrededor). */
+/**
+ * Extrae el primer objeto JSON completo de una respuesta (tolerante a texto, bloques de código o un segundo objeto
+ * detrás). Recorre llaves equilibradas respetando las cadenas.
+ */
 export function extractJsonObject(raw: string): unknown {
   const start = raw.indexOf("{");
+  if (start < 0) throw new Error("no_json");
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) return JSON.parse(raw.slice(start, i + 1));
+  }
+  // sin cierre equilibrado (respuesta cortada): último intento con lo que haya
   const end = raw.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("no_json");
+  if (end <= start) throw new Error("no_json");
   return JSON.parse(raw.slice(start, end + 1));
 }

@@ -163,3 +163,10 @@ test("el prompt lleva la ficha entera y la dedicatoria del adulto tal cual", () 
   assert.match(surprise, /Sorpréndeme/);
   assert.match(surprise, /Misu/);
 });
+
+test("extractJsonObject: primer objeto completo aunque haya texto u otro objeto detrás", async () => {
+  const { extractJsonObject } = await import("../../lib/llm");
+  assert.deepEqual(extractJsonObject('{"a":1}\n{"b":2}'), { a: 1 });
+  assert.deepEqual(extractJsonObject('texto ```json\n{"a":"x}y{","b":{"c":[1,2]}}\n```'), { a: "x}y{", b: { c: [1, 2] } });
+  assert.deepEqual(extractJsonObject('{"a":"comillas \\" dentro"}'), { a: 'comillas " dentro' });
+});
