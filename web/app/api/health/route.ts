@@ -27,9 +27,12 @@ export async function GET(req: Request) {
   const { provider, requested } = selectProvider();
   const storyModel = process.env.STORY_MODEL || (provider.name === "anthropic" ? "claude-sonnet-4-5" : provider.name === "openai" ? "gpt-4.1-mini" : "mock");
   const imageProvider = process.env.GENERATION_PROVIDER || "dry-run";
+  // la clave de Anthropic se comprueba aunque STORY_PROVIDER no la active todavía
+  const anthropicModel = provider.name === "anthropic" ? storyModel : process.env.STORY_MODEL || "claude-sonnet-4-5";
   const out = {
     supabase: { url: has("NEXT_PUBLIC_SUPABASE_URL"), serviceRole: has("SUPABASE_SERVICE_ROLE_KEY"), check: "skipped" as Check },
     story: { requested, active: provider.name, model: storyModel, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },
+    anthropic: { model: anthropicModel, check: "skipped" as Check },
     images: { provider: imageProvider, geminiKey: has("GEMINI_API_KEY"), geminiModel: geminiModel(), check: "skipped" as Check },
   };
 
@@ -45,10 +48,11 @@ export async function GET(req: Request) {
       );
     }
     const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
-    if (anthropicKey && provider.name === "anthropic") {
+    if (anthropicKey) {
       checks.push(
-        status(`https://api.anthropic.com/v1/models/${encodeURIComponent(storyModel)}`, { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" }).then((c) => {
-          out.story.check = c;
+        status(`https://api.anthropic.com/v1/models/${encodeURIComponent(anthropicModel)}`, { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" }).then((c) => {
+          out.anthropic.check = c;
+          if (provider.name === "anthropic") out.story.check = c;
         }),
       );
     }
