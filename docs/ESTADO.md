@@ -1,0 +1,81 @@
+# ESTADO — cuentos
+
+Actualizado: 2026-10-13, noche · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
+
+La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
+
+## 1. Foco actual
+
+- **Ahora:** que Álvaro pueda recorrer la preview con imágenes reales y juzgar la UX y el recorrido. El código está subido y la preview funciona de punta a punta con las imágenes en modo sin coste. Falta una variable que solo puede poner él (§4, pregunta 1).
+- **Después:** claves de Stripe y Resend (B5), legales (E6), prueba con tres personas ajenas (B7) y salida a producción.
+- **Fuera de foco ahora:** tapa dura, más estilos de ilustración, el Reel (B6), el flujo antiguo (`/clasico`, `/ilustrado`, `/libro`, `/gratis`).
+
+## 2. Log de decisiones (append-only)
+
+### Entradas anteriores (copiadas tal cual de PLAN §8 el 13 oct)
+
+- 8 oct: solo ocasiones felices; sin fotos del menor; avatar por rasgos.
+- 9 oct: registro adulto en todo el sitio; estética editorial; Fraunces + Geist; verde botella como único acento.
+- 9 oct: Clarity solo tras consentimiento; franja superior, no flotante.
+- 9 oct (tarde): la v1 pasa de plantillas a motor de generación (historia única por LLM + ilustración por hoja de personaje) con gasto antes del pago acotado.
+- 11 oct: motor de historia con `mock`; el proveedor real se activa por variable de entorno. Los nombres que el adulto escribe en los detalles cuentan como permitidos.
+- 13 oct (Álvaro): el look de piezas queda plantilla y las combinaciones no cuadran; los padres tienen que poder hacer la historia que quieran con poco esfuerzo; calibrar con Nano Banana desde Higgsfield como si fuera la clave de Gemini.
+- 13 oct: Fase 0 hecha y positiva (`docs/FASE0.md`).
+- 13 oct (Álvaro): todo lo que ve el padre es ilustración generada, un estilo para salir y más estilos en el futuro; gratis = texto + hoja + portada + PDF casero; hasta ≈ 0,30 $ por lead antes del pago; página con imagen 3:2 y texto en banda; libro de muestra «Vera y Toby viajan a la Luna».
+- Sustituidas por D1 (13 oct): «Clásico e Ilustrado comparten las figuras pintadas» (9 oct) y «las piezas se generan en el build» (9 oct).
+- 13 oct (tarde): textos con Claude Sonnet 5.5 (razonamiento mínimo, esfuerzo medio); dirección de arte con Haiku 5.5; control de calidad con Sonnet 5.5. Los modelos 5.x no admiten `temperature`.
+- 13 oct (tarde): moderación local + del planificador. Se permiten emociones pequeñas (nervios, miedo a la oscuridad) que se resuelven; siguen fuera muerte, violencia, armas, sexo, drogas, marcas, personajes con derechos y famosos reales (se sustituyen y se avisa al padre).
+- 13 oct (tarde): el aspecto (pelo, piel, ropa) no cambia el cuento escrito; lo corrige la hoja de personajes con palabras.
+- 13 oct (tarde): la landing dice en las preguntas que el cuento lo escribe e ilustra una IA y que el padre lo revisa todo.
+- 13 oct (B5): Stripe Checkout sin SDK; el pedido solo lo crea el webhook firmado. El pago de prueba nunca funciona en producción (`VERCEL_ENV`), aunque se quede puesta la variable. El servidor pinta en segundo plano y el navegador, si sigue abierto, ayuda con los mismos jobs.
+
+### Desde el 13 oct (noche)
+
+| Fecha | Decisión | Por qué | Docs afectados |
+|---|---|---|---|
+| 2026-10-13 | Borrado a 30 días con un cron diario de Vercel (`/api/cron/purge`, 03:17 UTC). Un libro caducado sin pagar se borra con sus imágenes. Uno pagado se vacía (sin ficha, plan, jobs ni imágenes) y conserva el pedido y el email del cliente. Los planes cacheados de más de 30 días se quedan sin ficha ni cuento, pero conservan coste y modelo | El consentimiento del paso 4 promete el borrado y no existía. Los pedidos se conservan por contabilidad | `web/lib/purge.ts`, `web/vercel.json`, PLAN (E14 cerrado, E17) |
+| 2026-10-13 | `CRON_SECRET` es obligatorio en producción: sin él, la ruta de borrado no hace nada. Fuera de producción funciona sin secreto, para probarla | Evitar que cualquiera dispare el borrado; poder probarlo en la preview | `.env.example`, PLAN §7 |
+| 2026-10-13 | El webhook de Stripe apunta al alias fijo de la rama en la preview | La protección de despliegues del proyecto está desactivada, así que Stripe puede llegar | `PAGO.md` |
+| 2026-10-13 | La letra del PDF se queda en 20 pt. El blanco bajo el texto se debe al formato (D5), no a la letra | Mirado a buena resolución: 20 pt es legible. «Letra pequeña» salió de mirar una miniatura | PLAN (E15) |
+| 2026-10-13 | Las rayas de diálogo del PDF van pegadas a la palabra siguiente (WORD JOINER) | Quedaban colgando al final del renglón | `web/lib/pdf/text.ts` |
+| 2026-10-13 | «Subimos todo» se lee como: código subido a la rama y probado en la preview. La salida a producción (unir el PR #1 a `main`) espera a legales, Stripe y `CRON_SECRET`. *Interpretación de Claude; pendiente de que Álvaro la confirme* | Producción sin legales ni borrado ni pago real no se puede abrir al público | PLAN §7 |
+| 2026-10-13 | Un único registro de decisiones: este. PLAN §8 apunta aquí | Dos registros se desincronizan | PLAN |
+| 2026-10-13 | La documentación para cambiar de hilo vive en el repo (`docs/INDICE.md` y `docs/ESTADO.md`, que mandan) con una copia en el Project (`claude/00-INDICE.md`, `claude/00-ESTADO.md`). Quien cambie uno actualiza el otro | Los hilos de chat leen el Project; los de código leen el repo | INDICE, CLAUDE.md |
+
+## 3. Hallazgos cerrados (13 oct, noche)
+
+- **«Los textos están repetidos en el libro» (Álvaro):** era el PDF que Claude le mandó, una prueba de maqueta local con dos textos de relleno alternados, presentada por error como el PDF de Vercel. El PDF real de la preview (`/api/libro/pdf?b=g2ajgsd2ut&kind=full`) tiene los 12 textos distintos, cada uno con su ilustración. Comprobado extrayendo el texto y mirando las páginas.
+- **Dos pagos de prueba chocaban** porque todos los pedidos usaban el mismo `stripe_session_id` («dry-run»), que es único. Ahora cada uno lleva `dry-run:<libro>`, y si llega dos veces la misma sesión ya no da error.
+- **CI en rojo:** el test de la página 5 fallaba cuando la respuesta tardaba, porque el modo estricto de Playwright falla sin esperar. Reproducido en local retrasando la respuesta 1,5 s y arreglado.
+- **El borrado a 30 días no existía:** hecho y probado en la base real con dos libros de prueba caducados. El no pagado desaparece con sus 2 imágenes; el pagado queda vacío con el pedido; no quedan archivos huérfanos en el bucket.
+- **Paso 3 en móvil:** el título largo se cortaba. Ahora crece, y la dedicatoria también.
+- **Aviso «Pintando las páginas»:** se quedaba unos segundos con el libro ya completo. Arreglado.
+- **Recorrido completo en la preview por la interfaz** (textos reales, imágenes sin coste): de la idea al PDF en 47 s con el cuento en caché, sin errores. Un cuento nuevo tarda 26 s.
+- **Gasto de pruebas de esta noche:** ≈ 0,30 $ (3 planes con Sonnet, una hoja con Gemini que se repitió por el control de calidad, varias llamadas a Haiku).
+
+## 4. Preguntas abiertas (priorizadas)
+
+1. **Imágenes reales en la preview:** poner `GENERATION_PROVIDER=gemini-images` en Vercel → Environment Variables → Preview, rama `feat/fase-1-journey-clasico`, y volver a desplegar. **Álvaro**: el acceso de Claude a Vercel da 403 al crear variables y esta sesión no está enlazada a su ordenador.
+2. **Stripe y Resend:** claves y dominio de envío (pasos en `PAGO.md`). Álvaro.
+3. **Legales (E6):** datos del responsable para privacidad, condiciones y aviso legal (21 campos `Pending`). Falta también fijar el plazo de los emails de leads sin consentimiento de marketing (E18). Álvaro.
+4. **Fiscal:** IVA aplicable y facturas, antes de cobrar. Álvaro con su gestoría.
+5. **Formato del PDF (D5):** con A4 vertical e imagen 3:2 queda blanco bajo el texto. ¿Se mantiene, o se prueba una imagen más alta (4:3) o un formato cuadrado? Decisión de Álvaro.
+6. **Antes de unir el PR #1:** ¿se borran las rutas del flujo antiguo y `/api/dev`?
+7. **`claude/ASSETS.md` está superado por D1.** ¿Se retira del Project? Sigue en el repo.
+8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
+9. **Marca comercial y dominio** (el PRD la deja pendiente).
+
+## 5. Próxima sesión — empezar por
+
+1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
+2. `curl https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/health` y mirar:
+   - Si `images.provider` es `gemini-images`: hacer **un** libro completo por la interfaz (≈ 1 $), revisar la UX con imágenes reales en móvil y escritorio, y anotar aquí lo que se vea.
+   - Si sigue en `dry-run`: recordar a Álvaro la pregunta 1.
+3. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
+4. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
+5. Con los datos legales: rellenar E6.
+6. Antes de unir el PR #1:
+   - `CRON_SECRET` y `SITE_URL` en producción.
+   - Quitar `/api/dev` si se decide.
+   - Actualizar la descripción del PR.
+   - CI en verde y revisión.

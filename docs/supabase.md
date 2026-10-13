@@ -27,7 +27,12 @@ Proyecto compartido con otros productos de Álvaro (`https://bcicjjkgjgajxbrwmey
 
 ## Borrado a 30 días (PRD §9)
 
-`scripts/worker.ts` borra en cada pasada los libros con `expires_at < now()`; jobs y pedidos caen en cascada. Sin worker corriendo no se borra nada: alternativa, un cron de `pg_cron` con `delete from public.cuentos_books where expires_at < now();`.
+Desde el 13 oct lo hace el cron diario de Vercel `/api/cron/purge` (`web/lib/purge.ts`, `web/vercel.json`; solo corre en producción y exige `CRON_SECRET`).
+- Libro caducado sin pagar: se borran sus imágenes del bucket y la fila; los jobs caen en cascada.
+- Libro caducado pagado: la fila se queda vacía (`draft = {}`, `status = expired`, sin jobs ni imágenes) para conservar el pedido.
+- `cuentos_stories` de más de 30 días: se vacían `input` y `story`.
+
+`?dry=1` cuenta sin borrar. (Antes lo hacía `scripts/worker.ts`, que no está corriendo.)
 
 ## Filas de prueba
 

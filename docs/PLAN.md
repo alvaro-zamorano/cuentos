@@ -1,6 +1,6 @@
 # Plan de trabajo — cuentos
 
-Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión; lo que no está aquí no está en marcha. PRD: `PRD.md` (v0.2, se reescribe tras las decisiones de §2). Rama de trabajo: `feat/fase-1-journey-clasico` → PR #1 → `main`.
+Fuente de verdad del plan: bloques, abiertos (E#) y lista de Álvaro. Para arrancar un hilo nuevo: `docs/INDICE.md` (mapa) y `docs/ESTADO.md` (foco, decisiones, próxima sesión). Lo que no está aquí no está en marcha. PRD: `PRD.md` (v0.2, se reescribe tras las decisiones de §2). Rama de trabajo: `feat/fase-1-journey-clasico` → PR #1 → `main`.
 
 ## 1. Estado real (13 oct 2026, noche)
 
@@ -12,7 +12,9 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 - **B4 hecho**: libro pagado con 12 ilustraciones a 2K (Mateo, idéntico en las 12), revisión por página, PDF A4 vertical de 15 páginas generado en Vercel (6,75 MB, 8 s). ≈ 1 $ por libro.
 - **B5, código hecho; faltan las claves** (`docs/PAGO.md`): Stripe Checkout + webhook (pedido idempotente), emails con Resend (enlace al dar el email; «tu libro está listo» al terminar las 12), y el servidor pinta en segundo plano con `after()` aunque se cierre la pestaña. Probado en local con un webhook firmado y en la preview (Supabase, imágenes sin coste): hoja, portada y 12 páginas terminadas sin que el navegador pida nada.
 - **B6 en parte**: landing nueva con el libro de muestra «Vera y Toby viajan a la Luna», cuatro portadas reales de ocasiones, cinco pasos, ediciones (gratis = cuento + hoja + portada + PDF casero, D3) y transparencia sobre la IA; 20 ideas de arranque en el paso 1.
-- **CI** (E3): GitHub Actions con tsc, eslint, 72 unitarios, build y 7 Playwright.
+- **Borrado a 30 días** (E14, cerrado): cron diario `/api/cron/purge` (`web/vercel.json`). Probado en la base real con dos libros de prueba caducados: el no pagado desaparece con sus imágenes; el pagado queda vacío y conserva el pedido.
+- **Recorrido completo por la interfaz en la preview** (13 oct, noche): de la idea al PDF en 47 s con el cuento en caché, sin errores (imágenes en modo sin coste). Cuento nuevo: 26 s.
+- **CI** (E3): GitHub Actions con tsc, eslint, 76 unitarios, build y 7 Playwright.
 
 **Fuera del embudo (D1):** constructor de piezas y edición Clásica (`/clasico`, `/ilustrado`, `/libro`, `/gratis` siguen existiendo pero nada enlaza a ellos salvo `/gratis` desde su propio formulario).
 
@@ -22,9 +24,9 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 |---|---|---|
 | E6 | Legales con campos `Pending` | Faltan datos del responsable |
 | E7 | Pago de prueba; sin emails | Código de B5 hecho; faltan las claves de Stripe y Resend (§7) |
-| E14 | **El borrado a 30 días no existe**: el consentimiento lo promete, pero nada borra los libros caducados ni sus imágenes del bucket (antes lo hacía `scripts/worker.ts`, que no corre) | Falta un cron que borre filas e imágenes. Bloquea la venta |
-| E15 | PDF: letra pequeña para un libro infantil y casi media página en blanco bajo el texto | Maqueta de `lib/pdf/book2.ts` |
-| E16 | Paso 3 en móvil: el título largo se corta en una línea | Es un `input`; pasar a área de texto |
+| E15 | PDF: queda bastante blanco bajo el texto. La letra ya es de 20 pt (lo de «pequeña» fue por mirar una miniatura); el blanco viene del formato A4 vertical + imagen 3:2 (D5). Las rayas de diálogo que quedaban colgando al final del renglón, arregladas | Decidir si se cambia el formato (D5) |
+| E17 | El cron de borrado necesita `CRON_SECRET` en producción (sin él no borra) y solo corre en producción | Álvaro (§7) |
+| E18 | Los emails de `cuentos_leads` sin consentimiento de marketing no caducan | Decidir el plazo con los legales (E6) |
 | E13 | Si el segundo plano no termina las 12 páginas en ≈ 3,5 min (corte de Vercel a 300 s), las que falten se pintan cuando el padre vuelve con su enlace, y el email de «listo» no sale | Aceptable para salir; con más volumen, encadenar otra función |
 | E10 | En la interfaz de la preview las imágenes siguen en modo sin coste | Falta `GENERATION_PROVIDER=gemini-images` en Preview (la prueba real se hizo con `/api/dev`, que fuerza Gemini) |
 | E11 | `/api/health` en producción | Ya no enseña nombres de variables y la comprobación profunda pide `HEALTH_TOKEN`. La variable antigua `service_role` sobra en Vercel |
@@ -133,31 +135,19 @@ Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de
 6. **Errores:** URL + captura + qué se esperaba; entran en §1 antes de corregirse.
 7. **Copy:** registro adulto, sin diminutivos, sin emojis en interfaz.
 
-## 7. Lista de Álvaro (actualizada 13 oct, tarde)
+## 7. Lista de Álvaro (actualizada 13 oct, noche)
 
 Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables) o a un archivo local.
 
 Hecho el 13 oct: `ANTHROPIC_API_KEY` (con workspace), `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, app de GitHub de Claude en el repo.
 
 Pendiente:
-1. **Preview:** `GENERATION_PROVIDER=gemini-images` (imágenes de verdad en la interfaz) y `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` (pago de prueba) si no está. Borrar la variable antigua `service_role`.
+1. **Preview:** `GENERATION_PROVIDER=gemini-images` (imágenes de verdad en la interfaz). Claude lo intentó el 13 oct y Vercel le devolvió 403 (su acceso no puede crear variables). `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` ya está. Borrar la variable antigua `service_role`.
 2. **Probar el recorrido entero** en la preview con un niño real y leer los 10 cuentos de prueba (criterio de B1).
 3. **B5** (pasos exactos en `docs/PAGO.md`): Stripe en modo test → `STRIPE_SECRET_KEY` (sk_test_…) y un webhook a `/api/stripe/webhook` → `STRIPE_WEBHOOK_SECRET`. Resend con un dominio verificado → `RESEND_API_KEY` y `MAIL_FROM`. `SITE_URL` en producción. Luego, un pago con la tarjeta de prueba 4242 4242 4242 4242 y comprobar los dos emails.
-4. **B7:** datos legales del responsable (E6), dominio, tres personas ajenas que hagan un libro sin ayuda. Antes de producción: `HEALTH_TOKEN` si se quiere la comprobación profunda.
+4. **B7:** datos legales del responsable (E6), dominio, tres personas ajenas que hagan un libro sin ayuda. Antes de producción: `CRON_SECRET` (obligatorio, E17) y `HEALTH_TOKEN` si se quiere la comprobación profunda.
+5. **Fiscal:** confirmar con la gestoría el IVA aplicable y cómo emitir las facturas antes de cobrar.
 
 ## 8. Registro de decisiones
 
-- 8 oct: solo ocasiones felices; sin fotos del menor; avatar por rasgos.
-- 9 oct: registro adulto en todo el sitio; estética editorial; Fraunces + Geist; verde botella como único acento.
-- 9 oct: Clarity solo tras consentimiento; franja superior, no flotante.
-- 9 oct (tarde): la v1 pasa de plantillas a motor de generación (historia única por LLM + ilustración por hoja de personaje) con gasto antes del pago acotado.
-- 11 oct: motor de historia con `mock`; el proveedor real se activa por variable de entorno. Los nombres que el adulto escribe en los detalles cuentan como permitidos.
-- 13 oct (Álvaro): el look de piezas queda plantilla y las combinaciones no cuadran; los padres tienen que poder hacer la historia que quieran con poco esfuerzo; calibrar con Nano Banana desde Higgsfield como si fuera la clave de Gemini.
-- 13 oct: Fase 0 hecha y positiva (`docs/FASE0.md`).
-- 13 oct (Álvaro): todo lo que ve el padre es ilustración generada, un estilo para salir y más estilos en el futuro; gratis = texto + hoja + portada + PDF casero; hasta ≈ 0,30 $ por lead antes del pago; página con imagen 3:2 y texto en banda; libro de muestra «Vera y Toby viajan a la Luna».
-- Sustituidas por D1 (13 oct): «Clásico e Ilustrado comparten las figuras pintadas» (9 oct) y «las piezas se generan en el build» (9 oct).
-- 13 oct (tarde): textos con Claude Sonnet 5.5 (razonamiento mínimo, esfuerzo medio); dirección de arte con Haiku 5.5; control de calidad con Sonnet 5.5. Los modelos 5.x no admiten `temperature`.
-- 13 oct (tarde): moderación local + del planificador. Se permiten emociones pequeñas (nervios, miedo a la oscuridad) que se resuelven; siguen fuera muerte, violencia, armas, sexo, drogas, marcas, personajes con derechos y famosos reales (se sustituyen y se avisa al padre).
-- 13 oct (tarde): el aspecto (pelo, piel, ropa) no cambia el cuento escrito; lo corrige la hoja de personajes con palabras.
-- 13 oct (tarde): la landing dice en las preguntas que el cuento lo escribe e ilustra una IA y que el padre lo revisa todo.
-- 13 oct (B5): Stripe Checkout sin SDK; el pedido solo lo crea el webhook firmado. El pago de prueba nunca funciona en producción (`VERCEL_ENV`), aunque se quede puesta la variable. El servidor pinta en segundo plano y el navegador, si sigue abierto, ayuda con los mismos jobs.
+Movido el 13 oct (noche) a `docs/ESTADO.md` §2, que es desde entonces el único registro (append-only). Las entradas anteriores están copiadas allí tal cual.

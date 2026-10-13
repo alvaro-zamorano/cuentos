@@ -1,7 +1,8 @@
 # cuentos — cuentos personalizados para imprimir
 
-Estado: **Fase 1 construida y verificada** (journey Clásico completo, PDF casero) · **Fase 1.5** (8 oct 2026): catálogo de rasgos desde las 50 imágenes, Supabase como backend, esqueleto de la edición ilustrada sin coste · **Brief 2** (8 oct 2026): edición ilustrada visible en dry-run con pago simulado, lead magnet `/gratis`, páginas legales en borrador, tests Playwright y CI · **Brief 3** (9 oct 2026): rediseño editorial (Fraunces + Geist, papel/tinta, acento verde botella), copy en registro adulto y edición ilustrada con escenas pintadas. Ver `PRD.md` §14.
+**Para empezar (13 oct 2026):** lee `docs/INDICE.md` (mapa, accesos, cómo probar) y `docs/ESTADO.md` (foco, decisiones, próxima sesión). El plan y los abiertos están en `docs/PLAN.md`. El flujo vigente es `/crear` (B1–B5); lo que este README cuenta debajo es de la etapa anterior (Fase 1 y briefs del 8–9 oct) y se conserva como histórico.
 
+Estado anterior: **Fase 1 construida y verificada** (journey Clásico completo, PDF casero) · **Fase 1.5** (8 oct 2026): catálogo de rasgos desde las 50 imágenes, Supabase como backend, esqueleto de la edición ilustrada sin coste · **Brief 2** (8 oct 2026): edición ilustrada visible en dry-run con pago simulado, lead magnet `/gratis`, páginas legales en borrador, tests Playwright y CI · **Brief 3** (9 oct 2026): rediseño editorial (Fraunces + Geist, papel/tinta, acento verde botella), copy en registro adulto y edición ilustrada con escenas pintadas. Ver `PRD.md` §14.
 ## Qué hay
 
 - `PRD.md` — PRD v0.2 con bloque distro confirmado, checklist DISTRO y plan por fases.
