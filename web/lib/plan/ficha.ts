@@ -175,7 +175,8 @@ export function describeLookEn(look: Look): string {
   const parts: string[] = [];
   const shape = en(HAIR_SHAPES, look.hair?.shape);
   const color = en(HAIR_COLORS, look.hair?.color);
-  if (shape || color) parts.push(`${[shape, color].filter(Boolean).join(" ")} hair`);
+  if (color) parts.push([`${color} hair`, shape].filter(Boolean).join(", "));
+  else if (shape) parts.push(`${shape} hair`);
   const skin = en(SKINS, look.skin);
   if (skin) parts.push(`${skin} skin`);
   const eyes = en(EYES, look.eyes);

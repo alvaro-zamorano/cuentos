@@ -11,8 +11,8 @@ export function Footer() {
           <p className="max-w-[44ch]">Cuentos personalizados, escritos e ilustrados para un solo lector.</p>
         </div>
         <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Legal">
-          <Link href="/gratis" className="hover:text-ink hover:underline">
-            Cuento de muestra
+          <Link href="/#muestra" className="hover:text-ink hover:underline">
+            Libro de muestra
           </Link>
           <Link href="/privacidad" className="hover:text-ink hover:underline">
             Privacidad

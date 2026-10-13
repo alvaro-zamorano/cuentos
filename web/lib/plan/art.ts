@@ -82,9 +82,9 @@ export function castArtUser(f: Ficha, plan: Plan): string {
     "Book cast and settings (Spanish). Produce English descriptions.",
     "",
     `HERO (id hero): ${f.hero.name}, ${f.hero.age} years old, ${heroChildWord(f)}.`,
-    chips ? `Fixed features already in English (copy them as they are): ${chips}.` : "No fixed features given: choose a simple, natural look and keep it.",
+    chips ? `Fixed features (already decided, do NOT repeat them in identityEn): ${chips}.` : "No fixed features given: choose a simple, natural look (hair colour and style, skin tone, eyes) and describe it in identityEn.",
     f.hero.look.unique ? `Something unique (Spanish): «${f.hero.look.unique}»` : "",
-    f.hero.outfit ? `Usual clothes (Spanish): «${f.hero.outfit}»` : "Usual clothes: not given. Choose one simple, colourful everyday outfit that suits the story.",
+    f.hero.outfit ? `Usual clothes (Spanish): «${f.hero.outfit}»` : "Usual clothes: not given. Choose one concrete, simple, colourful everyday outfit (garments and colours) that suits the story.",
     "",
     cast.length ? "RECURRING CAST:" : "",
     ...cast.map((c: CastMember) => `- ${c.id}: ${c.name || "(no name)"}, ${c.relation || c.kind} (${c.kind}). Look (Spanish): «${c.look || "not given: invent a simple distinctive look"}»`),
@@ -96,10 +96,10 @@ export function castArtUser(f: Ficha, plan: Plan): string {
     "",
     `COVER SCENE (Spanish): ${plan.cover}`,
     "",
-    "Return JSON:",
-    '{"cast":[{"id":"hero","identityEn":"...","outfitEn":"..."},{"id":"c1","identityEn":"...","outfitEn":"..."}],"places":{"p1":"..."},"objects":{"o1":"..."},"coverEn":"..."}',
-    "- identityEn: who they are and how they look WITHOUT clothes: apparent age, species/breed for animals, face, hair (shape and colour), skin tone, eyes, glasses, unique marks, build. For the hero, start with the fixed features.",
-    "- outfitEn: usual clothes with colours (empty string for animals without clothes).",
+    "Return JSON with ONE entry for EVERY id listed above (characters, places and objects), all in English:",
+    `{"cast":[${["hero", ...cast.map((c) => c.id)].map((id) => `{"id":"${id}","identityEn":"...","outfitEn":"..."}`).join(",")}],"places":{${plan.places.map((p) => `"${p.id}":"..."`).join(",")}},"objects":{${plan.objects.map((o) => `"${o.id}":"..."`).join(",")}},"coverEn":"..."}`,
+    "- identityEn: how they look WITHOUT clothes and without their name: apparent age, species/breed for animals, face, hair (shape and colour), skin tone, eyes, glasses, unique marks, build. For the hero, ONLY what is not in the fixed features (face shape, unique marks, build); can be empty.",
+    "- outfitEn: usual clothes with garments and colours, lowercase, no final full stop (empty string for animals without clothes).",
     "- coverEn: the cover moment in one or two sentences, with the characters by name.",
   ]
     .filter((l) => l !== "")
@@ -126,38 +126,60 @@ interface RawCast {
 
 const s = (v: unknown, max = 1200) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
+/** «A green dress with pockets.» → «a green dress with pockets». */
+function phrase(v: string): string {
+  const t = v.replace(/[.\s]+$/u, "").trim();
+  // «A green dress» → «a green dress»; un nombre propio suelto al principio se respeta
+  return t && /^(?:A|An|The|Her|His|Their|One|Some|[A-Z][a-z]+)\s/.test(t) && !/^[A-Z][a-z]+'s\s/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t;
+}
+
+/** Quita el nombre si el modelo lo puso delante («Carmen, a short…» → «a short…»). */
+function withoutName(v: string, name: string): string {
+  if (!name) return v;
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return v.replace(new RegExp(`^(?:${esc}\\s*[,:;-]\\s*)+`, "i"), "").trim();
+}
+
+const article = (n: number) => (n === 8 || n === 11 || n === 18 ? "an" : "a");
+
 function mergeCast(f: Ficha, plan: Plan, raw: RawCast, prev?: ArtCast[]): ArtCast[] {
   const chips = describeLookEn(f.hero.look);
   const byId = new Map((raw.cast ?? []).map((c) => [c.id, c]));
   const out: ArtCast[] = [];
   const hero = byId.get("hero");
-  let heroIdentity = s(hero?.identityEn) || prev?.find((c) => c.id === "hero")?.identityEn || "";
-  // los rasgos de los chips no pueden faltar aunque el modelo los reescriba
-  if (chips && !heroIdentity.toLowerCase().includes(chips.split(",")[0].trim().toLowerCase())) heroIdentity = `${chips}; ${heroIdentity}`;
+  const prevHero = prev?.find((c) => c.id === "hero");
+  // rasgos fijos de los chips + lo que añade el modelo (marcas, cara); el modelo no los reescribe
+  const extra = phrase(withoutName(s(hero?.identityEn), f.hero.name));
+  const heroIdentity = hero ? [chips, extra].filter(Boolean).join("; ") : prevHero ? bareIdentity(prevHero) : chips;
   out.push({
     id: "hero",
     name: f.hero.name,
     kind: "child",
-    identityEn: `${f.hero.name}, a ${f.hero.age}-year-old ${heroChildWord(f)}: ${heroIdentity || chips || "a cheerful child"}; ${PROPORTIONS}`,
-    outfitEn: s(hero?.outfitEn) || prev?.find((c) => c.id === "hero")?.outfitEn || "a simple colourful everyday outfit",
+    identityEn: `${f.hero.name}, ${article(f.hero.age)} ${f.hero.age}-year-old ${heroChildWord(f)}: ${heroIdentity || "a cheerful child"}; ${PROPORTIONS}`,
+    outfitEn: phrase(s(hero?.outfitEn)) || prevHero?.outfitEn || "a simple colourful everyday outfit",
   });
   for (const c of [...f.cast, ...plan.extraCast]) {
     const r = byId.get(c.id);
     const before = prev?.find((p) => p.id === c.id);
+    const name = c.name || "";
+    const desc = phrase(withoutName(s(r?.identityEn), name)) || (before ? bareIdentity(before) : "") || c.look || c.relation;
     out.push({
       id: c.id,
       name: c.name || c.relation,
       kind: c.kind,
-      identityEn: `${c.name ? `${c.name}, ` : ""}${s(r?.identityEn) || before?.identityEn || c.look || c.relation}`,
-      outfitEn: s(r?.outfitEn) || before?.outfitEn || "",
+      identityEn: `${name ? `${name}, ` : ""}${desc}`,
+      outfitEn: phrase(s(r?.outfitEn)) || before?.outfitEn || "",
     });
   }
   return out;
 }
 
-/** Quita el nombre y las proporciones que mergeCast antepone/añade, para devolver al LLM solo la descripción. */
+/** La descripción sin el nombre ni el prefijo de edad ni las proporciones que añade mergeCast. */
 function bareIdentity(c: ArtCast): string {
-  return c.identityEn.replace(/; children's picture-book proportions.*$/, "");
+  return c.identityEn
+    .replace(/; children's picture-book proportions.*$/, "")
+    .replace(/^[^,:]+, an? \d+-year-old (?:girl|boy|child): /, "")
+    .replace(new RegExp(`^${c.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},\\s*`), "");
 }
 
 export async function castArt(f: Ficha, plan: Plan, llm: Llm = selectLlm("art")): Promise<{ art: CastArt; costCents: number | null }> {
@@ -185,13 +207,10 @@ export async function reviseCast(f: Ficha, plan: Plan, art: CastArt, instruction
   const bare = { ...art, cast: art.cast.map((c) => ({ ...c, identityEn: bareIdentity(c) })) };
   const res = await llm.complete({ system: ART_SYSTEM, messages: [{ role: "user", content: reviseCastUser(bare, instruction) }], maxTokens: 1500, temperature: 0.2 });
   const raw = extractJsonObject(res.raw) as RawCast;
-  // el nombre ya va dentro de identityEn devuelto; se quita para no duplicarlo al recomponer
+  // para el protagonista, el modelo devuelve la descripción completa: se quitan los rasgos fijos para no duplicarlos
+  const chips = describeLookEn(f.hero.look);
   const cleaned: RawCast = {
-    cast: (raw.cast ?? []).map((c) => {
-      const name = art.cast.find((x) => x.id === c.id)?.name ?? "";
-      const id = s(c.identityEn).replace(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},\\s*(a [0-9]+-year-old [a-z]+:\\s*)?`), "");
-      return { ...c, identityEn: id };
-    }),
+    cast: (raw.cast ?? []).map((c) => (c.id === "hero" && chips ? { ...c, identityEn: s(c.identityEn).replace(chips, "").replace(/^[;,\s]+/, "") } : c)),
   };
   return { art: { ...art, cast: mergeCast(f, plan, cleaned, art.cast), revisions: [...art.revisions, instruction] }, costCents: llmCostCents(res.model, res.usage) };
 }
@@ -310,7 +329,7 @@ export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style
 function mockCastArt(f: Ficha, plan: Plan, key: string): CastArt {
   const raw: RawCast = {
     cast: [
-      { id: "hero", identityEn: describeLookEn(f.hero.look) || "a cheerful child", outfitEn: f.hero.outfit || "a yellow jumper and blue trousers" },
+      { id: "hero", identityEn: f.hero.look.unique ?? "", outfitEn: f.hero.outfit || "a yellow jumper and blue trousers" },
       ...[...f.cast, ...plan.extraCast].map((c) => ({ id: c.id, identityEn: c.look || c.relation, outfitEn: c.kind === "persona" ? "everyday clothes" : "" })),
     ],
   };

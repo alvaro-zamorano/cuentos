@@ -81,16 +81,17 @@ export const COST_CENTS_BY_SIZE: Record<string, Record<ImageSize, number>> = {
 };
 
 /**
- * Coste estimado por imagen en céntimos. GENERATION_COST_CENTS_PER_IMAGE manda si está definida (no vacía);
- * si no, el valor por defecto del proveedor (gemini 4, openai 8). Son estimaciones hasta medir el real en la Fase 0.
+ * Coste estimado por imagen en céntimos. Con resolución (flujo nuevo), la tabla por tamaño. Sin ella (flujo antiguo),
+ * GENERATION_COST_CENTS_PER_IMAGE si está definida y, si no, el valor por defecto del proveedor (gemini 4, openai 8).
  */
 export function estimatedCostCents(provider = process.env.GENERATION_PROVIDER ?? "dry-run", size?: ImageSize): number {
+  // flujo nuevo: la resolución manda (la variable antigua es una tarifa plana del flujo de piezas)
+  if (size && COST_CENTS_BY_SIZE[provider]) return COST_CENTS_BY_SIZE[provider][size];
   const raw = process.env.GENERATION_COST_CENTS_PER_IMAGE;
   if (raw !== undefined && raw.trim() !== "") {
     const v = Number(raw);
     if (Number.isFinite(v) && v >= 0) return v;
   }
-  if (size && COST_CENTS_BY_SIZE[provider]) return COST_CENTS_BY_SIZE[provider][size];
   return DEFAULT_COST_CENTS[provider] ?? 8;
 }
 

@@ -47,7 +47,8 @@ export interface Llm {
 
 export const DEFAULT_MODEL: Record<Exclude<LlmName, "mock">, Record<Task, string>> = {
   // 13 oct: los más recientes disponibles para la clave (/api/dev?task=models). Haiku 5.5 basta para traducir y revisar.
-  anthropic: { plan: "claude-sonnet-5-5", art: "claude-haiku-5-5", qc: "claude-haiku-5-5" },
+  // QC con Sonnet: con Haiku daba falsos rechazos («las dos vistas no parecen la misma abuela» en una hoja correcta)
+  anthropic: { plan: "claude-sonnet-5-5", art: "claude-haiku-5-5", qc: "claude-sonnet-5-5" },
   openai: { plan: "gpt-4.1-mini", art: "gpt-4.1-mini", qc: "gpt-4.1-mini" },
 };
 

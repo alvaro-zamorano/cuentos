@@ -20,7 +20,8 @@ const SYSTEM = [
   "3. Missing a character the prompt requires, or an extra recurring-looking character that should not be there.",
   "4. Broken anatomy: extra or missing limbs, fused bodies, distorted faces, more than five fingers clearly visible.",
   "For a character reference sheet, also reject if the main character's views do not look like the same person.",
-  "Style, composition, small colour shifts and minor background details are NOT problems.",
+  "Style, composition, small colour shifts, small marks (a patch, a freckle) that are hard to see, slight differences between views of secondary characters and background details are NOT problems.",
+  "Be lenient: reject only what you would bet a parent complains about. When in doubt, pass.",
   'Answer only JSON: {"pass": true|false, "problems": ["short description", ...]}',
 ].join("\n");
 

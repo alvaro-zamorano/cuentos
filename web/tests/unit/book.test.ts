@@ -20,7 +20,8 @@ test("dirección de arte: la hoja lleva al reparto con identidad y ropa; la pág
   const style = getStyle("gouache")!;
   const sheet = sheetPrompt(art, style);
   assert.match(sheet, /Vera, a 6-year-old girl/);
-  assert.match(sheet, /curly bob auburn hair/);
+  assert.match(sheet, /auburn hair, curly bob/);
+  assert.equal(sheet.match(/auburn hair/g)?.length, 1, "los rasgos fijos no se repiten");
   assert.match(sheet, /thin round wire glasses/);
   assert.match(sheet, /Toby/);
   assert.match(sheet, /No text/);
@@ -113,4 +114,35 @@ test("startBook valida email, ficha y plan antes de gastar", async () => {
   const counting = { ...plan, pages: plan.pages.map((p) => (p.n === 1 ? { ...p, scene: "Vera sopla siete velas" } : p)) };
   const r = await startBook(store, { email, ficha, plan: counting }, dryRunAdapter, MOCK_LLM);
   assert.equal(!r.ok && r.error, "plan_invalid");
+});
+
+test("dirección de arte: limpia lo que devuelve el modelo (nombre repetido, mayúscula y punto en la ropa)", async () => {
+  const f = normalizeFicha(EVAL_CASES[2]);
+  const p = mockPlan(f);
+  const llm = {
+    name: "anthropic" as const,
+    model: "claude-fake",
+    async complete() {
+      return {
+        raw: JSON.stringify({
+          cast: [
+            { id: "hero", identityEn: "Lucía, round face and a small scar on her chin", outfitEn: "A green dress with pockets." },
+            { id: "c1", identityEn: "Carmen, a short grandmother with white hair in a bun and red glasses", outfitEn: "A brown cardigan." },
+          ],
+          places: { p1: "a bright house", p2: "a park with tall trees" },
+          objects: { o1: "a red backpack with a yellow star patch" },
+          coverEn: "Lucía and Carmen in the park",
+        }),
+        model: "claude-fake",
+        usage: { input: 1, output: 1 },
+        ms: 1,
+      };
+    },
+  };
+  const { art } = await castArt(f, p, llm);
+  const hero = art.cast[0];
+  assert.match(hero.identityEn, /^Lucía, an 8-year-old girl: black hair, two braids, brown skin, brown eyes; round face and a small scar on her chin;/);
+  assert.equal(hero.outfitEn, "a green dress with pockets");
+  assert.equal(art.cast[1].identityEn, "Carmen, a short grandmother with white hair in a bun and red glasses");
+  assert.equal(art.places.p2, "a park with tall trees");
 });
