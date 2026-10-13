@@ -22,6 +22,9 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 |---|---|---|
 | E6 | Legales con campos `Pending` | Faltan datos del responsable |
 | E7 | Pago de prueba; sin emails | Código de B5 hecho; faltan las claves de Stripe y Resend (§7) |
+| E14 | **El borrado a 30 días no existe**: el consentimiento lo promete, pero nada borra los libros caducados ni sus imágenes del bucket (antes lo hacía `scripts/worker.ts`, que no corre) | Falta un cron que borre filas e imágenes. Bloquea la venta |
+| E15 | PDF: letra pequeña para un libro infantil y casi media página en blanco bajo el texto | Maqueta de `lib/pdf/book2.ts` |
+| E16 | Paso 3 en móvil: el título largo se corta en una línea | Es un `input`; pasar a área de texto |
 | E13 | Si el segundo plano no termina las 12 páginas en ≈ 3,5 min (corte de Vercel a 300 s), las que falten se pintan cuando el padre vuelve con su enlace, y el email de «listo» no sale | Aceptable para salir; con más volumen, encadenar otra función |
 | E10 | En la interfaz de la preview las imágenes siguen en modo sin coste | Falta `GENERATION_PROVIDER=gemini-images` en Preview (la prueba real se hizo con `/api/dev`, que fuerza Gemini) |
 | E11 | `/api/health` en producción | Ya no enseña nombres de variables y la comprobación profunda pide `HEALTH_TOKEN`. La variable antigua `service_role` sobra en Vercel |
