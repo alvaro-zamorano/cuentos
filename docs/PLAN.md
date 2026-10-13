@@ -124,16 +124,15 @@ Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de
 6. **Errores:** URL + captura + qué se esperaba; entran en §1 antes de corregirse.
 7. **Copy:** registro adulto, sin diminutivos, sin emojis en interfaz.
 
-## 7. Lista de Álvaro (13 oct)
+## 7. Lista de Álvaro (13 oct; claves y GitHub hechos por Álvaro el 13 oct, verificación en §1)
 
 Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables, Production y Preview) o a un archivo local.
 
-1. Decidir D4 (§2).
-2. Clave del LLM de historia (`ANTHROPIC_API_KEY` o `OPENAI_API_KEY`) en Vercel → B1 con proveedor real.
-3. Proveedor de imágenes (D4): `GEMINI_API_KEY` en Vercel, o en el Mac `~/.higgsfield-cli/venv/bin/hf models --kind image` para ver si la API de Higgsfield tiene Nano Banana.
-4. App de GitHub de Claude en el repo → CI y binarios (E3).
-5. `SUPABASE_SERVICE_ROLE_KEY` en Vercel → `/api/books` (E2).
-6. Más adelante: datos legales, Stripe, Resend, `NEXT_PUBLIC_CLARITY_ID`.
+1. ~~Clave del LLM de historia~~ (`ANTHROPIC_API_KEY` + `STORY_PROVIDER=anthropic`): añadida 13 oct.
+2. ~~Proveedor de imágenes~~ (`GEMINI_API_KEY`): añadida 13 oct.
+3. ~~App de GitHub de Claude en el repo~~: hecha 13 oct (`git push` funciona desde la sesión).
+4. ~~`SUPABASE_SERVICE_ROLE_KEY`~~: añadida 13 oct.
+5. Más adelante: datos legales, Stripe, Resend, `NEXT_PUBLIC_CLARITY_ID`.
 
 ## 8. Registro de decisiones
 
