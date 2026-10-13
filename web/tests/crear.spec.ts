@@ -52,7 +52,8 @@ test("De una frase al cuento escrito: 12 tarjetas, editar texto y cambiar una p�
   await page.getByTestId("page-5").getByRole("button", { name: "Cambiar esta página" }).click();
   await page.getByTestId("page-5").getByPlaceholder(/prima Lola/).fill("que salga la Luna sonriendo");
   await page.getByTestId("page-5").getByRole("button", { name: "Cambiar", exact: true }).click();
-  await expect(page.getByTestId("page-5").getByRole("textbox")).toHaveValue(/Que salga la Luna sonriendo\./);
+  // por su nombre: mientras se reescribe, el campo de la frase también es un textbox (y el modo estricto falla sin esperar)
+  await expect(page.getByTestId("page-5").getByRole("textbox", { name: "Texto de la página 5" })).toHaveValue(/Que salga la Luna sonriendo\./);
   // al recargar sigue todo (localStorage) y no se vuelve a escribir
   await page.reload();
   await expect(page.getByTestId("page-1").getByRole("textbox")).toHaveValue("Vera tenía una idea enorme y una caja de cartón todavía más grande.");
