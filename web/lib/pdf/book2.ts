@@ -1,4 +1,5 @@
 import "server-only";
+import { joinDashes } from "./text";
 import { launch } from "./render";
 import type { Plan } from "../plan/types";
 
@@ -26,7 +27,7 @@ const paras = (t: string) =>
     .split(/\n+/)
     .map((l) => l.trim())
     .filter(Boolean)
-    .map((l) => `<p>${esc(l)}</p>`)
+    .map((l) => `<p>${joinDashes(esc(l))}</p>`)
     .join("");
 
 export function book2Html({ plan, heroName, from, coverUrl, pageUrls, kind }: Book2PdfInput): string {

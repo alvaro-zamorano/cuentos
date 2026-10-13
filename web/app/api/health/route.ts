@@ -59,6 +59,7 @@ export async function GET(req: Request) {
     payment: { mode: paymentMode(), dryRun: process.env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1", stripeKey: has("STRIPE_SECRET_KEY"), stripeWebhookSecret: has("STRIPE_WEBHOOK_SECRET") },
     mail: { enabled: mailEnabled(), resendKey: has("RESEND_API_KEY"), from: has("MAIL_FROM"), siteUrl: has("SITE_URL") },
     background: process.env.BACKGROUND_PAINT !== "0",
+    cron: { secret: has("CRON_SECRET") },
   };
 
   if (deep) {

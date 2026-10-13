@@ -105,10 +105,20 @@ export function StepStory({
     <div className="grid gap-8">
       <div className="grid gap-3">
         <p className="text-sm text-ink-soft">El cuento, página a página. Cambia lo que quieras: el texto se edita aquí mismo y cada página se puede rehacer con una frase.</p>
-        <input className="input display !text-3xl sm:!text-4xl" value={plan.title} maxLength={120} onChange={(e) => setPlan({ ...plan, title: e.target.value })} aria-label="Título" data-testid="plan-title" />
+        {/* área de texto de una línea lógica: en móvil el título largo se parte en renglones en vez de cortarse */}
+        <AutoTextarea
+          className="input display resize-none !text-3xl leading-tight sm:!text-4xl"
+          rows={1}
+          value={plan.title}
+          maxLength={120}
+          onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+          onChange={(e) => setPlan({ ...plan, title: e.target.value.replace(/\s*\n+\s*/g, " ") })}
+          aria-label="Título"
+          data-testid="plan-title"
+        />
         <label className="grid gap-1">
           <span className="field-label">Dedicatoria</span>
-          <textarea className="story min-h-16 w-full rounded-[6px] border border-line bg-card p-3 italic leading-relaxed outline-none focus:border-ink" value={plan.dedication} maxLength={400} onChange={(e) => setPlan({ ...plan, dedication: e.target.value })} />
+          <AutoTextarea className="story min-h-16 w-full resize-none rounded-[6px] border border-line bg-card p-3 italic leading-relaxed outline-none focus:border-ink" value={plan.dedication} maxLength={400} onChange={(e) => setPlan({ ...plan, dedication: e.target.value })} aria-label="Dedicatoria" />
         </label>
         {plan.notices.length > 0 && (
           <div className="notice grid gap-1">
