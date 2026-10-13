@@ -33,6 +33,23 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: res.ok, status: res.status, models: (json?.data ?? []).map((m) => ({ id: m.id, created: m.created_at })) });
   }
 
+  if (task === "ping") {
+    // diagnóstico de un modelo: una llamada mínima (≈ 0,01 c) con y sin temperature
+    const model = url.searchParams.get("model") ?? "";
+    if (!/^claude-[a-z0-9.-]{2,60}$/.test(model)) return NextResponse.json({ ok: false, error: "model" }, { status: 400 });
+    const llm = selectLlm("plan", { ...process.env, PLAN_MODEL: model });
+    const out: Record<string, unknown> = {};
+    for (const temperature of [undefined, 0.8]) {
+      try {
+        const r = await llm.complete({ system: "Responde solo: ok", messages: [{ role: "user", content: "di ok" }], maxTokens: 5, temperature });
+        out[`temp_${temperature ?? "none"}`] = { ok: true, ms: r.ms, model: r.model };
+      } catch (e) {
+        out[`temp_${temperature ?? "none"}`] = { ok: false, error: e instanceof Error ? e.message : "error" };
+      }
+    }
+    return NextResponse.json(out);
+  }
+
   if (task === "plan") {
     const i = Number(url.searchParams.get("case")) - 1;
     const ficha = EVAL_CASES[i];

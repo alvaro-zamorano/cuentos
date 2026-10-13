@@ -67,6 +67,12 @@ class LlmError extends Error {
 
 const TIMEOUT_MS = 120_000;
 
+/** Modelos que no aceptan `temperature` (se rellena tras probarlos con /api/dev?task=ping). */
+const NO_TEMPERATURE: RegExp[] = [];
+function noTemperature(model: string): boolean {
+  return NO_TEMPERATURE.some((re) => re.test(model));
+}
+
 function anthropic(apiKey: string, model: string): Llm {
   return {
     name: "anthropic",
@@ -83,12 +89,13 @@ function anthropic(apiKey: string, model: string): Llm {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model, max_tokens: req.maxTokens, temperature: req.temperature ?? 0.8, system: req.system, messages }),
+        body: JSON.stringify({ model, max_tokens: req.maxTokens, ...(req.temperature !== undefined && !noTemperature(model) ? { temperature: req.temperature } : {}), system: req.system, messages }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { type?: string } } | null;
-        throw new LlmError("anthropic", res.status, body?.error?.type);
+        const body = (await res.json().catch(() => null)) as { error?: { type?: string; message?: string } } | null;
+        // el mensaje de error de Anthropic describe el parámetro que falla; no repite la clave ni el prompt
+        throw new LlmError("anthropic", res.status, [body?.error?.type, body?.error?.message?.slice(0, 160)].filter(Boolean).join(": "));
       }
       const json = (await res.json()) as { content?: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number }; model?: string; stop_reason?: string };
       return {
