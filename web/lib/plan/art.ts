@@ -47,7 +47,7 @@ export interface PagesArt {
 }
 
 const STYLE_REF_ONLY = "Use the style reference image only for its rendering style, palette and texture; never copy its characters, clothes or scene.";
-const NO_TEXT = "No text, letters, numbers, signs or labels anywhere in the image.";
+const NO_TEXT = "No text, letters, numbers, signs or labels anywhere in the image. No logos or recognisable branded products (toy building blocks are plain wooden cubes without studs).";
 const PROPORTIONS = "children's picture-book proportions: large round head, short rounded body, soft features, rosy cheeks";
 
 /* ------------------------------ huellas ------------------------------ */
@@ -99,6 +99,7 @@ export function castArtUser(f: Ficha, plan: Plan): string {
     chips ? `Fixed features (already decided, do NOT repeat them in identityEn): ${chips}.` : "No fixed features given: choose a simple, natural look (hair colour and style, skin tone, eyes) and describe it in identityEn.",
     f.hero.look.unique ? `Something unique (Spanish): «${f.hero.look.unique}»` : "",
     f.hero.outfit ? `Usual clothes (Spanish): «${f.hero.outfit}»` : "Usual clothes: not given. Choose one concrete, simple, colourful everyday outfit (garments and colours) that suits the story.",
+    f.details.length ? `Real details from the parent (Spanish; use only those about looks or clothes): ${f.details.map((d) => `«${d}»`).join(" ")}` : "",
     "",
     cast.length ? "RECURRING CAST:" : "",
     ...cast.map((c: CastMember) => `- ${c.id}: ${c.name || "(no name)"}, ${c.relation || c.kind} (${c.kind}). Look (Spanish): «${c.look || "not given: invent a simple distinctive look"}»`),
@@ -113,7 +114,7 @@ export function castArtUser(f: Ficha, plan: Plan): string {
     "Return JSON with ONE entry for EVERY id listed above (characters, places and objects), all in English:",
     `{"cast":[${["hero", ...cast.map((c) => c.id)].map((id) => `{"id":"${id}","identityEn":"...","outfitEn":"..."}`).join(",")}],"places":{${plan.places.map((p) => `"${p.id}":"..."`).join(",")}},"objects":{${plan.objects.map((o) => `"${o.id}":"..."`).join(",")}},"coverEn":"..."}`,
     "- identityEn: how they look WITHOUT clothes and without their name: apparent age, species/breed for animals, face, hair (shape and colour), skin tone, eyes, glasses, unique marks, build. For the hero, ONLY what is not in the fixed features (face shape, unique marks, build); can be empty.",
-    "- outfitEn: usual clothes with garments and colours, lowercase, no final full stop (empty string for animals without clothes).",
+    "- outfitEn: usual clothes with garments and colours, lowercase, no final full stop (empty string for animals without clothes). If a recurring object or a real detail is something the hero always wears (a cap worn backwards, a cape, a backpack), include it in the hero's outfitEn so it is on the sheet too.",
     "- coverEn: the cover moment in one or two sentences, with the characters by name.",
   ]
     .filter((l) => l !== "")
