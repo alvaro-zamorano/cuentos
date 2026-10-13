@@ -126,11 +126,17 @@ export function normalizeFicha(v: unknown): Ficha {
   return ficha;
 }
 
-/** Huella de todo lo que cambia la historia (no el estilo: el texto no depende de él). */
+/**
+ * Huella de lo que cambia la historia. No entran el estilo ni el aspecto (pelo, piel, ropa, cómo es el reparto): eso
+ * lo pinta la hoja y se corrige con palabras; tocarlo no obliga a reescribir el cuento.
+ */
 export function fichaHash(f: Ficha): string {
-  const { styleId: _style, ...rest } = f;
+  const { styleId: _style, hero, cast, ...rest } = f;
   void _style;
-  return hashString(JSON.stringify(["plan-v1", rest]));
+  const { look: _look, outfit: _outfit, ...who } = hero;
+  void _look;
+  void _outfit;
+  return hashString(JSON.stringify(["plan-v1", rest, who, cast.map(({ look: _l, ...c }) => (void _l, c))]));
 }
 
 /** Huella de lo que cambia la hoja de reparto: aspecto del protagonista, ropa habitual, reparto y estilo. */

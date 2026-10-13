@@ -1,15 +1,15 @@
 /**
  * Límite por IP en memoria del proceso (cada instancia de Vercel lleva su cuenta: es un freno, no una garantía).
- * Una petición por segundo y `perHour` por hora y clave.
+ * `perHour` por hora y clave y, por defecto, una por segundo.
  */
 const buckets = new Map<string, number[]>();
 const HOUR = 3_600_000;
 
-export function rateLimit(key: string, perHour: number): { ok: true } | { ok: false; retryAfter: number } {
+export function rateLimit(key: string, perHour: number, minGapMs = 1000): { ok: true } | { ok: false; retryAfter: number } {
   const now = Date.now();
   const list = (buckets.get(key) ?? []).filter((t) => now - t < HOUR);
   const last = list[list.length - 1];
-  if (last !== undefined && now - last < 1000) return { ok: false, retryAfter: 1 };
+  if (last !== undefined && now - last < minGapMs) return { ok: false, retryAfter: 1 };
   if (list.length >= perHour) return { ok: false, retryAfter: Math.ceil((HOUR - (now - list[0])) / 1000) };
   list.push(now);
   buckets.set(key, list);

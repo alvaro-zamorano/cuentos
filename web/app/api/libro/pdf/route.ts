@@ -26,7 +26,8 @@ export async function GET(req: Request) {
   for (let n = 1; n <= 12; n++) pageUrls[n] = view.chosen.pages[n] ? byId.get(view.chosen.pages[n]!)?.url ?? null : null;
   if (kind === "full") {
     if (!view.paid) return NextResponse.json({ ok: false, error: "not_paid" }, { status: 402 });
-    const missing = Object.entries(pageUrls).filter(([, u]) => !u).map(([n]) => Number(n));
+    // falta alguna página por pintar (en modo sin coste hay job pero no URL: se imprime el hueco)
+    const missing = Object.entries(view.chosen.pages).filter(([, id]) => !id).map(([n]) => Number(n));
     if (missing.length) return NextResponse.json({ ok: false, error: "pages_missing", pages: missing }, { status: 409 });
   }
   try {

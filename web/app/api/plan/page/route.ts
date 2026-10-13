@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "json" }, { status: 400 });
   }
   if (JSON.stringify(body).length > 80_000) return NextResponse.json({ ok: false, error: "too_large" }, { status: 413 });
-  const limit = rateLimit(`page:${clientIp(req)}`, envInt("PAGE_RATE_PER_HOUR", 40));
+  const limit = rateLimit(`page:${clientIp(req)}`, envInt("PAGE_RATE_PER_HOUR", 40), 0);
   if (!limit.ok) return NextResponse.json({ ok: false, error: "rate_limited", message: "Demasiados cambios seguidos. Espera un poco." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   const result = await rewritePage(body.ficha, body.plan, body.n, body.instruction);
   return NextResponse.json(result, { status: result.ok ? 200 : result.status });

@@ -53,6 +53,7 @@ export async function GET(req: Request) {
     story: { requested, active: provider.name, model: storyModel, artModel: selectLlm("art").model, qcModel: selectLlm("qc").model, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },
     anthropic: { model: anthropicModel, check: "skipped" as Check },
     images: { provider: imageProvider, geminiKey: has("GEMINI_API_KEY"), geminiModel: geminiModel(), check: "skipped" as Check },
+    payment: { dryRun: process.env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1", stripe: has("STRIPE_SECRET_KEY") },
   };
 
   if (deep) {
