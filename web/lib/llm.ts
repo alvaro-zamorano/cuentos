@@ -21,6 +21,12 @@ export interface LlmRequest {
   messages: Message[];
   maxTokens: number;
   temperature?: number;
+  /**
+   * Razonamiento antes de responder (modelos 5.x: piensan por defecto y se comen max_tokens y segundos).
+   * "min": lo mínimo que admite el modelo; "adaptive": que decida él. Sin valor: el de la tarea (env *_THINKING).
+   */
+  thinking?: "min" | "adaptive";
+  effort?: "low" | "medium" | "high";
 }
 
 export interface LlmResult {
@@ -80,7 +86,20 @@ function noTemperature(model: string): boolean {
   return NO_TEMPERATURE.some((re) => re.test(model));
 }
 
-function anthropic(apiKey: string, model: string): Llm {
+/** Campos de razonamiento para los modelos 5.x (platform.claude.com/docs/en/build-with-claude/effort, 13 oct). */
+export function thinkingFields(model: string, thinking?: "min" | "adaptive", effort?: string): Record<string, unknown> {
+  if (!/^claude-(sonnet|haiku|opus|fable|mythos)-5/.test(model)) return {};
+  const out: Record<string, unknown> = {};
+  if (effort) out.output_config = { effort };
+  if (thinking === "min") {
+    if (/^claude-haiku-5/.test(model)) out.thinking = { type: "disabled" };
+    else if (/^claude-sonnet-5/.test(model)) out.thinking = { type: "between_tools" };
+    // Opus y Fable 5.x: siempre adaptativo; se limita con effort
+  } else if (thinking === "adaptive") out.thinking = { type: "adaptive" };
+  return out;
+}
+
+function anthropic(apiKey: string, model: string, defaults: Pick<LlmRequest, "thinking" | "effort"> = {}): Llm {
   return {
     name: "anthropic",
     model,
@@ -96,7 +115,14 @@ function anthropic(apiKey: string, model: string): Llm {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model, max_tokens: req.maxTokens, ...(req.temperature !== undefined && !noTemperature(model) ? { temperature: req.temperature } : {}), system: req.system, messages }),
+        body: JSON.stringify({
+          model,
+          max_tokens: req.maxTokens,
+          ...(req.temperature !== undefined && !noTemperature(model) ? { temperature: req.temperature } : {}),
+          ...thinkingFields(model, req.thinking ?? defaults.thinking, req.effort ?? defaults.effort),
+          system: req.system,
+          messages,
+        }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) {
@@ -161,11 +187,28 @@ export const MOCK_LLM: Llm = {
 };
 
 const MODEL_ENV: Record<Task, string> = { plan: "PLAN_MODEL", art: "ART_MODEL", qc: "QC_MODEL" };
+const TASK_ENV: Record<Task, string> = { plan: "PLAN", art: "ART", qc: "QC" };
+
+/** Razonamiento por tarea: mínimo y esfuerzo medio para escribir; mínimo y bajo para traducir y revisar. */
+const TASK_DEFAULTS: Record<Task, Pick<LlmRequest, "thinking" | "effort">> = {
+  plan: { thinking: "min", effort: "medium" },
+  art: { thinking: "min", effort: "low" },
+  qc: { thinking: "min", effort: "low" },
+};
+
+function taskDefaults(task: Task, env: Record<string, string | undefined>): Pick<LlmRequest, "thinking" | "effort"> {
+  const t = env[`${TASK_ENV[task]}_THINKING`]?.trim();
+  const e = env[`${TASK_ENV[task]}_EFFORT`]?.trim();
+  return {
+    thinking: t === "min" || t === "adaptive" ? t : TASK_DEFAULTS[task].thinking,
+    effort: e === "low" || e === "medium" || e === "high" ? e : TASK_DEFAULTS[task].effort,
+  };
+}
 
 export function selectLlm(task: Task, env: Record<string, string | undefined> = process.env): Llm {
   const requested = (env.STORY_PROVIDER || (env.ANTHROPIC_API_KEY ? "anthropic" : "mock")).trim().toLowerCase();
   const model = (name: "anthropic" | "openai") => env[MODEL_ENV[task]]?.trim() || env.STORY_MODEL?.trim() || DEFAULT_MODEL[name][task];
-  if (requested === "anthropic" && env.ANTHROPIC_API_KEY) return anthropic(env.ANTHROPIC_API_KEY.trim(), model("anthropic"));
+  if (requested === "anthropic" && env.ANTHROPIC_API_KEY) return anthropic(env.ANTHROPIC_API_KEY.trim(), model("anthropic"), taskDefaults(task, env));
   if (requested === "openai" && env.OPENAI_API_KEY) return openai(env.OPENAI_API_KEY.trim(), model("openai"));
   return MOCK_LLM;
 }

@@ -16,9 +16,14 @@ import { plannerSystem, plannerUser } from "@/lib/plan/prompt";
  */
 export const maxDuration = 300;
 
-function withModel(llm: Llm, model: string | null): Llm {
-  if (!model || !/^(claude|gpt)-[a-z0-9.-]{2,60}$/.test(model)) return llm;
-  const env = { ...process.env, PLAN_MODEL: model };
+function withModel(llm: Llm, model: string | null, url?: URL): Llm {
+  const thinking = url?.searchParams.get("thinking");
+  const effort = url?.searchParams.get("effort");
+  if ((!model || !/^(claude|gpt)-[a-z0-9.-]{2,60}$/.test(model)) && !thinking && !effort) return llm;
+  const env: Record<string, string | undefined> = { ...process.env };
+  if (model && /^(claude|gpt)-[a-z0-9.-]{2,60}$/.test(model)) env.PLAN_MODEL = model;
+  if (thinking) env.PLAN_THINKING = thinking;
+  if (effort) env.PLAN_EFFORT = effort;
   return selectLlm("plan", env);
 }
 
@@ -57,7 +62,7 @@ export async function GET(req: Request) {
     const i = Number(url.searchParams.get("case")) - 1;
     const ficha = EVAL_CASES[i];
     if (!ficha) return NextResponse.json({ ok: false, error: "case 1..10" }, { status: 400 });
-    const llm = withModel(selectLlm("plan"), url.searchParams.get("model"));
+    const llm = withModel(selectLlm("plan"), url.searchParams.get("model"), url);
     const maxTokens = Math.min(16000, Number(url.searchParams.get("max")) || 6000);
     try {
       const r = await llm.complete({ system: plannerSystem(), messages: [{ role: "user", content: plannerUser(normalizeFicha(ficha)) }], maxTokens });
@@ -71,7 +76,7 @@ export async function GET(req: Request) {
     const i = Number(url.searchParams.get("case")) - 1;
     const ficha = EVAL_CASES[i];
     if (!ficha) return NextResponse.json({ ok: false, error: "case 1..10" }, { status: 400 });
-    const llm = withModel(selectLlm("plan"), url.searchParams.get("model"));
+    const llm = withModel(selectLlm("plan"), url.searchParams.get("model"), url);
     const r = await planBook(ficha, llm);
     if (!r.ok) return NextResponse.json({ case: i + 1, ...r });
     const p = r.record.plan;
