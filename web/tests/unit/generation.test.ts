@@ -127,8 +127,8 @@ test("buildGeminiImageRequest: URL, cabeceras sin clave, refs como inline_data y
       { mimeType: "image/jpeg", data: new Uint8Array([4, 5]) },
     ];
     const req = buildGeminiImageRequest("draw it", refs);
-    assert.equal(req.url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent");
-    assert.equal(req.model, "gemini-3.1-flash-image");
+    assert.equal(req.url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent");
+    assert.equal(req.model, "gemini-nano-banana-2.1");
     assert.deepEqual(req.headers, { "content-type": "application/json" });
     assert.deepEqual(req.body.generationConfig, { responseModalities: ["IMAGE"] });
     const parts = req.body.contents[0].parts;

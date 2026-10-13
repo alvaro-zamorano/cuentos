@@ -28,7 +28,11 @@ async function status(url: string, headers: Record<string, string>): Promise<Che
 }
 
 export async function GET(req: Request) {
-  const deep = new URL(req.url).searchParams.get("deep") === "1";
+  const url = new URL(req.url);
+  // En producción (E11): sin nombres de variables y la comprobación profunda solo con HEALTH_TOKEN.
+  const prod = process.env.VERCEL_ENV === "production";
+  const token = process.env.HEALTH_TOKEN?.trim();
+  const deep = url.searchParams.get("deep") === "1" && (!prod || (!!token && url.searchParams.get("token") === token));
   const { provider, requested } = selectProvider();
   const storyModel = process.env.STORY_MODEL || (provider.name === "anthropic" ? "claude-sonnet-4-5" : provider.name === "openai" ? "gpt-4.1-mini" : "mock");
   const imageProvider = process.env.GENERATION_PROVIDER || "dry-run";
@@ -41,7 +45,7 @@ export async function GET(req: Request) {
       // "secret" o "jwt:service_role" es lo correcto; "publishable"/"jwt:anon" = se pegó la clave pública
       serviceRoleKind: keyKind(serviceRoleKey()),
       // solo NOMBRES de variables parecidas (nunca valores), para detectar erratas en Vercel
-      similarNames: Object.keys(process.env).filter((k) => /supabase|service|role/i.test(k) && k !== "NEXT_PUBLIC_SUPABASE_URL").sort(),
+      similarNames: prod ? [] : Object.keys(process.env).filter((k) => /supabase|service|role/i.test(k) && k !== "NEXT_PUBLIC_SUPABASE_URL").sort(),
       check: "skipped" as Check,
     },
     story: { requested, active: provider.name, model: storyModel, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },

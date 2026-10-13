@@ -232,8 +232,9 @@ export interface GeminiImageRequest {
 }
 
 export function geminiModel(): string {
-  // Nano Banana 2 (D4, 13 oct): el modelo calibrado en la Fase 0. GEMINI_IMAGE_MODEL lo sustituye.
-  return process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image";
+  // Nano Banana 2.1 (D4, 13 oct): el mismo modelo de la Fase 0 y la mitad de precio que gemini-3.1-flash-image
+  // (0,0504 $ frente a 0,101 $ la imagen 2K, ai.google.dev/gemini-api/docs/pricing). GEMINI_IMAGE_MODEL lo sustituye.
+  return process.env.GEMINI_IMAGE_MODEL || "gemini-nano-banana-2.1";
 }
 
 /**
