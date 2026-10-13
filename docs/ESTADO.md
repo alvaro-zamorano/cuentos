@@ -1,12 +1,12 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-13, noche · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
+Actualizado: 2026-10-13, noche (estilo «La hora del cuento» en código) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora:** que Álvaro pueda recorrer la preview con imágenes reales y juzgar la UX y el recorrido. El código está subido y la preview funciona de punta a punta con las imágenes en modo sin coste. Falta una variable que solo puede poner él (§4, pregunta 1).
+- **Ahora:** que Álvaro revise el estilo nuevo en la preview de su rama (`feat/estilo-hora-del-cuento`, PR hacia la rama de trabajo) y decida unirlo. Y que pueda recorrer la preview con imágenes reales y juzgar la UX y el recorrido. El código está subido y la preview funciona de punta a punta con las imágenes en modo sin coste. Falta una variable que solo puede poner él (§4, pregunta 1).
 - **Después:** claves de Stripe y Resend (B5), legales (E6), prueba con tres personas ajenas (B7) y salida a producción.
 - **Fuera de foco ahora:** tapa dura, más estilos de ilustración, el Reel (B6), el flujo antiguo (`/clasico`, `/ilustrado`, `/libro`, `/gratis`).
 
@@ -42,6 +42,10 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-13 | Un único registro de decisiones: este. PLAN §8 apunta aquí | Dos registros se desincronizan | PLAN |
 | 2026-10-13 | La documentación para cambiar de hilo vive en el repo (`docs/INDICE.md` y `docs/ESTADO.md`, que mandan) con una copia en el Project (`claude/00-INDICE.md`, `claude/00-ESTADO.md`). Quien cambie uno actualiza el otro | Los hilos de chat leen el Project; los de código leen el repo | INDICE, CLAUDE.md |
 | 2026-10-13 | El paso 2 enseña lo que se elige con imágenes. Peinados y gafas llevan miniaturas que se repintan con la piel y el pelo elegidos; en las gafas solo la piel. La ropa y las mascotas llevan miniaturas que rellenan el texto con lo que se ve, y el texto se puede retocar. Los ojos muestran su color. Las miniaturas salen del catálogo gouache que ya existía, sin coste de generación | Álvaro, al hacer el recorrido: sin imágenes cuesta saber qué se está eligiendo | `StepHero.tsx`, `Tiles.tsx`, `lib/crearPicks.ts`, `public/crear/`, `scripts/crear-thumbs.mjs` |
+| 2026-10-13 | Estilo «La hora del cuento» aprobado por Álvaro, con Lora (titulares y cuento), Figtree (interfaz) y Patrick Hand (notas a mano). Sustituye «estética editorial; Fraunces + Geist; verde botella» del 9 oct. Teja solo para acciones; noche para la marca y el pago | Álvaro: la web era sobria; la propuesta le pareció bien, pero no la «f» de Fraunces | `ESTILO.md`, `globals.css`, `layout.tsx`, `app/page.tsx`, `app/crear/page.tsx`, `components/crear/*`, `lib/pdf/book2.ts` |
+| 2026-10-13 | Sin cursivas en la dedicatoria ni en el cuento (web y PDF); el énfasis va en color | La «f» cursiva de las serif tiene el mismo problema | `ESTILO.md`, `lib/pdf/book2.ts`, `BookSheet.tsx` |
+| 2026-10-13 | El estilo va en la rama `feat/estilo-hora-del-cuento`, con PR hacia `feat/fase-1-journey-clasico` | La preview de la rama de trabajo no cambia mientras Álvaro lo revisa, y otra sesión trabaja en esa rama | — |
+| 2026-10-13 | Paso 2: arriba solo la cara; gafas, rasgo, ropa, reparto, detalles y dedicatoria en filas plegables con su resumen. Paso 5 antes del pago: las doce páginas en una tira horizontal y el pago justo debajo | Las maquetas aprobadas: menos pared de opciones y el pago a la vista | `StepHero.tsx`, `StepBook.tsx`, `tests/crear.spec.ts` |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -54,6 +58,10 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Aviso «Pintando las páginas»:** se quedaba unos segundos con el libro ya completo. Arreglado.
 - **Recorrido completo en la preview por la interfaz** (textos reales, imágenes sin coste): de la idea al PDF en 47 s con el cuento en caché, sin errores. Un cuento nuevo tarda 26 s.
 - **Nano Banana en la preview, por la interfaz:** del paso 1 al 4 con imágenes reales. La hoja tardó 45 s y la portada 81 s desde el email; las dos están bien y no hubo errores. Gasto ≈ 0,11 $ (el cuento estaba en caché). `GENERATION_PROVIDER` admite ahora también «gemini» y «nano-banana»: con un valor distinto de `gemini-images`, las rutas de imágenes daban 503. El libro pagado con imágenes reales y el segundo plano todavía no se han probado: lo hará Álvaro.
+- **Estilo nuevo en código** (rama `feat/estilo-hora-del-cuento`): landing y los cinco pasos de `/crear`. Comprobado con tsc, eslint, 77 unitarios, build, 8 tests de Playwright (uno nuevo: `/crear?idea=` y «Empezar otro» sin ventanas del navegador) y capturas en móvil y escritorio de todos los pasos, también sustituyendo las imágenes de prueba por las del libro de muestra. Sin coste de generación.
+- **Arreglados con el estilo:** «En cola…» mientras solo se cargaba la vista; miniaturas en blanco hasta cargar; `confirm()` del navegador en «Empezar otro» y «Escribirlo de otra manera»; el aviso «Libro recuperado.» que no se iba.
+- **Las clases propias de CSS ganaban siempre a Tailwind:** estaban fuera de capa, y en Tailwind 4 eso pesa más que cualquier utilidad (por ejemplo, `sm:p-6` sobre `.card` o `outline-none` sobre el foco global no hacían nada). Ahora van en `@layer base` y `@layer components`.
+- **`npx next build` no genera `public/pieces/`** (lo hace el `prebuild` de `npm run build`). Sin esas piezas, el test de `/gratis` falla en local con 404. Usar siempre `npm run build`.
 - **Gasto de pruebas de esta noche:** ≈ 0,30 $ (3 planes con Sonnet, una hoja con Gemini que se repitió por el control de calidad, varias llamadas a Haiku).
 
 ## 4. Preguntas abiertas (priorizadas)
@@ -68,7 +76,8 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
 9. **Marca comercial y dominio** (el PRD la deja pendiente).
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
-11. **Estilo nuevo, «La hora del cuento»** (Álvaro pidió el 13 oct una web menos sobria, más suave y con mejor tipografía, a partir de tiendas infantiles): propuesta en `ESTILO.md` y maquetas en el lienzo de diseño «Cuentos · La hora del cuento» (landing en escritorio y móvil y los pasos de `/crear`). Si se aprueba, sustituye la estética del 9 oct (Fraunces de revista + Geist + verde botella). Decisión de Álvaro.
+11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
+12. **¿Se une el PR del estilo a la rama de trabajo?** Álvaro, después de mirarlo en la preview de `feat/estilo-hora-del-cuento` en móvil y escritorio. Las maquetas del lienzo conservan Fraunces; la referencia es ya el código.
 
 ## 5. Próxima sesión — empezar por
 
@@ -79,7 +88,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
 5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
 6. Con los datos legales: rellenar E6.
-7. Si Álvaro aprueba el estilo (pregunta 11): implementarlo por fases (`ESTILO.md` §6), sin tocar la lógica ni los `data-testid`.
+7. Preguntar a Álvaro qué le parece el estilo en la preview de `feat/estilo-hora-del-cuento` (pregunta 12) y apuntarlo aquí. Si da el visto bueno, unir ese PR a la rama de trabajo; si la rama de trabajo ha avanzado, rebasar antes y repetir build y Playwright.
 8. Antes de unir el PR #1:
    - `CRON_SECRET` y `SITE_URL` en producción.
    - Quitar `/api/dev` si se decide.

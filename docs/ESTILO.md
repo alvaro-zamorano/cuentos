@@ -1,8 +1,8 @@
-# Estilo «La hora del cuento» — propuesta (13 oct 2026)
+# Estilo «La hora del cuento» (13 oct 2026)
 
-**Estado: propuesta, pendiente del visto bueno de Álvaro.** Si se aprueba, sustituye la decisión del 9 oct «estética editorial; Fraunces + Geist; verde botella como único acento». El registro adulto del texto (sin diminutivos ni emojis) se mantiene.
+**Estado: aprobado por Álvaro el 13 oct, con otra tipografía (Lora en vez de Fraunces, cuya «f» no le gustó), e implementado en la rama `feat/estilo-hora-del-cuento`.** Sustituye la decisión del 9 oct «estética editorial; Fraunces + Geist; verde botella como único acento». El registro adulto del texto (sin diminutivos ni emojis) se mantiene.
 
-Maquetas en el lienzo de diseño «Cuentos · La hora del cuento» (claude.ai, privado de Álvaro): sistema de estilo, landing en escritorio y móvil, y los pasos de `/crear` (1 en móvil y escritorio, 2, 3 escribiendo, 3 escrito, 4 email, 4 personajes, 5 libro y pago). Usan las imágenes reales del libro de muestra y de las cuatro portadas.
+Maquetas en el lienzo de diseño «Cuentos · La hora del cuento» (claude.ai, privado de Álvaro): sistema de estilo, landing en escritorio y móvil, y los pasos de `/crear` (1 en móvil y escritorio, 2, 3 escribiendo, 3 escrito, 4 email, 4 personajes, 5 libro y pago). Usan las imágenes reales del libro de muestra y de las cuatro portadas. Las maquetas conservan Fraunces y Kalam; la referencia es ya el código.
 
 ## 1. Por qué
 
@@ -38,16 +38,18 @@ La web actual es correcta pero sobria: papel beige, tinta, un solo acento verde,
 | Tintes | `#F7D9C4` · `#D6E5F2` · `#F9E6B0` · `#DCE7CF` | Fondos de tarjetas e imágenes; nunca texto ni botones |
 
 **Tipografía** (Google Fonts, `next/font`):
-- Titulares: Fraunces con los ejes `SOFT 100` y `WONK 1`, peso 600–640. Cursiva en teja o estrella para la palabra que importa.
-- El cuento: Fraunces de texto (`opsz 14`, `SOFT 50`), 17–23 px.
-- Interfaz: Figtree 400/600/700 (sustituye a Geist).
-- Notas a mano: Kalam, con moderación (antetítulos, «se verá:», pies de foto).
+- Titulares: Lora, peso 640. La palabra que importa va en color (teja o estrella), no en cursiva.
+- El cuento: Lora 400, 17–23 px. También en el PDF.
+- Interfaz: Figtree 400/600/700 (sustituye a Geist). También en el PDF (números de página, «De parte de»).
+- Notas a mano: Patrick Hand, con moderación (antetítulos, «se verá:», pies de foto).
+- Sin cursivas en textos que pueden llevar «f» (dedicatorias, cuento). La marca «cuentos» y «para» sí van en cursiva.
+- Descartadas: Fraunces, por su «f», y Kalam, que tiene una «f» parecida.
 
 **Forma:** botones y chips píldora; tarjetas de 20–24 px de radio; secciones de 28 px; imágenes de 14. El libro se enseña como objeto: A4 vertical, ilustración 3:2 arriba con el título, «para Vera» en la banda (como el PDF real), lomo sombreado y cantos de papel.
 
 **Motivos:** estrella de cuatro puntas, luna, colina entre la noche y la crema, manchas de gouache detrás de las imágenes, cinta adhesiva en la hoja de personajes, camino de puntos para el progreso.
 
-**Movimiento:** entradas que suben 12 px con fundido (500 ms, curva suave, cascada de 60 ms); botones que suben 2 px; el libro flota 8 px cada 7 s; estrellas que parpadean; cambio de paso con deslizamiento de 24 px. Con «reducir movimiento» todo queda quieto.
+**Movimiento:** entradas que suben 12 px con fundido (500 ms, curva suave, cascada de 60 ms); botones que suben 2 px; el libro flota 8 px cada 7 s; estrellas que parpadean; cambio de paso con la misma subida. Con «reducir movimiento» todo queda quieto.
 
 ## 4. Recorrido: cambios por paso
 
@@ -63,17 +65,21 @@ La web actual es correcta pero sobria: papel beige, tinta, un solo acento verde,
 
 ## 5. Hallazgos del recorrido actual (13 oct)
 
-- Al volver al paso 4 de un libro guardado, la hoja y la portada dicen «En cola…» durante unos segundos mientras solo se está cargando la vista.
-- Las miniaturas de peinados del paso 2 salen en blanco hasta que cargan (sin color de fondo).
-- «Empezar otro» usa el `confirm()` del navegador.
-- El aviso «Libro recuperado.» no desaparece.
+Arreglados el 13 oct:
 
-## 6. Implementación propuesta (si se aprueba)
+- Al volver al paso 4 de un libro guardado, la hoja y la portada decían «En cola…» mientras solo se cargaba la vista. Ahora solo brillan; «en cola» y «pintando» salen cuando lo están.
+- Las miniaturas de peinados del paso 2 salían en blanco hasta cargar. Ahora tienen fondo de papel.
+- «Empezar otro» y «Escribirlo de otra manera» usaban el `confirm()` del navegador. Ahora preguntan en la propia página.
+- El aviso «Libro recuperado.» no desaparecía. Ahora se va a los 8 s o con su botón de cerrar; el de enlace caducado se queda.
 
-1. Tokens y tipografías en `app/globals.css` y `app/layout.tsx` (Fraunces con `SOFT`/`WONK`, Figtree, Kalam); componentes base (botón, chip, tarjeta, libro, barra de progreso, barra fija).
-2. Landing (`app/page.tsx`).
-3. Marco de `/crear` (progreso, barra fija, transiciones) y los cinco pasos, sin tocar la lógica ni los `data-testid`.
-4. PDF (`lib/pdf/book2.ts`): misma tipografía de titulares en la portada.
-5. Comprobación: tsc, eslint, unitarios, build, Playwright y capturas en móvil y escritorio.
+## 6. Implementación (hecha el 13 oct)
 
-Sin coste de generación. El acento de la acción se puede cambiar en el lienzo (teja, noche o verde) para compararlo.
+1. Tokens y tipografías en `app/globals.css` y `app/layout.tsx` (Lora, Figtree y Patrick Hand con `next/font`). Las clases propias (`.btn-*`, `.card`, `.chip`, `.tile`, `.input`, `.madlib`, `.row`…) van en `@layer components` y lo base en `@layer base`, para que las utilidades de Tailwind las puedan ajustar en cada sitio.
+2. Piezas comunes en `components/brand.tsx`: estrella, luna, colina, mancha, iconos de trazo y `BookCover` (el libro como objeto, con unidades de contenedor).
+3. Landing (`app/page.tsx`, `components/landing/SampleFlipper.tsx`), con miniaturas propias del libro de muestra (`public/muestra/mini/`) y la hoja de Vera (`public/muestra/hoja-vera.webp`).
+4. `/crear`: cabecera con «Paso n de 5» y barra de cinco tramos en móvil, pasos numerados en escritorio; barra de acción fija abajo en móvil; «así va su libro» a la derecha en escritorio (pasos 1–3); los cinco pasos rehechos sin tocar la lógica. Los `data-testid` y los nombres accesibles se mantienen; el test abre las filas plegables del paso 2.
+5. Arreglados los cuatro hallazgos de §5. Nuevo: `/crear?idea=<id>` llega con la idea de la landing marcada, y la idea elegida sigue al nombre mientras no se toque a mano.
+6. PDF (`lib/pdf/book2.ts`): Lora + Figtree, sin cursivas.
+7. Comprobado: tsc, eslint, 77 unitarios, build, 8 tests de Playwright y capturas en móvil (390 px) y escritorio (1440 px) de la landing y de todos los pasos, también con imágenes del libro de muestra en lugar de las de prueba.
+
+Sin coste de generación.
