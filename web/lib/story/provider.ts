@@ -98,7 +98,9 @@ function openaiProvider(apiKey: string, model: string): StoryProvider {
 
 /** Proveedor según el entorno. `requested` es lo que pedía STORY_PROVIDER (para dejar constancia si se cae a mock). */
 export function selectProvider(env: Record<string, string | undefined> = process.env): { provider: StoryProvider; requested: string } {
-  const requested = (env.STORY_PROVIDER || "mock").trim().toLowerCase();
+  // Sin STORY_PROVIDER, si hay clave de Anthropic se usa Anthropic (13 oct: una variable menos que configurar).
+  // STORY_PROVIDER=mock fuerza el simulado aunque haya clave (tests, demos).
+  const requested = (env.STORY_PROVIDER || (env.ANTHROPIC_API_KEY ? "anthropic" : "mock")).trim().toLowerCase();
   if (requested === "anthropic" && env.ANTHROPIC_API_KEY) return { provider: anthropicProvider(env.ANTHROPIC_API_KEY, env.STORY_MODEL || DEFAULT_MODELS.anthropic), requested };
   if (requested === "openai" && env.OPENAI_API_KEY) return { provider: openaiProvider(env.OPENAI_API_KEY, env.STORY_MODEL || DEFAULT_MODELS.openai), requested };
   return { provider: mockProvider, requested };

@@ -14,7 +14,7 @@ Escribe las 12 páginas de cada cuento a partir del esqueleto del cumpleaños y 
 
 | Variable | Uso |
 |---|---|
-| `STORY_PROVIDER` | `mock` (por defecto), `anthropic` u `openai`. Sin la clave del elegido se usa `mock` y la respuesta lo dice (`provider: "mock"`, `requestedProvider`). |
+| `STORY_PROVIDER` | `mock`, `anthropic` u `openai`. Sin valor: `anthropic` si existe `ANTHROPIC_API_KEY`, si no `mock`. Sin la clave del elegido se usa `mock` y la respuesta lo dice (`provider: "mock"`, `requestedProvider`). Los tests de Playwright fuerzan `mock`. |
 | `STORY_MODEL` | Modelo. Por defecto `claude-sonnet-4-5` (anthropic) o `gpt-4.1-mini` (openai), fijados solo en `DEFAULT_MODELS` de `lib/story/provider.ts`. |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Clave del proveedor. Nunca llega al cliente ni a los logs. |
 | `STORY_COST_CENTS_PER_1K_IN` / `_OUT` | Coste estimado por cuento (`costCents`). Sin ellas, 0 y `costEstimated: false`. |

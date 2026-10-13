@@ -27,5 +27,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
+    // los tests nunca llaman a proveedores de pago aunque haya claves en .env.local
+    env: { ...(process.env as Record<string, string>), STORY_PROVIDER: "mock", GENERATION_PROVIDER: "dry-run" },
   },
 });

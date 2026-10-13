@@ -82,6 +82,12 @@ test("selectProvider: sin clave cae a mock y deja constancia de lo pedido", () =
   assert.equal(selectProvider({ STORY_PROVIDER: "openai", OPENAI_API_KEY: "x" }).provider.name, "openai");
 });
 
+test("selectProvider: sin STORY_PROVIDER, la clave de Anthropic basta; STORY_PROVIDER=mock la ignora", () => {
+  assert.equal(selectProvider({ ANTHROPIC_API_KEY: "x" }).provider.name, "anthropic");
+  assert.equal(selectProvider({ ANTHROPIC_API_KEY: "x", STORY_PROVIDER: "mock" }).provider.name, "mock");
+  assert.equal(selectProvider({ OPENAI_API_KEY: "x" }).provider.name, "mock");
+});
+
 test("promptFor: reglas en system, detalles tal cual y JSON estricto en user", () => {
   const input = storyInputFromDraft(CASES[1][1]);
   const { system, user } = promptFor(input, ["Página 3: 40 palabras"]);
