@@ -14,12 +14,11 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 
 | # | Qué | Causa |
 |---|---|---|
-| E2 | `/api/books` responde 503 | Falta `SUPABASE_SERVICE_ROLE_KEY` en Vercel |
-| E3 | Sin CI; no se pueden subir binarios | Falta la app de GitHub de Claude en el repo |
+| E3 | Sin CI | El acceso de GitHub ya está (13 oct, `git push` desde la sesión); falta un workflow que pase unitarios y Playwright en cada PR |
 | E6 | Legales con campos `Pending` | Faltan datos del responsable |
 | E7 | Pago simulado; sin entrega por email | Faltan Stripe y Resend |
-| E10 | Nada real se ha ejecutado en la app | Historia en `mock`, imágenes en `dry-run`; 0 € gastados en Supabase |
-| E11 | Claves en la preview (13 oct, `/api/health?deep=1`) | Anthropic (`claude-sonnet-4-5`) y Gemini (`gemini-3.1-flash-image`): verificadas, la historia ya va por Anthropic sin `STORY_PROVIDER`. Supabase: la clave estaba como `service_role`; Álvaro la añade como `SUPABASE_SERVICE_ROLE_KEY`, pendiente de verificar (el health dice además si es la de servicio o la pública). Antes de producción: proteger `/api/health` o quitarle `similarNames` |
+| E10 | Nada real se ha ejecutado en el flujo | La historia ya iría por Anthropic en la preview, pero el flujo que la usa es el antiguo; imágenes en `dry-run` hasta tener el flujo nuevo y los topes de D2 (B2–B3) |
+| E11 | Antes de producción, `/api/health` es público | Protegerlo o quitarle `similarNames`. Claves verificadas en la preview el 13 oct: Supabase (clave de servicio, lectura ok; `/api/books/<id>` da 404 y no 503), Anthropic `claude-sonnet-4-5` y Gemini `gemini-3.1-flash-image`. La variable antigua `service_role` sobra |
 
 ## 2. Decisiones (D1–D6 tomadas el 13 oct)
 
