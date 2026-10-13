@@ -23,7 +23,11 @@ export function SampleFlipper({ start = 7 }: { start?: number }) {
         </button>
       </div>
       <figure className="m-0 grid overflow-hidden rounded-[22px] bg-card shadow-[0_2px_0_#e6d8c1,0_40px_80px_-40px_rgba(35,32,54,0.45)] md:grid-cols-[1.15fr_1fr]">
-        <img key={n} src={muestraImage(n)} alt={`Página ${n} del libro de muestra`} width={1400} height={939} className="rise block aspect-[3/2] h-full w-full object-cover" />
+        {/* marco 3:2 propio con la imagen absoluta dentro: un `height: 100%` en un hijo de rejilla lo resuelve Safari
+            contra toda la tarjeta, la ilustración se alargaba y el texto quedaba encima */}
+        <div className="relative aspect-[3/2] w-full overflow-hidden bg-night md:self-stretch">
+          <img key={n} src={muestraImage(n)} alt={`Página ${n} del libro de muestra`} width={1400} height={939} className="rise absolute inset-0 block h-full w-full object-cover" />
+        </div>
         <figcaption className="relative flex flex-col justify-between gap-6 px-6 py-7 sm:px-12 sm:py-12">
           <div aria-hidden className="absolute inset-y-0 left-0 hidden w-7 bg-gradient-to-r from-ink/10 to-transparent md:block" />
           <p key={n} className="story rise m-0 text-[18px] leading-[1.65] text-[#2b2538] sm:text-[21px]">

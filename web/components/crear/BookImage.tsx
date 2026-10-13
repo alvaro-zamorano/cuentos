@@ -7,7 +7,7 @@ const BOX = "relative aspect-[3/2] w-full overflow-hidden rounded-[18px] bg-pape
 /**
  * Imagen de un job (hoja, portada o página) con sus estados. Sin job todavía (se está cargando el libro) no dice nada:
  * solo el brillo de espera; «en cola» y «pintando» solo cuando lo están de verdad.
- * `box`: clases del marco (por defecto 3:2 con esquinas redondeadas; dentro de BookCover, `h-full w-full`).
+ * `box`: clases del marco (por defecto 3:2 con esquinas redondeadas; dentro de BookCover, `absolute inset-0`; la imagen va siempre absoluta dentro del marco, para que ningún navegador la estire).
  */
 export function BookImage({ job, alt, testId, title, box = BOX }: { job?: BookJobView; alt: string; testId?: string; title?: string; box?: string }) {
   if (!job) return <div className={`${box} shimmer`} data-testid={testId} data-state="loading" aria-busy="true" />;
@@ -40,7 +40,7 @@ export function BookImage({ job, alt, testId, title, box = BOX }: { job?: BookJo
   }
   return (
     <div className={box} data-testid={testId} data-state="done">
-      <img src={job.url} alt={alt} className="rise block h-full w-full object-cover" />
+      <img src={job.url} alt={alt} className="rise absolute inset-0 block h-full w-full object-cover" />
       {title && <div aria-hidden className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-[rgba(15,20,40,0.5)] to-transparent" />}
       {title && (
         <span className="display absolute top-4 right-5 left-5 text-2xl text-moon sm:text-4xl" style={{ textShadow: "0 2px 12px rgba(10,20,50,.5)" }}>

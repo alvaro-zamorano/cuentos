@@ -159,7 +159,7 @@ export function StepCast({
           from={ficha.from?.trim()}
           tilt={-2}
           className="w-[210px] justify-self-center sm:w-full"
-          image={<BookImage job={cover} alt="Portada" testId="cover" box="relative h-full w-full" />}
+          image={<BookImage job={cover} alt="Portada" testId="cover" box="absolute inset-0 overflow-hidden" />}
         />
         <div className="grid gap-3">
           <h3 className="display text-[26px]">La portada</h3>

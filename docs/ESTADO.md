@@ -46,6 +46,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-13 | Sin cursivas en la dedicatoria ni en el cuento (web y PDF); el énfasis va en color | La «f» cursiva de las serif tiene el mismo problema | `ESTILO.md`, `lib/pdf/book2.ts`, `BookSheet.tsx` |
 | 2026-10-13 | El estilo va en la rama `feat/estilo-hora-del-cuento`, con PR hacia `feat/fase-1-journey-clasico` | La preview de la rama de trabajo no cambia mientras Álvaro lo revisa, y otra sesión trabaja en esa rama | — |
 | 2026-10-13 | Paso 2: arriba solo la cara; gafas, rasgo, ropa, reparto, detalles y dedicatoria en filas plegables con su resumen. Paso 5 antes del pago: las doce páginas en una tira horizontal y el pago justo debajo | Las maquetas aprobadas: menos pared de opciones y el pago a la vista | `StepHero.tsx`, `StepBook.tsx`, `tests/crear.spec.ts` |
+| 2026-10-13 | Producción (unir el PR #1 a `main`) espera a los datos legales, `CRON_SECRET` y `SITE_URL`. Confirma la interpretación de «subimos todo» | Álvaro, al pedir subir a producción y ver lo que faltaba: el consentimiento promete el borrado a 30 días y las páginas legales tienen huecos | PLAN §7 |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -61,6 +62,8 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Estilo nuevo en código** (rama `feat/estilo-hora-del-cuento`): landing y los cinco pasos de `/crear`. Comprobado con tsc, eslint, 77 unitarios, build, 8 tests de Playwright (uno nuevo: `/crear?idea=` y «Empezar otro» sin ventanas del navegador) y capturas en móvil y escritorio de todos los pasos, también sustituyendo las imágenes de prueba por las del libro de muestra. Sin coste de generación.
 - **Arreglados con el estilo:** «En cola…» mientras solo se cargaba la vista; miniaturas en blanco hasta cargar; `confirm()` del navegador en «Empezar otro» y «Escribirlo de otra manera»; el aviso «Libro recuperado.» que no se iba.
 - **Las clases propias de CSS ganaban siempre a Tailwind:** estaban fuera de capa, y en Tailwind 4 eso pesa más que cualquier utilidad (por ejemplo, `sm:p-6` sobre `.card` o `outline-none` sobre el foco global no hacían nada). Ahora van en `@layer base` y `@layer components`.
+- **Hojeador de la landing en Safari:** la ilustración tenía `height: 100%` dentro de una rejilla; Safari lo resuelve contra toda la tarjeta, la imagen se alargaba y el texto quedaba encima (lo vio Álvaro; en Chromium no se reproduce). Ahora la imagen va absoluta dentro de un marco 3:2, igual que las de las portadas y `BookImage`. Comprobado en Chromium (cajas medidas, sin solape); en Safari falta que lo mire Álvaro.
+- **Producción (`cuentos-pi.vercel.app`) da 404:** su último despliegue es del 8 oct (`main`, `a5a6a74`). No hay nada público.
 - **`npx next build` no genera `public/pieces/`** (lo hace el `prebuild` de `npm run build`). Sin esas piezas, el test de `/gratis` falla en local con 404. Usar siempre `npm run build`.
 - **Gasto de pruebas de esta noche:** ≈ 0,30 $ (3 planes con Sonnet, una hoja con Gemini que se repitió por el control de calidad, varias llamadas a Haiku).
 
@@ -88,7 +91,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
 5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
 6. Con los datos legales: rellenar E6.
-7. Preguntar a Álvaro qué le parece el estilo en la preview de `feat/estilo-hora-del-cuento` (pregunta 12) y apuntarlo aquí. Si da el visto bueno, unir el PR #2 a la rama de trabajo; si la rama de trabajo ha avanzado, rebasar antes y repetir build y Playwright.
+7. Preguntar a Álvaro qué le parece el estilo en la preview de `feat/estilo-hora-del-cuento` (pregunta 12), y si en su móvil el hojeador ya no monta el texto sobre la ilustración, y apuntarlo aquí. Si da el visto bueno, unir el PR #2 a la rama de trabajo; si la rama de trabajo ha avanzado, rebasar antes y repetir build y Playwright.
 8. Antes de unir el PR #1:
    - `CRON_SECRET` y `SITE_URL` en producción.
    - Quitar `/api/dev` si se decide.

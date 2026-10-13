@@ -117,7 +117,7 @@ export function BookCover({
         style={{ transform: tilt ? `rotate(${tilt}deg)` : undefined }}
       >
         <div className="relative aspect-[3/2] w-full overflow-hidden bg-night">
-          {image ?? (src ? <img src={src} alt={alt} className="block h-full w-full object-cover" /> : <NightPlaceholder label={placeholder} />)}
+          {image ?? (src ? <img src={src} alt={alt} className="absolute inset-0 block h-full w-full object-cover" /> : <NightPlaceholder label={placeholder} />)}
           {title && (
             <>
               <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[62%] bg-gradient-to-b from-[rgba(15,20,40,0.62)] to-transparent" />
@@ -138,7 +138,7 @@ export function BookCover({
 
 function NightPlaceholder({ label }: { label: string }) {
   return (
-    <div className="relative grid h-full w-full place-items-center bg-night">
+    <div className="absolute inset-0 grid place-items-center bg-night">
       <Sparkle className="twinkle absolute top-[12%] left-[9%]" size={12} />
       <Sparkle className="twinkle-slow absolute top-[34%] left-[60%]" size={8} color="var(--moon)" />
       <Moon className="absolute top-[8%] right-[7%]" size={30} />
