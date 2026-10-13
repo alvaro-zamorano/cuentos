@@ -19,16 +19,16 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 | E6 | Legales con campos `Pending` | Faltan datos del responsable |
 | E7 | Pago simulado; sin entrega por email | Faltan Stripe y Resend |
 | E10 | Nada real se ha ejecutado en la app | Historia en `mock`, imágenes en `dry-run`; 0 € gastados en Supabase |
-| E11 | Proveedor de imágenes en producción sin decidir | La calibración fue por el conector de Higgsfield; la app necesita una API (D4) |
+| E11 | Claves en la preview (13 oct, `/api/health?deep=1`) | Gemini: válida con `gemini-3.1-flash-image`. Anthropic: rechazada porque la clave no pertenece a un workspace. `STORY_PROVIDER` y `SUPABASE_SERVICE_ROLE_KEY`: no llegan a Preview |
 
-## 2. Decisiones (D1–D3, D5 y D6 tomadas el 13 oct; D4 pendiente)
+## 2. Decisiones (D1–D6 tomadas el 13 oct)
 
 | # | Decisión | Resultado | Por qué |
 |---|---|---|---|
 | D1 | Todo lo que ve el padre es ilustración generada; fuera del embudo las piezas y las escenas fijas | **Decidido: sí.** Un estilo para salir; habrá más estilos en el futuro (la arquitectura los admite: `styles.json` + ancla por estilo) | Fase 0: calidad de libro de verdad y consistencia; las piezas no llegan |
 | D2 | Gasto por lead antes del pago | **Decidido: ≈ 0,30 $** (hoja 1K + portada 2K + hasta 2 cambios de hoja); tope diario igual | El plan decía ≤ 0,10 € por lead (el código, 20 c): hoja + portada ya son ≈ 0,17 $ a precio de Gemini |
 | D3 | Qué es gratis | **Decidido:** cuento completo en texto + hoja + portada en la web, y PDF casero con portada ilustrada y el texto | Mantiene el puente gratis del bloque de distribución (8 oct) sin las figuras; el Ilustrado pasa a ser lo único de pago |
-| D4 | Proveedor en producción | **Pendiente.** Recomendación: API de Gemini, modelo `gemini-3.1-flash-image` (adaptador hecho, falta `GEMINI_API_KEY`), salvo que `hf models` muestre Nano Banana en la API de Higgsfield | Coste parecido (≈ 0,07–0,10 $ por imagen 2K); Gemini no depende de una suscripción |
+| D4 | Proveedor en producción | **Decidido (13 oct): API de Gemini**, modelo `gemini-3.1-flash-image` (clave puesta por Álvaro y verificada; modelo por defecto en el código) | Coste parecido (≈ 0,07–0,10 $ por imagen 2K); Gemini no depende de una suscripción |
 | D5 | Estilo y formato | **Decidido:** un estilo (el de la Fase 0) y página = imagen 3:2 arriba + texto en banda debajo: A4 vertical (casero) y 20×20 (tapa dura) | El hueco para texto dentro de la imagen no es fiable; 3:2 + banda sirve para los dos formatos |
 | D6 | Libro de muestra para la web y las redes | **Decidido:** «Vera y Toby viajan a la Luna», con la hoja de Vera (12 páginas + portada = 13 imágenes ≈ 26 créditos). Ver `docs/MUESTRA-LUNA.md` | Sin ejemplos reales no hay landing ni Reels; además mide la deriva en 12 páginas |
 
@@ -103,7 +103,7 @@ Una cosa a la vez; cada tarea se cierra con evidencia.
 
 | Bloque | Qué | Quién | Hecho cuando |
 |---|---|---|---|
-| B0 | Decisiones D1–D6 | Álvaro | D1–D3, D5, D6 hechas (13 oct); falta D4 |
+| B0 | Decisiones D1–D6 | Álvaro | Hechas (13 oct) |
 | B1 | Ficha + planificador de historia: esquema, prompt, validador, moderación, mock; prueba con proveedor real | Claude · clave de Anthropic u OpenAI de Álvaro | 10 ideas de prueba dan 10 libros válidos; los leemos los dos |
 | B2 | Nuevo flujo de creación (pasos 1–3) en lugar de `/crear` con piezas | Claude | Playwright: de una frase al cuento escrito sin errores |
 | B3 | Hoja de reparto + portada tras el email; cambios con palabras; control de calidad | Claude · D4 resuelto | 3 niños distintos con hoja aprobada en la preview y coste anotado |
