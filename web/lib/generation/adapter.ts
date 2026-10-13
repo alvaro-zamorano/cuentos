@@ -232,7 +232,8 @@ export interface GeminiImageRequest {
 }
 
 export function geminiModel(): string {
-  return process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+  // Nano Banana 2 (D4, 13 oct): el modelo calibrado en la Fase 0. GEMINI_IMAGE_MODEL lo sustituye.
+  return process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image";
 }
 
 /**
