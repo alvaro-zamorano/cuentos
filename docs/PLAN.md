@@ -2,7 +2,7 @@
 
 Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión; lo que no está aquí no está en marcha. PRD: `PRD.md` (v0.2, se reescribe tras las decisiones de §2). Rama de trabajo: `feat/fase-1-journey-clasico` → PR #1 → `main`.
 
-## 1. Estado real (13 oct 2026, tarde)
+## 1. Estado real (13 oct 2026, noche)
 
 **El flujo nuevo funciona de punta a punta en la preview** (rama `feat/fase-1-journey-clasico`):
 
@@ -10,8 +10,9 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 - **B2 hecho**: `/crear` nuevo en cinco pasos (idea → quién → cuento en 12 tarjetas → personajes con email → libro). Se edita cualquier texto y cada página se rehace con una frase. Playwright: de una frase al cuento escrito, personajes y libro sin coste con PDF, recuperar por enlace.
 - **B3 hecho** (`docs/ILUSTRACION.md`): hoja de personajes + portada tras el email, cambios con palabras, control de calidad. Tres niños reales en la preview (Lucía, Mateo, Inés) con hoja y portada; 10 c por lead, 20 c con un cambio.
 - **B4 hecho**: libro pagado con 12 ilustraciones a 2K (Mateo, idéntico en las 12), revisión por página, PDF A4 vertical de 15 páginas generado en Vercel (6,75 MB, 8 s). ≈ 1 $ por libro.
-- **B6 en parte**: landing nueva con el libro de muestra «Vera y Toby viajan a la Luna», cinco pasos, ediciones (gratis = cuento + hoja + portada + PDF casero, D3) y transparencia sobre la IA; 20 ideas de arranque en el paso 1.
-- **CI** (E3): GitHub Actions con tsc, eslint, 64 unitarios, build y 7 Playwright.
+- **B5, código hecho; faltan las claves** (`docs/PAGO.md`): Stripe Checkout + webhook (pedido idempotente), emails con Resend (enlace al dar el email; «tu libro está listo» al terminar las 12), y el servidor pinta en segundo plano con `after()` aunque se cierre la pestaña. Probado en local con un webhook firmado y en la preview (Supabase, imágenes sin coste): hoja, portada y 12 páginas terminadas sin que el navegador pida nada.
+- **B6 en parte**: landing nueva con el libro de muestra «Vera y Toby viajan a la Luna», cuatro portadas reales de ocasiones, cinco pasos, ediciones (gratis = cuento + hoja + portada + PDF casero, D3) y transparencia sobre la IA; 20 ideas de arranque en el paso 1.
+- **CI** (E3): GitHub Actions con tsc, eslint, 72 unitarios, build y 7 Playwright.
 
 **Fuera del embudo (D1):** constructor de piezas y edición Clásica (`/clasico`, `/ilustrado`, `/libro`, `/gratis` siguen existiendo pero nada enlaza a ellos salvo `/gratis` desde su propio formulario).
 
@@ -20,7 +21,8 @@ Fuente de verdad del estado y del orden de trabajo. Se actualiza en cada sesión
 | # | Qué | Causa |
 |---|---|---|
 | E6 | Legales con campos `Pending` | Faltan datos del responsable |
-| E7 | Pago simulado; sin entrega por email | Faltan Stripe y Resend (B5) |
+| E7 | Pago de prueba; sin emails | Código de B5 hecho; faltan las claves de Stripe y Resend (§7) |
+| E13 | Si el segundo plano no termina las 12 páginas en ≈ 3,5 min (corte de Vercel a 300 s), las que falten se pintan cuando el padre vuelve con su enlace, y el email de «listo» no sale | Aceptable para salir; con más volumen, encadenar otra función |
 | E10 | En la interfaz de la preview las imágenes siguen en modo sin coste | Falta `GENERATION_PROVIDER=gemini-images` en Preview (la prueba real se hizo con `/api/dev`, que fuerza Gemini) |
 | E11 | `/api/health` en producción | Ya no enseña nombres de variables y la comprobación profunda pide `HEALTH_TOKEN`. La variable antigua `service_role` sobra en Vercel |
 | E12 | `/api/dev` solo existe fuera de producción | Correcto así; quitarlo antes del merge si se prefiere |
@@ -112,8 +114,8 @@ Una cosa a la vez; cada tarea se cierra con evidencia.
 | B2 | Nuevo flujo de creación (pasos 1–3) en lugar de `/crear` con piezas | Claude | **Hecho (13 oct)**: Playwright de una frase al cuento escrito |
 | B3 | Hoja de reparto + portada tras el email; cambios con palabras; control de calidad | Claude · D4 resuelto | **Hecho (13 oct)**: 3 niños con hoja y portada en la preview, 10 c por lead (`docs/ILUSTRACION.md`) |
 | B4 | Libro tras el pago: 12 páginas, revisión por página, maqueta 3:2 + banda, PDF | Claude | **Hecho (13 oct)**: libro de Mateo, 12 páginas reales, PDF de 15 A4 en Vercel |
-| B5 | Pago y entrega: Stripe + email con PDF | Álvaro claves · Claude | Pago de prueba completo y email recibido |
-| B6 | Contenidos (§4) y landing nueva | Claude genera · Álvaro elige | **Landing hecha (13 oct)** con el libro de muestra; faltan las 4 portadas de ocasiones y el Reel |
+| B5 | Pago y entrega: Stripe + emails + segundo plano | Álvaro claves · Claude | **Código hecho (13 oct)**, probado con webhook firmado. Falta: claves, un pago en modo test de Stripe y el email recibido |
+| B6 | Contenidos (§4) y landing nueva | Claude genera · Álvaro elige | **Landing hecha (13 oct)** con el libro de muestra y 4 portadas de ocasiones; falta el Reel |
 | B7 | Legales, dominio, prueba con 3 personas ajenas, merge a `main` | Álvaro · Claude | Tres libros sin ayuda |
 
 Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de mediados de noviembre y llegar a Navidad con el PDF casero; tapa dura después.
@@ -137,7 +139,7 @@ Hecho el 13 oct: `ANTHROPIC_API_KEY` (con workspace), `GEMINI_API_KEY`, `SUPABAS
 Pendiente:
 1. **Preview:** `GENERATION_PROVIDER=gemini-images` (imágenes de verdad en la interfaz) y `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` (pago de prueba) si no está. Borrar la variable antigua `service_role`.
 2. **Probar el recorrido entero** en la preview con un niño real y leer los 10 cuentos de prueba (criterio de B1).
-3. **B5:** cuenta de Stripe (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) y Resend (`RESEND_API_KEY` + dominio de envío).
+3. **B5** (pasos exactos en `docs/PAGO.md`): Stripe en modo test → `STRIPE_SECRET_KEY` (sk_test_…) y un webhook a `/api/stripe/webhook` → `STRIPE_WEBHOOK_SECRET`. Resend con un dominio verificado → `RESEND_API_KEY` y `MAIL_FROM`. `SITE_URL` en producción. Luego, un pago con la tarjeta de prueba 4242 4242 4242 4242 y comprobar los dos emails.
 4. **B7:** datos legales del responsable (E6), dominio, tres personas ajenas que hagan un libro sin ayuda. Antes de producción: `HEALTH_TOKEN` si se quiere la comprobación profunda.
 
 ## 8. Registro de decisiones
@@ -155,3 +157,4 @@ Pendiente:
 - 13 oct (tarde): moderación local + del planificador. Se permiten emociones pequeñas (nervios, miedo a la oscuridad) que se resuelven; siguen fuera muerte, violencia, armas, sexo, drogas, marcas, personajes con derechos y famosos reales (se sustituyen y se avisa al padre).
 - 13 oct (tarde): el aspecto (pelo, piel, ropa) no cambia el cuento escrito; lo corrige la hoja de personajes con palabras.
 - 13 oct (tarde): la landing dice en las preguntas que el cuento lo escribe e ilustra una IA y que el padre lo revisa todo.
+- 13 oct (B5): Stripe Checkout sin SDK; el pedido solo lo crea el webhook firmado. El pago de prueba nunca funciona en producción (`VERCEL_ENV`), aunque se quede puesta la variable. El servidor pinta en segundo plano y el navegador, si sigue abierto, ayuda con los mismos jobs.
