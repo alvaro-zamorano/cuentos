@@ -316,6 +316,7 @@ export function coverPrompt(art: CastArt, style: StyleDef): string {
 
 export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style: StyleDef): string {
   const inImage = art.cast.filter((c) => page.who.includes(c.id));
+  const absent = art.cast.filter((c) => !page.who.includes(c.id));
   const lines = inImage.map((c) => castLine(c, c.id === "hero" ? artPage.outfitEn : null));
   const place = page.place ? art.places[page.place] : null;
   const objects = page.objects.map((o) => art.objects[o]).filter(Boolean);
@@ -327,6 +328,8 @@ export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style
     lines.length ? `Characters in this image: ${lines.join("; ")}.` : "No recurring characters in this image.",
     artPage.extrasEn.length ? `Also in the image, drawn from this description only: ${artPage.extrasEn.join("; ")}.` : "",
     sameAsSheet(inImage.map((c) => c.name)),
+    // la hoja trae a todo el reparto y el modelo tiende a meterlo entero (página 1 de Mateo: apareció la gata)
+    absent.length ? `${absent.map((c) => c.name).join(" and ")} ${absent.length > 1 ? "are" : "is"} on the reference sheet but must NOT appear in this image.` : "",
     `${FRAMING[page.shot] ?? FRAMING.medio}; ${LIGHT[page.time] ?? LIGHT.dia}.`,
     "Landscape 3:2 composition.",
     STYLE_REF_ONLY,

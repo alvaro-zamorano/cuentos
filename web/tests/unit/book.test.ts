@@ -30,7 +30,7 @@ test("dirección de arte: la hoja lleva al reparto con identidad y ropa; la pág
   const p1 = plan.pages[0];
   const page = pagePrompt(art, p1, { n: 1, sceneEn: "Vera jumps out of bed", outfitEn: "striped pyjamas", extrasEn: [] }, style);
   assert.match(page, /wearing striped pyjamas \(only the clothes change/);
-  assert.doesNotMatch(page, /Toby/, "Toby no sale en la página 1");
+  assert.match(page, /Toby is on the reference sheet but must NOT appear in this image/, "Toby no sale en la página 1");
 });
 
 test("flujo nuevo en memoria: hoja + portada tras el email, cambios con palabras, pago y 12 páginas", async () => {
