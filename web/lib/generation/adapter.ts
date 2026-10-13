@@ -68,7 +68,7 @@ export interface GenerationAdapter {
 export const MAX_REFS = 3;
 
 /** Coste estimado por imagen en céntimos por proveedor si GENERATION_COST_CENTS_PER_IMAGE no está definida. */
-export const DEFAULT_COST_CENTS: Record<string, number> = { "gemini-images": 6, "openai-images": 8, "dry-run": 0 };
+export const DEFAULT_COST_CENTS: Record<string, number> = { "gemini-images": 4, "openai-images": 8, "dry-run": 0 };
 
 /**
  * Coste por resolución (céntimos de dólar, redondeado hacia arriba con la entrada de referencias, ~3k tokens a 1,5 $/M).

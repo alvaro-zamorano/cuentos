@@ -289,7 +289,7 @@ function fakeSpendDb(rows: Row[]) {
 const NOW = new Date("2026-10-11T15:00:00Z");
 
 test("canSpend con los jobs de muestra: hoja + página 9 y hasta dos imágenes más caben en el tope por lead; la siguiente no (gemini 4 c, tope 20 c)", async () => {
-  await withEnv({ LEAD_CAP_CENTS: undefined, DAILY_CAP_CENTS: undefined, GENERATION_COST_CENTS_PER_IMAGE: undefined }, async () => {
+  await withEnv({ LEAD_CAP_CENTS: "20", DAILY_CAP_CENTS: undefined, GENERATION_COST_CENTS_PER_IMAGE: undefined }, async () => {
     const rows: Row[] = [];
     const db = fakeSpendDb(rows);
     const sample = await gateSpend(db, { leadId: "vera@example.com", images: 2, provider: "gemini-images", now: NOW });

@@ -18,7 +18,7 @@ import {
   parseGeminiImageResponse,
   resolveRefPath,
 } from "../../lib/generation/adapter";
-import { canSpend, recordSpend, utcDayStart } from "../../lib/generation/budget";
+import { canSpend, leadCapCents, recordSpend, utcDayStart } from "../../lib/generation/budget";
 import { DEFAULT_TRAITS } from "../../lib/traits";
 import type { Database } from "../../lib/supabase/types";
 import type { Traits } from "../../lib/types";
@@ -252,8 +252,9 @@ test("canSpend: sin cliente nunca gasta", async () => {
   assert.equal((await recordSpend(null, { leadId: "a", kind: "sheet", provider: "p", model: "m", cents: 4 })).ok, false);
 });
 
-test("canSpend: respeta el tope por lead (20 c por defecto)", async () => {
-  await withEnv({ LEAD_CAP_CENTS: undefined, DAILY_CAP_CENTS: undefined }, async () => {
+test("canSpend: respeta el tope por lead (30 c por defecto, D2; aquí 20 c)", async () => {
+  await withEnv({ LEAD_CAP_CENTS: undefined }, async () => assert.equal(leadCapCents(), 30));
+  await withEnv({ LEAD_CAP_CENTS: "20", DAILY_CAP_CENTS: undefined }, async () => {
     const { db } = fakeDb([{ lead_id: "a@b.c", cost_cents: 4, created_at: YESTERDAY }]);
     assert.deepEqual(await canSpend(db, { leadId: "a@b.c", cents: 4, now: NOW }), { ok: true });
     assert.deepEqual(await canSpend(db, { leadId: "a@b.c", cents: 16, now: NOW }), { ok: true });
