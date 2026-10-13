@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { serviceRoleKey } from "@/lib/supabase/admin";
 import { selectProvider } from "@/lib/story/provider";
 import { geminiModel } from "@/lib/generation/adapter";
 
@@ -34,7 +35,13 @@ export async function GET(req: Request) {
   // la clave de Anthropic se comprueba aunque STORY_PROVIDER no la active todavía
   const anthropicModel = provider.name === "anthropic" ? storyModel : process.env.STORY_MODEL || "claude-sonnet-4-5";
   const out = {
-    supabase: { url: has("NEXT_PUBLIC_SUPABASE_URL"), serviceRole: has("SUPABASE_SERVICE_ROLE_KEY"), check: "skipped" as Check },
+    supabase: {
+      url: has("NEXT_PUBLIC_SUPABASE_URL"),
+      serviceRole: Boolean(serviceRoleKey()),
+      // solo NOMBRES de variables parecidas (nunca valores), para detectar erratas en Vercel
+      similarNames: Object.keys(process.env).filter((k) => /supabase|service|role/i.test(k) && k !== "NEXT_PUBLIC_SUPABASE_URL").sort(),
+      check: "skipped" as Check,
+    },
     story: { requested, active: provider.name, model: storyModel, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },
     anthropic: { model: anthropicModel, check: "skipped" as Check },
     images: { provider: imageProvider, geminiKey: has("GEMINI_API_KEY"), geminiModel: geminiModel(), check: "skipped" as Check },
