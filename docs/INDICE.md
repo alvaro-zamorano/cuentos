@@ -68,6 +68,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 |---|---|
 | Landing | `app/page.tsx` (+ `lib/muestra.ts`, `public/muestra/`) |
 | Flujo `/crear` (5 pasos) | `app/crear/page.tsx`, `components/crear/Step{Idea,Hero,Story,Cast,Book}.tsx`, `BookImage`, `BookLink`, `lib/crearStore.ts`, `lib/bookClient.ts` |
+| Miniaturas del paso 2 | `components/crear/Tiles.tsx` (las repinta con `lib/recolor.ts`), `lib/crearPicks.ts` (opciones y textos), `public/crear/` (salen de `public/catalog/gouache` con `scripts/crear-thumbs.mjs`) |
 | Ficha y plan del libro (B1) | `lib/plan/` (ficha, starters, moderation, rules, prompt, validate, planner, mock, evalCases), `app/api/plan/`, `lib/llm.ts` |
 | Dirección de arte y control de calidad | `lib/plan/art.ts`, `lib/plan/qc.ts` |
 | Libro: hoja, portada, pago, páginas, vista | `lib/book/service.ts`, rutas `app/api/libro/*` |

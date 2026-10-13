@@ -33,6 +33,9 @@ async function writeStory(page: Page) {
   await expect(page.getByRole("heading", { name: "¿Cómo es Vera?" })).toBeVisible();
   await page.getByRole("button", { name: "Rizos media melena" }).click();
   await page.getByRole("button", { name: "Pelo caoba" }).click();
+  // el paso 2 enseña lo que se elige: miniatura marcada y repintada con el color de pelo elegido
+  await expect(page.getByRole("button", { name: "Rizos media melena" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-pick="rizos-media"] img')).toHaveAttribute("src", /^data:image\/png/);
   await page.getByTestId("add-cast").click();
   await page.getByTestId("cast-0").getByPlaceholder("Toby").fill("Toby");
   await page.getByTestId("cast-0").getByPlaceholder("su perro").fill("su perro");

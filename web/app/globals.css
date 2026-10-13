@@ -92,6 +92,19 @@ body {
   @apply border-ink text-ink shadow-[inset_0_0_0_1px_var(--ink)];
 }
 
+.tile {
+  @apply grid content-start overflow-hidden rounded-[6px] border border-line bg-card text-left transition-[border-color,box-shadow] hover:border-ink/40;
+}
+.tile-on {
+  @apply border-ink shadow-[inset_0_0_0_1px_var(--ink)];
+}
+.tile-label {
+  @apply px-1.5 py-1.5 text-[11px] leading-tight text-ink-soft sm:text-xs;
+}
+.tile-on .tile-label {
+  @apply font-medium text-ink;
+}
+
 .swatch {
   @apply h-8 w-8 rounded-full border border-black/10 transition-shadow;
 }

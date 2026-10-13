@@ -41,6 +41,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-13 | «Subimos todo» se lee como: código subido a la rama y probado en la preview. La salida a producción (unir el PR #1 a `main`) espera a legales, Stripe y `CRON_SECRET`. *Interpretación de Claude; pendiente de que Álvaro la confirme* | Producción sin legales ni borrado ni pago real no se puede abrir al público | PLAN §7 |
 | 2026-10-13 | Un único registro de decisiones: este. PLAN §8 apunta aquí | Dos registros se desincronizan | PLAN |
 | 2026-10-13 | La documentación para cambiar de hilo vive en el repo (`docs/INDICE.md` y `docs/ESTADO.md`, que mandan) con una copia en el Project (`claude/00-INDICE.md`, `claude/00-ESTADO.md`). Quien cambie uno actualiza el otro | Los hilos de chat leen el Project; los de código leen el repo | INDICE, CLAUDE.md |
+| 2026-10-13 | El paso 2 enseña lo que se elige con imágenes. Peinados y gafas llevan miniaturas que se repintan con la piel y el pelo elegidos; en las gafas solo la piel. La ropa y las mascotas llevan miniaturas que rellenan el texto con lo que se ve, y el texto se puede retocar. Los ojos muestran su color. Las miniaturas salen del catálogo gouache que ya existía, sin coste de generación | Álvaro, al hacer el recorrido: sin imágenes cuesta saber qué se está eligiendo | `StepHero.tsx`, `Tiles.tsx`, `lib/crearPicks.ts`, `public/crear/`, `scripts/crear-thumbs.mjs` |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -49,6 +50,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **CI en rojo:** el test de la página 5 fallaba cuando la respuesta tardaba, porque el modo estricto de Playwright falla sin esperar. Reproducido en local retrasando la respuesta 1,5 s y arreglado.
 - **El borrado a 30 días no existía:** hecho y probado en la base real con dos libros de prueba caducados. El no pagado desaparece con sus 2 imágenes; el pagado queda vacío con el pedido; no quedan archivos huérfanos en el bucket.
 - **Paso 3 en móvil:** el título largo se cortaba. Ahora crece, y la dedicatoria también.
+- **Imágenes en el formulario (Álvaro):** el paso 2 era difícil de rellenar sin ver qué se elegía. Hecho: 35 miniaturas (275 KB en total). Al elegir piel y color de pelo, los peinados se repintan. Comprobado con capturas en móvil y escritorio y con un test nuevo en Playwright. En las gafas no se repinta el pelo, porque el repintado teñía también las monturas marrones.
 - **Aviso «Pintando las páginas»:** se quedaba unos segundos con el libro ya completo. Arreglado.
 - **Recorrido completo en la preview por la interfaz** (textos reales, imágenes sin coste): de la idea al PDF en 47 s con el cuento en caché, sin errores. Un cuento nuevo tarda 26 s.
 - **Gasto de pruebas de esta noche:** ≈ 0,30 $ (3 planes con Sonnet, una hoja con Gemini que se repitió por el control de calidad, varias llamadas a Haiku).
@@ -64,17 +66,19 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 7. **`claude/ASSETS.md` está superado por D1.** ¿Se retira del Project? Sigue en el repo.
 8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
 9. **Marca comercial y dominio** (el PRD la deja pendiente).
+10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
-2. `curl https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/health` y mirar:
+2. Preguntar a Álvaro qué le parece el paso 2 con imágenes en la preview y apuntarlo aquí.
+3. `curl https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/health` y mirar:
    - Si `images.provider` es `gemini-images`: hacer **un** libro completo por la interfaz (≈ 1 $), revisar la UX con imágenes reales en móvil y escritorio, y anotar aquí lo que se vea.
    - Si sigue en `dry-run`: recordar a Álvaro la pregunta 1.
-3. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
-4. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
-5. Con los datos legales: rellenar E6.
-6. Antes de unir el PR #1:
+4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
+5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
+6. Con los datos legales: rellenar E6.
+7. Antes de unir el PR #1:
    - `CRON_SECRET` y `SITE_URL` en producción.
    - Quitar `/api/dev` si se decide.
    - Actualizar la descripción del PR.
