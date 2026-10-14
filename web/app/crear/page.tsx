@@ -262,7 +262,7 @@ function BookAside({ s }: { s: CrearState }) {
     { done: !!name, text: name ? `${name}, ${f.hero.age} ${f.hero.age === 1 ? "año" : "años"} · ${about}` : "Para quién es y de qué va" },
     { done: s.step > 2 || !!s.record, text: `Cómo es y quién ${f.hero.gender === "nina" ? "la" : f.hero.gender === "nino" ? "lo" : "le"} acompaña` },
     { done: !!s.record && s.step >= 3, text: "El cuento, página a página" },
-    { done: false, text: "Su hoja de personajes y la portada" },
+    { done: false, text: "Sus personajes y la portada" },
   ];
   return (
     <aside className="sticky top-8 hidden rounded-[28px] bg-paper-deep p-7 lg:grid lg:gap-6" aria-label="Así va su libro">

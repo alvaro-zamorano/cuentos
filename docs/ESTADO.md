@@ -47,6 +47,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-13 | El estilo va en la rama `feat/estilo-hora-del-cuento`, con PR hacia `feat/fase-1-journey-clasico` | La preview de la rama de trabajo no cambia mientras Álvaro lo revisa, y otra sesión trabaja en esa rama | — |
 | 2026-10-13 | Paso 2: arriba solo la cara; gafas, rasgo, ropa, reparto, detalles y dedicatoria en filas plegables con su resumen. Paso 5 antes del pago: las doce páginas en una tira horizontal y el pago justo debajo | Las maquetas aprobadas: menos pared de opciones y el pago a la vista | `StepHero.tsx`, `StepBook.tsx`, `tests/crear.spec.ts` |
 | 2026-10-13 | Producción (unir el PR #1 a `main`) espera a los datos legales, `CRON_SECRET` y `SITE_URL`. Confirma la interpretación de «subimos todo» | Álvaro, al pedir subir a producción y ver lo que faltaba: el consentimiento promete el borrado a 30 días y las páginas legales tienen huecos | PLAN §7 |
+| 2026-10-14 | Copy de la landing orientado a quien compra (padres, abuelos, tíos). Título «Una frase tuya. Un libro suyo.». Fuera la jerga interna: «hoja de personajes» pasa a «cómo será en el libro» o «sus personajes» (también en `/crear`), y fuera «igual en las doce páginas», «la misma niña», «plantillas» y «una versión más». Cuatro preguntas nuevas: parecido, personaje favorito, edades, Navidad y Reyes | Álvaro: varios apartados no se entendían. El texto hablaba de nuestros problemas técnicos (consistencia, plantillas) y creaba dudas que el padre no tenía | `app/page.tsx`, `SampleFlipper.tsx`, `components/crear/Step{Hero,Cast,Book}.tsx`, `app/crear/page.tsx`; rama `copy/landing-target` |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -67,6 +68,14 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **`npx next build` no genera `public/pieces/`** (lo hace el `prebuild` de `npm run build`). Sin esas piezas, el test de `/gratis` falla en local con 404. Usar siempre `npm run build`.
 - **Gasto de pruebas de esta noche:** ≈ 0,30 $ (3 planes con Sonnet, una hoja con Gemini que se repitió por el control de calidad, varias llamadas a Haiku).
 
+### 14 oct (copy de la landing)
+
+- **La landing prometía algo falso sobre los datos:** «Mientras escribes, todo se queda en tu navegador». En el paso 3, `/api/plan` manda la ficha a Anthropic y la guarda en `cuentos_stories` (visto en el código). Corregida la pregunta; la política de privacidad ya lo cuenta bien en el PR #3. Un test impide volver a prometerlo.
+- **«Nada de miedo»** contradecía al planificador, que admite emociones pequeñas como el miedo a la oscuridad. Ahora: «nada que asuste de verdad».
+- **Tiempos optimistas:** «alrededor de un minuto» para hoja y portada; medido en la preview, 45 s y 81 s. Ahora «uno o dos minutos» (landing y paso 4).
+- **El test de «peques» daba falsos positivos:** usaba `\b`, y en JavaScript la «ñ» cuenta como límite de palabra, así que «pequeños» caía. Ahora con `\p{L}`.
+- Comprobado: tsc, eslint, 77 unitarios, build, 8 Playwright y capturas de la landing en móvil (390 px) y escritorio (1440 px). Los textos cambiados en `/crear` los recorre Playwright; sin capturas de esos pasos.
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
@@ -81,6 +90,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
 12. **¿Se une el PR #2 (estilo) a la rama de trabajo?** Álvaro, después de mirarlo en la preview de `feat/estilo-hora-del-cuento` en móvil y escritorio. Las maquetas del lienzo conservan Fraunces; la referencia es ya el código.
+13. **Copy de la landing** (rama `copy/landing-target`, PR hacia la del estilo): revisarlo en su preview y unirlo al PR #2. La landing del PR #3 es la antigua; al unir los dos a la rama de trabajo, manda la del PR #2 con este copy.
 
 ## 5. Próxima sesión — empezar por
 

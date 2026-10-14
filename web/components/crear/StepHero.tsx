@@ -47,7 +47,7 @@ export function StepHero({ ficha, onChange, onNext }: { ficha: Ficha; onChange: 
     >
       <div className="grid gap-2">
         <h2 className="display text-[32px] sm:text-[42px]">¿Cómo es {name}?</h2>
-        <p className="text-ink-soft">Todo es opcional. Lo que marques saldrá igual en las doce páginas; lo demás lo verás en su hoja de personajes y lo podrás cambiar con palabras.</p>
+        <p className="text-ink-soft">Todo es opcional. Lo que marques se verá en todo el libro. Lo demás lo verás dibujado antes de ilustrar las páginas y lo podrás cambiar con palabras.</p>
       </div>
 
       <section className="card grid gap-6 p-5 sm:p-7" aria-label="La cara">

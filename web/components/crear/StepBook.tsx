@@ -290,7 +290,7 @@ function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: stri
       <p className="text-sm font-semibold text-moon-soft">Libro ilustrado · PDF</p>
       <p className="display mt-1 text-[50px] leading-none text-moon">{PRICE_ILLUSTRATED}</p>
       <ul className="mt-5 grid gap-2.5 text-[15.5px]">
-        {[`Doce ilustraciones con ${name || "tus personajes"}, igual en todas`, "Revisas cada página; una versión más de cada ilustración, incluida", "PDF en A4 para imprimir en casa"].map((t) => (
+        {[`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"].map((t) => (
           <li key={t} className="flex items-start gap-2.5">
             <Sparkle className="mt-1 shrink-0" size={14} />
             {t}

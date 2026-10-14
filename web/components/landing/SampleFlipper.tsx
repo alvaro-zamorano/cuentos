@@ -51,7 +51,7 @@ export function SampleFlipper({ start = 7 }: { start?: number }) {
           </button>
         ))}
       </div>
-      <p className="hand m-0 text-[19px] text-ink-soft">Vera es la misma niña en las trece ilustraciones →</p>
+      <p className="hand m-0 text-[19px] text-ink-soft">Busca sus gafas y sus pecas en cada página →</p>
     </div>
   );
 }
