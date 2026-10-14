@@ -90,7 +90,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
 12. **¿Se une el PR #2 (estilo) a la rama de trabajo?** Álvaro, después de mirarlo en la preview de `feat/estilo-hora-del-cuento` en móvil y escritorio. Las maquetas del lienzo conservan Fraunces; la referencia es ya el código.
-13. **Copy de la landing** (rama `copy/landing-target`, PR hacia la del estilo): revisarlo en su preview y unirlo al PR #2. La landing del PR #3 es la antigua; al unir los dos a la rama de trabajo, manda la del PR #2 con este copy.
+13. **Copy de la landing** (rama `copy/landing-target`, PR #4 hacia la del estilo): revisarlo en su preview y unirlo al PR #2. La landing del PR #3 es la antigua; al unir los dos a la rama de trabajo, manda la del PR #2 con este copy.
 
 ## 5. Próxima sesión — empezar por
 
