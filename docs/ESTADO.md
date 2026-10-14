@@ -1,6 +1,6 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-13, noche (estilo «La hora del cuento» en código) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
+Actualizado: 2026-10-14 (copy de la landing, PR #4) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
