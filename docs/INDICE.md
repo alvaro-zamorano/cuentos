@@ -1,6 +1,6 @@
 # ÍNDICE MAESTRO — cuentos
 
-Actualizado: 2026-10-13, noche · Owner: Álvaro · Fase: B1–B5 hechos (a B5 le faltan las claves), B6 en parte, B7 pendiente
+Actualizado: 2026-10-14 · Owner: Álvaro · Fase: B1–B5 hechos (a B5 le faltan las claves), B6 en parte (estilo y copy unidos), B7 pendiente
 
 Mapa para empezar cualquier hilo. Lee esto y `ESTADO.md`; el resto, solo si la tarea lo pide. Los documentos que mandan están en el repo (`docs/`). El Project «Cuentos niños» guarda una copia (`claude/…`); quien cambie uno, actualiza el otro.
 
@@ -27,7 +27,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `ILUSTRACION.md` — B3–B4: hoja, portada, páginas, control de calidad, PDF; prueba real y costes medidos · vigente
 - `PLANIFICADOR.md` — B1: de la ficha al plan del libro; evaluación con 10 fichas · vigente
 - `MUESTRA-LUNA.md` — el libro de muestra «Vera y Toby viajan a la Luna» · vigente
-- `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía (Lora + Figtree + Patrick Hand), cambios por paso e implementación · **aprobado e implementado** en la rama `feat/estilo-hora-del-cuento` (PR #2, pendiente de unir)
+- `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía (Lora + Figtree + Patrick Hand), cambios por paso e implementación · **aprobado e implementado**; unido a la rama de trabajo el 14 oct (PR #2)
 - `FASE0.md` — calibración inicial con Nano Banana, la base de D1–D6 · histórico
 - `ASSETS.md` — fondos y poses para el compositor de piezas · **superado por D1** (pendiente de retirar del Project)
 
@@ -79,8 +79,8 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Stripe y Resend | `lib/stripe.ts`, `lib/mail.ts`, `app/api/libro/checkout`, `app/api/stripe/webhook` |
 | PDF | `lib/pdf/book2.ts` (maqueta), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf` |
 | Borrado a 30 días | `lib/purge.ts`, `app/api/cron/purge`, `vercel.json` |
-| Salud y pruebas | `app/api/health`; `app/api/dev` (solo fuera de producción; fuerza Gemini y cuesta dinero) |
-| Tests | `tests/unit/*.test.ts` (77), `tests/crear.spec.ts` + `tests/journey.spec.ts` (8 Playwright), `.github/workflows/ci.yml` |
+| Salud y pruebas | `app/api/health`; `app/api/dev` (fuera de producción; en Vercel solo con `DEV_TOKEN`, `lib/devAccess.ts`; fuerza Gemini y cuesta dinero) |
+| Tests | `tests/unit/*.test.ts` (82), `tests/crear.spec.ts` + `tests/journey.spec.ts` (8 Playwright), `.github/workflows/ci.yml` |
 | Flujo antiguo (fuera del embudo por D1) | `app/{clasico,ilustrado,libro,gratis}`, `lib/{story,pieces,arcs,…}`, `app/api/{story,jobs,books,pdf,generate/book,generate/sample}` |
 
 ## 6. Cómo trabajar
@@ -111,7 +111,7 @@ Sin claves en local se usan la memoria del proceso, imágenes `dry-run` y el cue
 
 - `GET /api/health`: qué está configurado (sin enseñar valores).
 - `GET /api/cron/purge?dry=1`: qué borraría el cron.
-- `/api/dev?task=…`: pruebas con Gemini y Claude de verdad (`models`, `plan`, `b3start`, `run`, `view`, `revise`, `pages`). Cuestan dinero: pocas tomas.
+- `/api/dev?task=…`: pruebas con Gemini y Claude de verdad (`models`, `plan`, `b3start`, `run`, `view`, `revise`, `pages`). Cuestan dinero: pocas tomas. En Vercel solo responde con `DEV_TOKEN` (en `?token=` o en la cabecera `x-dev-token`); sin la variable, 404.
 
 **Libros de prueba reales** (caducan hacia el 12 nov; el cron de producción los borrará porque la base es la misma)
 

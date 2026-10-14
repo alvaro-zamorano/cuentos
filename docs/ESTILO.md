@@ -1,6 +1,6 @@
 # Estilo «La hora del cuento» (13 oct 2026)
 
-**Estado: aprobado por Álvaro el 13 oct, con otra tipografía (Lora en vez de Fraunces, cuya «f» no le gustó), e implementado en la rama `feat/estilo-hora-del-cuento`.** Sustituye la decisión del 9 oct «estética editorial; Fraunces + Geist; verde botella como único acento». El registro adulto del texto (sin diminutivos ni emojis) se mantiene.
+**Estado: aprobado por Álvaro el 13 oct, con otra tipografía (Lora en vez de Fraunces, cuya «f» no le gustó), e implementado. Unido a la rama de trabajo el 14 oct (PR #2), con el copy nuevo de la landing (PR #4).** Sustituye la decisión del 9 oct «estética editorial; Fraunces + Geist; verde botella como único acento». El registro adulto del texto (sin diminutivos ni emojis) se mantiene.
 
 Maquetas en el lienzo de diseño «Cuentos · La hora del cuento» (claude.ai, privado de Álvaro): sistema de estilo, landing en escritorio y móvil, y los pasos de `/crear` (1 en móvil y escritorio, 2, 3 escribiendo, 3 escrito, 4 email, 4 personajes, 5 libro y pago). Usan las imágenes reales del libro de muestra y de las cuatro portadas. Las maquetas conservan Fraunces y Kalam; la referencia es ya el código.
 

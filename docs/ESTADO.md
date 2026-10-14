@@ -1,12 +1,12 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-14 (copy de la landing, PR #4) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
+Actualizado: 2026-10-14 (PR #2, #3 y #4 unidos a la rama de trabajo) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora:** que Álvaro revise el estilo nuevo en la preview de su rama (`feat/estilo-hora-del-cuento`, PR #2 hacia la rama de trabajo) y decida unirlo. Y que pueda recorrer la preview con imágenes reales y juzgar la UX y el recorrido. El código está subido y la preview funciona de punta a punta con las imágenes en modo sin coste. Falta una variable que solo puede poner él (§4, pregunta 1).
+- **Ahora:** la preview de la rama de trabajo está completa desde el 14 oct: estilo «La hora del cuento», copy nuevo de la landing, `/api/dev` cerrado y legales al día, con imágenes reales (Nano Banana). Que Álvaro la recorra y la enseñe, y juzgue la UX y el recorrido.
 - **Después:** claves de Stripe y Resend (B5), legales (E6), prueba con tres personas ajenas (B7) y salida a producción.
 - **Fuera de foco ahora:** tapa dura, más estilos de ilustración, el Reel (B6), el flujo antiguo (`/clasico`, `/ilustrado`, `/libro`, `/gratis`).
 
@@ -47,7 +47,9 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-13 | El estilo va en la rama `feat/estilo-hora-del-cuento`, con PR hacia `feat/fase-1-journey-clasico` | La preview de la rama de trabajo no cambia mientras Álvaro lo revisa, y otra sesión trabaja en esa rama | — |
 | 2026-10-13 | Paso 2: arriba solo la cara; gafas, rasgo, ropa, reparto, detalles y dedicatoria en filas plegables con su resumen. Paso 5 antes del pago: las doce páginas en una tira horizontal y el pago justo debajo | Las maquetas aprobadas: menos pared de opciones y el pago a la vista | `StepHero.tsx`, `StepBook.tsx`, `tests/crear.spec.ts` |
 | 2026-10-13 | Producción (unir el PR #1 a `main`) espera a los datos legales, `CRON_SECRET` y `SITE_URL`. Confirma la interpretación de «subimos todo» | Álvaro, al pedir subir a producción y ver lo que faltaba: el consentimiento promete el borrado a 30 días y las páginas legales tienen huecos | PLAN §7 |
+| 2026-10-14 | `/api/dev` en Vercel solo responde con `DEV_TOKEN` (en `?token=` o en la cabecera `x-dev-token`); sin la variable, 404. Producción, siempre 404; en local, abierta. Legales reescritos con el producto actual: qué es gratis (D3), proceso, uso de IA (Anthropic y Gemini, también antes de pagar), qué se guarda y el borrado a 30 días aunque se compre | La preview es pública y se va a enseñar: cualquiera con la URL podía gastar con `/api/dev`, y los legales describían el flujo antiguo | `lib/devAccess.ts`, `app/api/dev`, `app/{privacidad,condiciones,aviso-legal}`, `.env.example` (PR #3) |
 | 2026-10-14 | Copy de la landing orientado a quien compra (padres, abuelos, tíos). Título «Una frase tuya. Un libro suyo.». Fuera la jerga interna: «hoja de personajes» pasa a «cómo será en el libro» o «sus personajes» (también en `/crear`), y fuera «igual en las doce páginas», «la misma niña», «plantillas» y «una versión más». Cuatro preguntas nuevas: parecido, personaje favorito, edades, Navidad y Reyes | Álvaro: varios apartados no se entendían. El texto hablaba de nuestros problemas técnicos (consistencia, plantillas) y creaba dudas que el padre no tenía | `app/page.tsx`, `SampleFlipper.tsx`, `components/crear/Step{Hero,Cast,Book}.tsx`, `app/crear/page.tsx`; rama `copy/landing-target` |
+| 2026-10-14 | PR #4 (copy) unido a la rama del estilo; PR #3 (demo abierta) y PR #2 (estilo + copy) unidos a la rama de trabajo, con merge commits. La preview de la rama de trabajo lleva todo | Álvaro: «que el preview quede completo». La unión se probó antes en local (82 unitarios, build, 8 Playwright, capturas) y el resultado en GitHub es el mismo árbol | — |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -89,8 +91,10 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 9. **Marca comercial y dominio** (el PRD la deja pendiente).
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
-12. **¿Se une el PR #2 (estilo) a la rama de trabajo?** Álvaro, después de mirarlo en la preview de `feat/estilo-hora-del-cuento` en móvil y escritorio. Las maquetas del lienzo conservan Fraunces; la referencia es ya el código.
-13. **Copy de la landing** (rama `copy/landing-target`, PR #4 hacia la del estilo): revisarlo en su preview y unirlo al PR #2. La landing del PR #3 es la antigua; al unir los dos a la rama de trabajo, manda la del PR #2 con este copy.
+12. ~~**¿Se une el PR #2 (estilo) a la rama de trabajo?**~~ Unido el 14 oct, con el copy (PR #4) y la demo abierta (PR #3).
+13. ~~**Copy de la landing**~~ Unido el 14 oct (PR #4).
+14. **Pendientes de los legales (PR #3):** datos del titular, DPA de cada proveedor, plazo de los emails de leads (E18), IVA y la casilla de desistimiento que falta en el paso del pago. Álvaro, salvo la casilla, que es código.
+15. **`DEV_TOKEN` en Preview** si se quiere seguir usando `/api/dev` en la preview (sin él, 404). Álvaro.
 
 ## 5. Próxima sesión — empezar por
 
@@ -101,7 +105,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
 5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
 6. Con los datos legales: rellenar E6.
-7. Preguntar a Álvaro qué le parece el estilo en la preview de `feat/estilo-hora-del-cuento` (pregunta 12), y si en su móvil el hojeador ya no monta el texto sobre la ilustración, y apuntarlo aquí. Si da el visto bueno, unir el PR #2 a la rama de trabajo; si la rama de trabajo ha avanzado, rebasar antes y repetir build y Playwright.
+7. Preguntar a Álvaro qué le parece la preview completa (estilo y copy nuevos) en su móvil, y si en Safari el hojeador ya no monta el texto sobre la ilustración. Apuntarlo aquí.
 8. Antes de unir el PR #1:
    - `CRON_SECRET` y `SITE_URL` en producción.
    - Quitar `/api/dev` si se decide.
