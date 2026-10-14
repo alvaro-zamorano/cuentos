@@ -1,0 +1,416 @@
+@import "tailwindcss";
+
+/*
+ * Estilo «La hora del cuento» (docs/ESTILO.md): noche, crema y papel; teja solo para las acciones; estrella para los
+ * detalles. Lora en titulares y en el cuento, Figtree en la interfaz y Patrick Hand para las notas a mano.
+ * Los nombres antiguos (paper, card, ink, line, accent) se conservan: el flujo antiguo y los legales siguen usándolos.
+ */
+:root {
+  --paper: #fbf5ea; /* crema: fondo */
+  --paper-deep: #f4ead8; /* papel: secciones alternas */
+  --card: #fffdf8;
+  --ink: #232036;
+  --ink-soft: #5d566c;
+  --mute: #6f6457;
+  --line: #e6d8c1;
+  --edge: #d8c7ab; /* cantos de los libros */
+  --accent: #c8492c; /* teja: solo acciones (texto blanco 4,7:1) */
+  --accent-deep: #a93d25; /* enlaces pequeños y hover */
+  --night: #1d2747;
+  --night-2: #26335e;
+  --moon: #fbf1da;
+  --moon-soft: #c9cfe2;
+  --star: #f2b84b;
+  --peach: #f7d9c4;
+  --sky: #d6e5f2;
+  --butter: #f9e6b0;
+  --sage: #dce7cf;
+  --sage-ink: #2f5a2c;
+  --danger: #8a2a1c;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-mute: var(--mute);
+  --color-line: var(--line);
+  --color-edge: var(--edge);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-night: var(--night);
+  --color-night-2: var(--night-2);
+  --color-moon: var(--moon);
+  --color-moon-soft: var(--moon-soft);
+  --color-star: var(--star);
+  --color-peach: var(--peach);
+  --color-sky: var(--sky);
+  --color-butter: var(--butter);
+  --color-sage: var(--sage);
+  --color-sage-ink: var(--sage-ink);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-ui), "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-display: var(--font-serif), Georgia, serif;
+  --font-story: var(--font-serif), Georgia, serif;
+  --font-hand: var(--font-hand-ui), "Comic Sans MS", cursive;
+}
+
+/* Base y componentes van en sus capas para que las utilidades de Tailwind (p-6, w-full, outline-none…) puedan
+ * ajustarlos en cada sitio; fuera de capa ganarían siempre. */
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern", "liga";
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100%;
+    background: var(--paper);
+  }
+
+  :focus-visible {
+    outline: 2.5px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* ---------- Movimiento (todo se apaga con «reducir movimiento», abajo) ---------- */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes floaty {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -8px;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: -240px 0;
+  }
+  to {
+    background-position: 240px 0;
+  }
+}
+@keyframes write {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(-8deg);
+  }
+  50% {
+    transform: translate(22px, 4px) rotate(-2deg);
+  }
+}
+@keyframes walk {
+  from {
+    left: 0;
+  }
+  to {
+    left: calc(100% - 22px);
+  }
+}
+@keyframes grow {
+  from {
+    width: 0;
+  }
+  to {
+    width: calc(100% - 11px);
+  }
+}
+@layer components {
+  /* Titulares: Lora seminegrita. El énfasis va en color (.em), no en cursiva. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 640;
+    letter-spacing: -0.012em;
+    line-height: 1.1;
+    text-wrap: balance;
+  }
+  .em {
+    color: var(--accent);
+  }
+  .story {
+    font-family: var(--font-story);
+    font-weight: 400;
+  }
+  .hand {
+    font-family: var(--font-hand);
+    font-weight: 400;
+  }
+
+  .link {
+    @apply text-accent-deep underline decoration-1 underline-offset-[3px] hover:decoration-2;
+  }
+
+
+  /* Botones: píldora. Suben 2 px al pasar y se encogen un poco al pulsar. */
+  .btn-primary,
+  .btn-ghost,
+  .btn-soft,
+  .btn-moon {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-[16px] font-bold transition-[transform,background-color,box-shadow,border-color] duration-300 disabled:pointer-events-none disabled:opacity-40;
+    transition-timing-function: var(--ease-out);
+  }
+  .btn-primary:hover,
+  .btn-ghost:hover,
+  .btn-soft:hover,
+  .btn-moon:hover {
+    transform: translateY(-2px);
+  }
+  .btn-primary:active,
+  .btn-ghost:active,
+  .btn-soft:active,
+  .btn-moon:active {
+    transform: scale(0.98);
+  }
+  .btn-primary {
+    @apply bg-accent text-white shadow-[0_12px_26px_-14px_rgba(200,73,44,0.9)] hover:bg-accent-deep;
+  }
+  .btn-ghost {
+    @apply border-[1.5px] border-ink bg-transparent text-ink;
+  }
+  .btn-soft {
+    @apply bg-paper-deep text-ink hover:bg-[#efe2cc];
+  }
+  .btn-moon {
+    @apply border-[1.5px] border-moon/45 bg-transparent text-moon hover:border-moon;
+  }
+  .btn-lg {
+    @apply min-h-14 px-8 text-[17px];
+  }
+  .btn-sm {
+    @apply min-h-10 px-4 text-sm;
+  }
+  .btn-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-full bg-paper-deep text-ink transition-colors hover:bg-[#efe2cc];
+  }
+
+  .card {
+    @apply rounded-[22px] bg-card p-5 shadow-[0_2px_0_#eaddc6];
+  }
+
+  /* Selector en píldora; el elegido, en tinta. */
+  .chip {
+    @apply inline-flex min-h-11 items-center gap-2 rounded-full border-[1.5px] border-[#e5d7c1] bg-card px-4 text-sm font-semibold text-ink transition-colors hover:border-ink/40;
+  }
+  .chip-on {
+    @apply border-ink bg-ink text-paper hover:border-ink;
+  }
+
+  .tile {
+    @apply relative grid content-start overflow-hidden rounded-[18px] bg-white text-left shadow-[0_0_0_1.5px_#e5d7c1] transition-shadow hover:shadow-[0_0_0_1.5px_rgba(35,32,54,0.4)];
+  }
+  .tile img {
+    background: var(--paper-deep);
+  }
+  .tile-on,
+  .tile-on:hover {
+    @apply shadow-[0_0_0_3px_var(--accent)];
+  }
+  .tile-label {
+    @apply px-2.5 pt-1 pb-2 text-[12.5px] leading-tight font-semibold text-ink-soft;
+  }
+  .tile-on .tile-label {
+    @apply font-bold text-ink;
+  }
+
+  .swatch {
+    @apply h-8 w-8 rounded-full transition-shadow sm:h-9 sm:w-9;
+  }
+  .swatch-on {
+    @apply shadow-[0_0_0_3px_var(--card),0_0_0_5.5px_var(--ink)];
+  }
+
+  .field-label {
+    @apply text-sm font-semibold text-ink-soft;
+  }
+  .input {
+    @apply min-h-13 w-full rounded-2xl border-2 border-[#e5d7c1] bg-white px-4 py-2.5 text-lg text-ink outline-none transition-[border-color,box-shadow] placeholder:text-ink-soft/55 focus:border-accent focus:shadow-[0_0_0_5px_rgba(200,73,44,0.14)] focus-visible:outline-none;
+  }
+  select.input {
+    @apply cursor-pointer appearance-none pr-9;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%), linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+    background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  /* Campo dentro de una frase («Un cuento para [Vera], que tiene [6] años»): hereda la letra del titular. */
+  .madlib {
+    @apply mx-1 inline-block rounded-2xl border-2 border-[#e5d7c1] bg-white px-2.5 align-baseline text-ink outline-none transition-[border-color,box-shadow] duration-200 placeholder:text-ink-soft/35 focus:border-accent focus:shadow-[0_0_0_5px_rgba(200,73,44,0.14)] focus-visible:outline-none;
+    font: inherit;
+    line-height: 1.3;
+  }
+  /* el campo del nombre mide lo que el nombre (o el texto de ayuda); donde no hay field-sizing, un ancho aproximado */
+  .madlib-fit {
+    width: var(--w);
+  }
+  @supports (field-sizing: content) {
+    .madlib-fit {
+      field-sizing: content;
+      width: auto;
+      min-width: 2.5ch;
+      max-width: 100%;
+    }
+  }
+  select.madlib {
+    @apply cursor-pointer appearance-none pr-10;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%), linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+    background-position: calc(100% - 22px) 55%, calc(100% - 16px) 55%;
+    background-size: 6px 6px;
+    background-repeat: no-repeat;
+  }
+
+  /* Filas plegables (paso 2): icono, título, resumen y check si ya tiene algo. */
+  .row {
+    @apply rounded-[22px] bg-card shadow-[0_2px_0_#eaddc6] transition-shadow;
+  }
+  .row[open] {
+    @apply shadow-[0_2px_0_#eaddc6,0_24px_44px_-34px_rgba(35,32,54,0.5)];
+  }
+  .row > summary {
+    @apply flex cursor-pointer list-none items-center gap-3.5 rounded-[22px] px-4 py-3.5 sm:px-5;
+  }
+  .row > summary::-webkit-details-marker {
+    display: none;
+  }
+  .row-body {
+    @apply grid gap-4 px-4 pt-1 pb-5 sm:px-5;
+    animation: rise 0.35s var(--ease-out) both;
+  }
+
+  /* Hoja pautada para escribir la idea. */
+  .ruled {
+    background-image: repeating-linear-gradient(180deg, transparent 0, transparent calc(1.75em - 1px), #f0e6d6 calc(1.75em - 1px), #f0e6d6 1.75em);
+    background-attachment: local;
+    line-height: 1.75em;
+  }
+
+  .notice {
+    @apply rounded-2xl bg-paper-deep px-4 py-3 text-sm text-ink-soft;
+  }
+
+  /* Barra de acciones del flujo: fija abajo en móvil, en línea desde sm. */
+  .actionbar {
+    @apply sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-3 rounded-t-[26px] bg-card px-4 pt-3.5 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-12px_30px_-18px_rgba(35,32,54,0.45)] sm:static sm:mx-0 sm:rounded-none sm:bg-transparent sm:p-0 sm:shadow-none;
+  }
+
+  /* Página por pintar: papel con trama fina. */
+  .locked-paper {
+    background-color: #f3e8d4;
+    background-image: repeating-linear-gradient(135deg, rgba(92, 83, 75, 0.07) 0 1px, transparent 1px 8px);
+  }
+
+  .rise {
+    animation: rise 0.5s var(--ease-out) both;
+  }
+  .twinkle {
+    animation: twinkle 3.6s ease-in-out infinite;
+  }
+  .twinkle-slow {
+    animation: twinkle 4.8s ease-in-out 1.2s infinite;
+  }
+  .floaty {
+    animation: floaty 7s ease-in-out infinite;
+  }
+  .shimmer {
+    background: linear-gradient(90deg, #efe4d0 0, #f8f0e2 40%, #efe4d0 80%);
+    background-size: 480px 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+  .pen-write {
+    animation: write 1.4s ease-in-out infinite;
+  }
+  .walk {
+    animation: walk 40s cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+  }
+  .grow {
+    animation: grow 40s cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+  }
+}
+
+/* ---------- Impresión (A4 apaisado) ---------- */
+@page {
+  size: A4 landscape;
+  margin: 0;
+}
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .sheets {
+    zoom: 1 !important;
+  }
+  .sheet {
+    width: 297mm;
+    height: 210mm;
+    page-break-after: always;
+    break-after: page;
+    overflow: hidden;
+  }
+}
+.sheet {
+  width: 297mm;
+  height: 210mm;
+  background: #fbf8f2;
+  color: var(--ink);
+}
+
+/* ---------- Páginas legales ---------- */
+.legal h2 {
+  @apply mt-6 font-display text-xl font-semibold;
+}
+.legal ul {
+  @apply list-disc pl-5;
+}
+.legal li {
+  @apply mt-1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Aparecer al entrar en pantalla, solo con CSS (donde haya animaciones ligadas al scroll; si no, se ve sin más). */
+@supports (animation-timeline: view()) {
+  .reveal {
+    animation: rise linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 60%;
+  }
+}

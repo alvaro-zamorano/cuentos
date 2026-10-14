@@ -1,0 +1,49 @@
+# CI (E3 del PLAN): en cada PR y en cada push a la rama de trabajo, sin claves ni gasto.
+# El planificador corre en mock y las imágenes en dry-run (playwright.config.ts los fuerza).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [feat/fase-1-journey-clasico]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_PUBLIC_DRY_RUN_PAYMENT: "1"
+      STORY_PROVIDER: mock
+      GENERATION_PROVIDER: dry-run
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # los tipos de rutas (RouteContext, LayoutProps) los genera Next: primero typegen
+      - run: npx next typegen
+      - run: npx tsc --noEmit
+      - run: npx eslint .
+      - run: npm run test:unit
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get install -y poppler-utils
+      - run: npx playwright test
+        env:
+          CHROME_PATH: ""
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
