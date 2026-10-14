@@ -11,15 +11,18 @@ import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · cuentos" },
   description:
-    "Un cuento personalizado con tu hijo o tu hija de protagonista y la historia que tú quieras: su cumpleaños, un viaje a la Luna o el primer día de cole. Lo escribimos y lo ilustramos; lo lees gratis y lo imprimes en casa.",
+    "Un cuento personalizado con tu hijo, tu nieta o tu sobrino de protagonista y la historia que tú quieras: su cumpleaños, un viaje a la Luna o el primer día de cole. Lo escribimos y lo ilustramos; lo lees gratis y lo imprimes en casa.",
 };
 
-/** Portadas hechas con el flujo de /crear a partir de las fichas de prueba (docs/ILUSTRACION.md, 13 oct). */
+/**
+ * Portadas hechas con el flujo de /crear a partir de las fichas de prueba (docs/ILUSTRACION.md, 13 oct).
+ * `who`: la idea de la ficha, resumida (lib/plan/evalCases.ts). Son ejemplos: el texto no debe sugerir que son clientes.
+ */
 const COVERS = [
-  { src: "/muestra/portada-navidad.webp", title: "Daniela y el ruido del tejado", name: "Daniela", who: "Daniela, 4 años · Nochebuena", tilt: -2 },
-  { src: "/muestra/portada-cole.webp", title: "Hugo y la mochila de dinosaurio", name: "Hugo", who: "Hugo, 3 años · primer día de cole", tilt: 1.5 },
-  { src: "/muestra/portada-cumpleanos.webp", title: "Lucía y las pistas de la abuela", name: "Lucía", who: "Lucía, 8 años · su cumpleaños", tilt: -1 },
-  { src: "/muestra/portada-nubes.webp", title: "Mateo y la torre que tocaba las nubes", name: "Mateo", who: "Mateo, 5 años · «Sorpréndeme»", tilt: 2 },
+  { src: "/muestra/portada-navidad.webp", title: "Daniela y el ruido del tejado", name: "Daniela", who: "Daniela, 4 años: un ruido en el tejado en Nochebuena", tilt: -2 },
+  { src: "/muestra/portada-cole.webp", title: "Hugo y la mochila de dinosaurio", name: "Hugo", who: "Hugo, 3 años: su primer día de cole, con su mochila de dinosaurio", tilt: 1.5 },
+  { src: "/muestra/portada-cumpleanos.webp", title: "Lucía y las pistas de la abuela", name: "Lucía", who: "Lucía, 8 años: las pistas que esconde su abuela por su cumpleaños", tilt: -1 },
+  { src: "/muestra/portada-nubes.webp", title: "Mateo y la torre que tocaba las nubes", name: "Mateo", who: "Mateo, 5 años: historia sorpresa (le encanta hacer torres)", tilt: 2 },
 ];
 
 /** Ideas de arranque que llevan a /crear con la idea puesta (lib/plan/starters.ts). */
@@ -35,37 +38,53 @@ const STARTS = [
 
 const STEPS = [
   { n: 1, title: "Nos cuentas la idea", body: "Con una frase basta. O eliges una para empezar: su cumpleaños, Navidad, un viaje a la Luna.", tint: "bg-peach" },
-  { n: 2, title: "Conoces a los personajes", body: "Antes de pintar te enseñamos su hoja de personajes y la portada. Si algo no encaja, lo pides con palabras.", tint: "bg-sky" },
-  { n: 3, title: "Tienes su libro", body: "Doce páginas ilustradas que revisas una a una, en un PDF para imprimir en casa. Puedes cerrar la página y volver con tu enlace.", tint: "bg-butter" },
+  { n: 2, title: "Ves cómo queda", body: "Te enseñamos cómo será en el libro y la portada. ¿Más rizos? ¿El perro más pequeño? Lo pides con palabras.", tint: "bg-sky" },
+  { n: 3, title: "Tienes su libro", body: "Doce páginas ilustradas en un PDF para imprimir en casa. Si una ilustración no te convence, la repetimos.", tint: "bg-butter" },
 ];
 
 const HOW = [
-  { title: "La historia que tú quieras", body: "Sin catálogo de plantillas: su cumpleaños, la llegada de un hermano o un dragón en el jardín.", tint: "bg-peach", icon: Icon.feather },
-  { title: "Igual en las doce páginas", body: "Antes de pintar fijamos su hoja de personajes. Con ella se le reconoce en todo el libro.", tint: "bg-sky", icon: Icon.people },
-  { title: "Sin fotos", body: "Lo describes con unos toques: pelo, piel, ojos, gafas y lo que le hace único.", tint: "bg-butter", icon: Icon.nocamera },
+  { title: "La historia que tú quieras", body: "Cualquier historia que le contarías en voz alta: su cumpleaños, la llegada de su hermana o un dragón en el jardín.", tint: "bg-peach", icon: Icon.feather },
+  { title: "Se le reconoce en cada página", body: "Sus gafas, su flequillo, su chubasquero de siempre: de la portada a la última página. Antes de ilustrar el libro, te enseñamos cómo será.", tint: "bg-sky", icon: Icon.people },
+  { title: "Sin fotos", body: "Lo describes con sus rasgos: pelo, piel, ojos, gafas y lo que le hace único. Sale un personaje de cuento con esos rasgos, no un retrato.", tint: "bg-butter", icon: Icon.nocamera },
   { title: "Tú das el visto bueno", body: "Lees el cuento antes de ilustrarlo y revisas cada página antes de imprimir.", tint: "bg-sage", icon: Icon.approve },
 ];
 
 const FAQ = [
   {
     q: "¿Quién escribe e ilustra el cuento?",
-    a: "Una inteligencia artificial que hemos preparado para escribir e ilustrar cuentos infantiles en castellano, con reglas propias (nada de miedo, marcas ni personajes con derechos) y controles automáticos en cada página. Tú lo lees y lo revisas todo antes de imprimir.",
+    a: "Una IA que hemos preparado para escribir e ilustrar cuentos infantiles en castellano. Tiene reglas propias: nada que asuste de verdad, ni marcas, ni personajes de películas o series. Cada ilustración pasa un control automático antes de que la veas, y tú lo lees y lo revisas todo antes de imprimir.",
   },
   {
-    q: "¿Qué datos del menor pedís?",
+    q: "¿Se le va a parecer?",
+    a: "Se parece por los rasgos que eliges: el pelo, la piel, los ojos, las gafas y lo que le hace único, como unas pecas o su gorra. Es un personaje de cuento con esos rasgos, no un retrato. Antes de pagar ves cómo queda y, si algo no encaja, lo cambias con palabras.",
+  },
+  {
+    q: "¿Puede salir su personaje favorito?",
+    a: "Los personajes de películas, series o marcas no pueden salir. Si la idea lleva uno, lo cambiamos por uno inventado y te lo decimos. Si quiere ser un superhéroe, lo será, con su propio traje.",
+  },
+  {
+    q: "¿Para qué edades es?",
+    a: "De 1 a 10 años. El texto se adapta a la edad: frases muy cortas y con ritmo para los más pequeños, y más trama y diálogo a partir de los siete.",
+  },
+  {
+    q: "¿Cuánto tarda?",
+    a: "El cuento escrito, medio minuto. Los personajes y la portada, uno o dos minutos. Las doce ilustraciones, unos minutos más; puedes cerrar la página y volver con el enlace.",
+  },
+  {
+    q: "¿Llega a tiempo para Navidad o Reyes?",
+    a: "Sí, porque no hay envío: el PDF está listo en unos minutos. Puedes imprimirlo en casa o en una copistería el mismo día.",
+  },
+  {
+    q: "¿Qué datos del niño pedís?",
     a: "Su nombre, su edad y cómo es, más lo que tú quieras contar en la historia. No pedimos fotos, apellidos ni fecha de nacimiento.",
   },
   {
     q: "¿Qué hacéis con esos datos?",
-    a: "Mientras escribes, todo se queda en tu navegador. Cuando nos das tu email para ver los personajes, guardamos el libro 30 días para que puedas recuperarlo con un enlace; después se borra. Tu email solo se usa para avisos si lo aceptas.",
-  },
-  {
-    q: "¿Cuánto tarda?",
-    a: "El cuento escrito, medio minuto. La hoja de personajes y la portada, alrededor de un minuto. Las doce ilustraciones, unos minutos; puedes cerrar la página y volver con el enlace.",
+    a: "Para escribir el cuento, lo que nos cuentas pasa por nuestro servidor y por la IA que lo escribe. Guardamos el libro 30 días para que puedas volver a él con un enlace; después se borra. Tu email solo se usa para mandarte ese enlace y, si lo aceptas, novedades.",
   },
   {
     q: "¿Se puede devolver?",
-    a: "Un libro personalizado se hace a medida y no admite desistimiento (art. 103.c TRLGDCU). Si el PDF no se abre o la tapa dura llega dañada, lo reponemos.",
+    a: "Lees el cuento y ves la portada antes de pagar. Como cada libro se hace a medida, no admite devolución (art. 103.c TRLGDCU). Si el PDF no se abre, lo reponemos.",
   },
 ];
 
@@ -108,23 +127,23 @@ export default function Landing() {
           <div className="grid gap-6">
             <span className="inline-flex items-center gap-2 justify-self-start rounded-full border border-star/40 bg-star/15 px-3.5 py-1.5 text-sm font-semibold text-star">
               <Sparkle size={12} />
-              El cuento y la portada, gratis
+              Su cuento, esta misma noche
             </span>
             <h1 className="display m-0 text-[44px] leading-[1.04] text-moon sm:text-[58px] lg:text-[74px]">
-              Un libro escrito y pintado para <span className="text-star">un solo lector.</span>
+              Una frase tuya. <span className="text-star">Un libro suyo.</span>
             </h1>
-            <p className="m-0 max-w-[34ch] text-lg leading-relaxed text-moon-soft sm:text-xl">Cuéntanos la historia con una frase. La escribimos y la ilustramos con tu hijo o tu hija de protagonista, igual en las doce páginas.</p>
+            <p className="m-0 max-w-[36ch] text-lg leading-relaxed text-moon-soft sm:text-xl">Cuéntanos la idea en una frase. La convertimos en un cuento ilustrado de doce páginas, con tu hijo, tu nieta o tu sobrino de protagonista.</p>
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <Link href="/crear" className="btn-primary btn-lg">
                 Crear su cuento <Icon.arrow size={20} />
               </Link>
               <a href="#muestra" className="btn-moon btn-lg">
-                Hojear el libro de Vera
+                Ver un libro de ejemplo
               </a>
             </div>
             <ul className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[15px] text-[#b9c1da]">
-              <li className="flex items-center gap-2">{CHECK}Sin fotos del menor</li>
-              <li className="flex items-center gap-2">{CHECK}Lo lees antes de pagar</li>
+              <li className="flex items-center gap-2">{CHECK}Sin subir fotos</li>
+              <li className="flex items-center gap-2">{CHECK}El cuento y la portada, gratis</li>
               <li className="flex items-center gap-2">{CHECK}PDF para imprimir en casa</li>
             </ul>
           </div>
@@ -170,7 +189,7 @@ export default function Landing() {
           <Link href="/crear" className="btn-primary btn-lg">
             Empezar su cuento
           </Link>
-          <span className="text-[15px] text-ink-soft">Los pasos 1 y 2 son gratis. Pagas solo si quieres el libro ilustrado.</span>
+          <span className="text-[15px] text-ink-soft">Lees el cuento entero y ves su portada gratis. Pagas solo por las doce ilustraciones.</span>
         </div>
       </section>
 
@@ -181,9 +200,7 @@ export default function Landing() {
           <div className="max-w-[640px]">
             <span className="hand text-[22px] text-accent">el libro de muestra</span>
             <h2 className="display m-0 mt-1 mb-3 text-[36px] sm:text-[52px]">Hojea el libro de Vera.</h2>
-            <p className="m-0 text-lg text-ink-soft">
-              «{MUESTRA.title}»: doce páginas y la portada, con Vera igual en todas, en pijama, con peto o con traje de astronauta. Hecho con una frase: «{MUESTRA.idea}»
-            </p>
+            <p className="m-0 text-lg text-ink-soft">Una sola frase: «{MUESTRA.idea.replace(/\.$/, "")}». De ahí salieron las doce páginas y la portada.</p>
           </div>
           <div className="mt-6">
             <SampleFlipper />
@@ -194,9 +211,9 @@ export default function Landing() {
       {/* Otras portadas */}
       <section className="mx-auto max-w-6xl px-4 pt-20 pb-10 sm:px-6 md:pt-24">
         <div className="grid justify-items-center gap-2 text-center">
-          <span className="hand text-[22px] text-accent">cada niño, su historia</span>
-          <h2 className="display m-0 max-w-[20ch] text-[36px] sm:text-[52px]">Ninguna portada se parece a otra.</h2>
-          <p className="m-0 mt-1 max-w-[52ch] text-lg text-ink-soft">Hechas con el mismo proceso, cada una a partir de una frase y unos rasgos. No hay plantillas.</p>
+          <span className="hand text-[22px] text-accent">más ejemplos</span>
+          <h2 className="display m-0 max-w-[20ch] text-[36px] sm:text-[52px]">Cada uno, su historia.</h2>
+          <p className="m-0 mt-1 max-w-[52ch] text-lg text-ink-soft">Cuatro portadas más. Debajo de cada una, la idea de la que salió.</p>
         </div>
         <ul className="m-0 mt-12 grid list-none grid-cols-2 gap-x-6 gap-y-10 p-0 lg:grid-cols-4">
           {COVERS.map((c) => (
@@ -225,7 +242,7 @@ export default function Landing() {
 
       {/* Cómo lo hacemos */}
       <section className="mx-auto max-w-6xl px-4 pt-14 pb-20 sm:px-6 md:pb-24">
-        <h2 className="display m-0 mb-8 text-center text-[30px] sm:text-[36px]">Cómo lo hacemos</h2>
+        <h2 className="display m-0 mb-8 text-center text-[30px] sm:text-[36px]">Lo que lo hace suyo</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5">
           {HOW.map((h) => (
             <div key={h.title} className={`reveal grid content-start gap-3 rounded-[28px] px-6 pt-7 pb-8 ${h.tint}`}>
@@ -249,11 +266,11 @@ export default function Landing() {
           <div className="mt-12 grid items-stretch gap-6 md:grid-cols-3 md:gap-5">
             <div className="flex flex-col gap-5 rounded-[28px] bg-card px-7 py-8 shadow-[0_2px_0_#e6d8c1]">
               <div>
-                <p className="m-0 text-[15px] font-bold text-ink-soft">Cuento y portada · PDF</p>
+                <p className="m-0 text-[15px] font-bold text-ink-soft">El cuento · PDF</p>
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">Gratis</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px]">
-                {["El cuento completo, escrito para él o ella", "Su hoja de personajes y la portada ilustrada", "PDF en A4 con la portada y el texto"].map((x) => (
+                {["El cuento completo, escrito para él o ella", "Cómo será en el libro y la portada ilustrada", "PDF en A4: la portada ilustrada y las páginas solo con texto"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-accent" />
                     {x}
@@ -275,7 +292,7 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_ILLUSTRATED}</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px] text-[#e4e8f2]">
-                {["Todo lo gratis", "Las doce páginas ilustradas con sus personajes", "Una versión más de cada ilustración, incluida", "PDF en A4 para imprimir en casa"].map((x) => (
+                {["Todo lo de la edición gratis", "Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-star" />
                     {x}
@@ -346,13 +363,13 @@ export default function Landing() {
           <Sparkle className="twinkle absolute top-[30%] right-[12%]" size={18} />
           <Sparkle className="twinkle-slow absolute bottom-[22%] left-[16%]" size={12} color="var(--moon)" />
           <h2 className="display m-0 max-w-[18ch] text-[34px] sm:text-[58px]">
-            Su cuento, <span className="text-star">esta misma noche.</span>
+            ¿Qué historia le vas a contar <span className="text-star">esta noche?</span>
           </h2>
           <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Una frase, su nombre y unos rasgos. Lo demás lo hacemos nosotros.</p>
           <Link href="/crear" className="btn-primary btn-lg mt-2">
             Crear su cuento
           </Link>
-          <span className="hand text-[19px] text-star">gratis hasta la portada</span>
+          <span className="hand text-[19px] text-star">el cuento escrito, gratis</span>
         </div>
       </section>
     </main>
@@ -381,7 +398,7 @@ function IdeaCard() {
 function SheetCard() {
   return (
     <div className="relative w-full max-w-[300px] rotate-[1.5deg] rounded-md bg-white p-2 shadow-[0_18px_36px_-22px_rgba(35,32,54,0.55)]">
-      <img src="/muestra/hoja-vera.webp" alt="Hoja de personajes de Vera y su perro Toby" width={1400} height={939} loading="lazy" className="block aspect-[3/2] w-full rounded-sm object-cover" />
+      <img src="/muestra/hoja-vera.webp" alt="Así será Vera en el libro, con su perro Toby: varias poses y caras" width={1400} height={939} loading="lazy" className="block aspect-[3/2] w-full rounded-sm object-cover" />
       <span aria-hidden className="absolute -top-2.5 left-6 h-[22px] w-16 -rotate-6 bg-star/55" />
       <span aria-hidden className="absolute -top-2 right-7 h-[22px] w-14 rotate-[5deg] bg-star/55" />
     </div>

@@ -108,7 +108,7 @@ export function StepCast({
       <div className="grid gap-2">
         <p className="hand text-[20px] text-accent">{ready ? "aquí están" : "manos a la obra"}</p>
         <h2 className="display text-[32px] sm:text-[42px]">Así será {name}</h2>
-        <p className="text-ink-soft">La hoja de personajes es la referencia del ilustrador: así saldrán en las doce páginas. Si algo no encaja, pídelo con palabras.</p>
+        <p className="text-ink-soft">Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras.</p>
       </div>
 
       {painting && <Status testId="painting">{painting}</Status>}
@@ -116,12 +116,12 @@ export function StepCast({
 
       <figure className="m-0 grid gap-3">
         <Taped>
-          <BookImage job={shownSheet} alt={`Hoja de personajes de ${name}`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
+          <BookImage job={shownSheet} alt={`Así será ${name} en el libro: varias poses y caras`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
         </Taped>
-        <figcaption className="text-sm text-mute">Hoja de personajes{sheets.length > 1 ? ` · versión ${shownSheet?.variant}` : ""}</figcaption>
+        <figcaption className="text-sm text-mute">Sus personajes{sheets.length > 1 ? ` · versión ${shownSheet?.variant}` : ""}</figcaption>
       </figure>
       {sheets.length > 1 && (
-        <div className="-mt-4 flex flex-wrap gap-2" role="group" aria-label="Versiones de la hoja">
+        <div className="-mt-4 flex flex-wrap gap-2" role="group" aria-label="Versiones de los personajes">
           {sheets.map((s) => (
             <button
               key={s.id}
@@ -163,7 +163,7 @@ export function StepCast({
         />
         <div className="grid gap-3">
           <h3 className="display text-[26px]">La portada</h3>
-          <p className="text-ink-soft">Pintada con la hoja de personajes. El título lo componemos encima, como en el libro.</p>
+          <p className="text-ink-soft">Pintada con estos personajes. El título lo componemos encima, como en el libro.</p>
           {cover?.status === "done" && (
             <a className="rise flex items-center gap-3 rounded-[18px] bg-sage p-4 text-sage-ink transition-transform hover:-translate-y-0.5" href={`/api/libro/pdf?b=${bookId}&kind=free`} data-testid="free-pdf">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-card">
@@ -304,11 +304,11 @@ function EmailGate({
           Vamos a dibujar a <span className="text-star">{name}</span>
         </h2>
         <p className="mt-3 max-w-[48ch] text-moon-soft">
-          En alrededor de un minuto verás {who} y la portada del libro. Es gratis, igual que el cuento en PDF con la portada.
+          En uno o dos minutos verás {who} y la portada del libro. Es gratis, igual que el cuento en PDF con la portada.
         </p>
         <div aria-hidden className="mt-7 grid max-w-[440px] grid-cols-[1.5fr_1fr] items-end gap-5">
           <div className="grid aspect-[3/2] place-items-center rounded-2xl border-2 border-dashed border-moon/25 bg-night-2">
-            <span className="hand px-3 text-center text-[18px] text-moon-soft">su hoja de personajes</span>
+            <span className="hand px-3 text-center text-[18px] text-moon-soft">sus personajes</span>
           </div>
           <BookCover name={name} tilt={3} placeholder="su portada" />
         </div>
