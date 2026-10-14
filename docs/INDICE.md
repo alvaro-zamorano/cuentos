@@ -27,7 +27,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `ILUSTRACION.md` — B3–B4: hoja, portada, páginas, control de calidad, PDF; prueba real y costes medidos · vigente
 - `PLANIFICADOR.md` — B1: de la ficha al plan del libro; evaluación con 10 fichas · vigente
 - `MUESTRA-LUNA.md` — el libro de muestra «Vera y Toby viajan a la Luna» · vigente
-- `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía, cambios por paso y plan de implementación · **propuesta** (pendiente de visto bueno)
+- `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía (Lora + Figtree + Patrick Hand), cambios por paso e implementación · **aprobado e implementado** en la rama `feat/estilo-hora-del-cuento` (PR #2, pendiente de unir)
 - `FASE0.md` — calibración inicial con Nano Banana, la base de D1–D6 · histórico
 - `ASSETS.md` — fondos y poses para el compositor de piezas · **superado por D1** (pendiente de retirar del Project)
 
@@ -67,8 +67,9 @@ El detalle está en `PLAN.md` §5. Resumen:
 
 | Qué | Dónde |
 |---|---|
-| Landing | `app/page.tsx` (+ `lib/muestra.ts`, `public/muestra/`) |
-| Flujo `/crear` (5 pasos) | `app/crear/page.tsx`, `components/crear/Step{Idea,Hero,Story,Cast,Book}.tsx`, `BookImage`, `BookLink`, `lib/crearStore.ts`, `lib/bookClient.ts` |
+| Estilo (tokens, capas, movimiento) | `app/globals.css`, `app/layout.tsx` (fuentes), `components/brand.tsx` (estrella, luna, colina, iconos, `BookCover`), `docs/ESTILO.md` |
+| Landing | `app/page.tsx`, `components/landing/SampleFlipper.tsx` (+ `lib/muestra.ts`, `public/muestra/`, miniaturas en `public/muestra/mini/`) |
+| Flujo `/crear` (5 pasos) | `app/crear/page.tsx` (cabecera, progreso, «así va su libro», `?b=` y `?idea=`), `components/crear/Step{Idea,Hero,Story,Cast,Book}.tsx`, `BookImage`, `BookLink`, `ui.tsx` (avisos, cinta), `lib/crearStore.ts`, `lib/bookClient.ts` |
 | Miniaturas del paso 2 | `components/crear/Tiles.tsx` (las repinta con `lib/recolor.ts`), `lib/crearPicks.ts` (opciones y textos), `public/crear/` (salen de `public/catalog/gouache` con `scripts/crear-thumbs.mjs`) |
 | Ficha y plan del libro (B1) | `lib/plan/` (ficha, starters, moderation, rules, prompt, validate, planner, mock, evalCases), `app/api/plan/`, `lib/llm.ts` |
 | Dirección de arte y control de calidad | `lib/plan/art.ts`, `lib/plan/qc.ts` |
@@ -79,7 +80,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | PDF | `lib/pdf/book2.ts` (maqueta), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf` |
 | Borrado a 30 días | `lib/purge.ts`, `app/api/cron/purge`, `vercel.json` |
 | Salud y pruebas | `app/api/health`; `app/api/dev` (solo fuera de producción; fuerza Gemini y cuesta dinero) |
-| Tests | `tests/unit/*.test.ts` (76), `tests/crear.spec.ts` + `tests/journey.spec.ts` (7 Playwright), `.github/workflows/ci.yml` |
+| Tests | `tests/unit/*.test.ts` (77), `tests/crear.spec.ts` + `tests/journey.spec.ts` (8 Playwright), `.github/workflows/ci.yml` |
 | Flujo antiguo (fuera del embudo por D1) | `app/{clasico,ilustrado,libro,gratis}`, `lib/{story,pieces,arcs,…}`, `app/api/{story,jobs,books,pdf,generate/book,generate/sample}` |
 
 ## 6. Cómo trabajar
@@ -100,7 +101,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 ```
 npm ci && npx next typegen
 npx tsc --noEmit && npx eslint && npm run test:unit
-NEXT_PUBLIC_DRY_RUN_PAYMENT=1 npx next build
+NEXT_PUBLIC_DRY_RUN_PAYMENT=1 npm run build
 NEXT_PUBLIC_DRY_RUN_PAYMENT=1 CI=1 npx playwright test
 ```
 
@@ -121,6 +122,8 @@ Sin claves en local se usan la memoria del proceso, imágenes `dry-run` y el cue
 **Trampas conocidas**
 
 - `pkill -f next-server` mata también la propia shell: busca el PID con `ps` y usa `kill <PID>`.
+- Construir con `npm run build`, no con `npx next build`: el `prebuild` genera `public/pieces/` (no está en git). Sin las piezas, el test de `/gratis` falla con 404.
+- Las clases propias de `globals.css` van en `@layer base` o `@layer components`. Fuera de capa ganan a cualquier utilidad de Tailwind, y `p-6` o `outline-none` dejan de hacer efecto.
 - Los scripts que importan módulos `server-only` se lanzan con `node --conditions=react-server --import tsx`. Si usan `await` en el nivel superior, el archivo tiene que ser `.mts`.
 - Playwright: un localizador que encuentra dos elementos falla al instante (modo estricto). Hay que buscar por nombre o por `data-testid`.
 - La preview se puede pedir con `curl` directamente. La herramienta de Vercel para leer URLs va de una en una y no sirve para binarios.

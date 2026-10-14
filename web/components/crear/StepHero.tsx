@@ -1,17 +1,22 @@
 "use client";
 
-import { EYES, HAIR_COLORS, SKINS } from "@/lib/traits";
+import { useState } from "react";
+import { Icon } from "@/components/brand";
+import { EYES, GLASSES, HAIR_COLORS, SKINS } from "@/lib/traits";
 import { GLASSES_PICKS, HAIR_PICKS, OUTFIT_PICKS, PET_PICKS } from "@/lib/crearPicks";
 import { LIMITS } from "@/lib/plan/ficha";
 import type { CastMember, Ficha, Look } from "@/lib/plan/types";
 import type { Glasses, HairShape } from "@/lib/types";
 import { Tiles } from "./Tiles";
 
+const FIRST_HAIR = 6;
+
 /**
- * Paso 2: cómo es y quién más sale. Todo opcional: lo que no se marque lo decide el ilustrador y se ve en la hoja de
- * personajes, donde se puede corregir con palabras.
+ * Paso 2: cómo es y quién más sale. Arriba la cara (piel, pelo, peinado y ojos); el resto, en filas plegables con su
+ * resumen. Todo opcional: lo que no se marque lo decide el ilustrador y se ve en la hoja de personajes, donde se puede
+ * corregir con palabras.
  */
-export function StepHero({ ficha, onChange, onBack, onNext }: { ficha: Ficha; onChange: (f: Ficha) => void; onBack: () => void; onNext: () => void }) {
+export function StepHero({ ficha, onChange, onNext }: { ficha: Ficha; onChange: (f: Ficha) => void; onNext: () => void }) {
   const hero = ficha.hero;
   const look = hero.look;
   const name = hero.name.trim() || "tu protagonista";
@@ -22,24 +27,33 @@ export function StepHero({ ficha, onChange, onBack, onNext }: { ficha: Ficha; on
   const tint = { skin: SKINS.find((c) => c.id === look.skin)?.hex ?? null, hair: HAIR_COLORS.find((c) => c.id === look.hair?.color)?.hex ?? null };
   const setCast = (cast: CastMember[]) => onChange({ ...ficha, cast: cast.map((c, i) => ({ ...c, id: i === 0 ? "c1" : "c2" })) });
   const details = [...ficha.details, ...Array(Math.max(0, 3 - ficha.details.length)).fill("")].slice(0, LIMITS.details);
+  const [allHair, setAllHair] = useState(false);
+  const hairPicks = allHair ? HAIR_PICKS : HAIR_PICKS.filter((p, i) => i < FIRST_HAIR || p.id === look.hair?.shape);
+
+  const unique = hero.gender === "nina" ? "Algo que le hace única" : hero.gender === "nino" ? "Algo que le hace único" : "Algo que le hace especial";
+  const castSummary = ficha.cast
+    .map((c) => [c.name.trim(), c.relation.trim()].filter(Boolean).join(", "))
+    .filter(Boolean)
+    .join(" · ");
+  const detailSummary = ficha.details.map((d) => d.trim()).filter(Boolean).join("; ");
 
   return (
     <form
-      className="grid gap-10"
+      className="grid gap-8"
       onSubmit={(e) => {
         e.preventDefault();
         onNext();
       }}
     >
-      <section className="grid gap-6">
-        <div className="grid gap-2">
-          <h2 className="display text-3xl sm:text-4xl">¿Cómo es {name}?</h2>
-          <p className="text-ink-soft">Todo es opcional. Lo que marques saldrá igual en todas las páginas; lo demás lo verás en la hoja de personajes y lo podrás cambiar con palabras.</p>
-        </div>
+      <div className="grid gap-2">
+        <h2 className="display text-[32px] sm:text-[42px]">¿Cómo es {name}?</h2>
+        <p className="text-ink-soft">Todo es opcional. Lo que marques se verá en todo el libro. Lo demás lo verás dibujado antes de ilustrar las páginas y lo podrás cambiar con palabras.</p>
+      </div>
 
-        <div className="grid gap-2">
-          <span className="field-label">Piel</span>
-          <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Tono de piel">
+      <section className="card grid gap-6 p-5 sm:p-7" aria-label="La cara">
+        <div className="grid gap-2.5">
+          <span className="field-label text-ink">Piel</span>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5" role="group" aria-label="Tono de piel">
             {SKINS.map((c) => (
               <button
                 type="button"
@@ -56,8 +70,8 @@ export function StepHero({ ficha, onChange, onBack, onNext }: { ficha: Ficha; on
         </div>
 
         <div className="grid gap-3">
-          <span className="field-label">Pelo</span>
-          <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Color de pelo">
+          <span className="field-label text-ink">Pelo</span>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5" role="group" aria-label="Color de pelo">
             {HAIR_COLORS.map((c) => (
               <button
                 type="button"
@@ -71,32 +85,37 @@ export function StepHero({ ficha, onChange, onBack, onNext }: { ficha: Ficha; on
               />
             ))}
           </div>
-          <Tiles label="Peinado" picks={HAIR_PICKS} value={look.hair?.shape} tint={tint} onPick={(id) => setLook({ hair: { ...look.hair, shape: toggle(look.hair?.shape, id as HairShape) } })} />
+          <Tiles label="Peinado" picks={hairPicks} value={look.hair?.shape} tint={tint} cols="grid-cols-3 sm:grid-cols-6" onPick={(id) => setLook({ hair: { ...look.hair, shape: toggle(look.hair?.shape, id as HairShape) } })} />
+          {!allHair && (
+            <button type="button" className="link justify-self-start text-sm font-semibold" onClick={() => setAllHair(true)}>
+              Ver los {HAIR_PICKS.length} peinados
+            </button>
+          )}
         </div>
 
-        <div className="grid gap-2">
-          <span className="field-label">Ojos</span>
-          <div className="flex flex-wrap gap-2">
+        <div className="grid gap-2.5">
+          <span className="field-label text-ink">Ojos</span>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Color de ojos">
             {EYES.map((c) => (
-              <button type="button" key={c.id} className={`chip gap-2 ${look.eyes === c.id ? "chip-on" : ""}`} onClick={() => setLook({ eyes: toggle(look.eyes, c.id) })}>
-                <span aria-hidden className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ background: c.hex }} />
+              <button type="button" key={c.id} aria-pressed={look.eyes === c.id} className={`chip ${look.eyes === c.id ? "chip-on" : ""}`} onClick={() => setLook({ eyes: toggle(look.eyes, c.id) })}>
+                <span aria-hidden className="h-4 w-4 rounded-full shadow-[0_0_0_1.5px_rgba(255,255,255,0.7)]" style={{ background: c.hex }} />
                 {c.label}
               </button>
             ))}
           </div>
         </div>
+      </section>
 
-        <div className="grid gap-2">
-          <span className="field-label">Gafas</span>
+      <div className="grid gap-3">
+        <Row icon={<Icon.glasses />} tint="bg-sky" title="Gafas" summary={look.glasses ? GLASSES.find((g) => g.id === look.glasses)?.label : "Si lleva, elige la montura"} done={!!look.glasses}>
           <Tiles label="Gafas" picks={GLASSES_PICKS} value={look.glasses} tint={{ skin: tint.skin }} cols="grid-cols-4 sm:grid-cols-7" onPick={(id) => setLook({ glasses: toggle(look.glasses, id as Glasses) })} />
-        </div>
+        </Row>
 
-        <label className="grid gap-1">
-          <span className="field-label">Algo que le hace único</span>
-          <input className="input" value={look.unique ?? ""} maxLength={LIMITS.unique} onChange={(e) => setLook({ unique: e.target.value })} placeholder="pecas en la nariz, le falta un diente, su capa roja" />
-        </label>
-        <div className="grid gap-2">
-          <span className="field-label">Ropa de siempre</span>
+        <Row icon={<Icon.star />} tint="bg-butter" title={unique} summary={look.unique?.trim() || "Pecas, un diente menos, su capa roja…"} done={!!look.unique?.trim()}>
+          <input className="input" aria-label={unique} value={look.unique ?? ""} maxLength={LIMITS.unique} onChange={(e) => setLook({ unique: e.target.value })} placeholder="pecas en la nariz, le falta un diente, su capa roja" />
+        </Row>
+
+        <Row icon={<Icon.shirt />} tint="bg-peach" title="Ropa de siempre" summary={hero.outfit?.trim() || "La que lleva en casi todas las páginas"} done={!!hero.outfit?.trim()}>
           <Tiles
             label="Ropa de siempre"
             picks={OUTFIT_PICKS}
@@ -109,111 +128,130 @@ export function StepHero({ ficha, onChange, onBack, onNext }: { ficha: Ficha; on
             }}
           />
           <input className="input" aria-label="Ropa de siempre, en tus palabras" value={hero.outfit ?? ""} maxLength={LIMITS.outfit} onChange={(e) => onChange({ ...ficha, hero: { ...hero, outfit: e.target.value } })} placeholder="o descríbela: su peto amarillo con una camiseta de rayas" />
-        </div>
-      </section>
+        </Row>
 
-      <section className="grid gap-4">
-        <div className="grid gap-2">
-          <h2 className="display text-2xl sm:text-3xl">¿Quién más sale?</h2>
-          <p className="text-ink-soft">Hasta dos personas o mascotas que salgan en varias páginas. Las demás, nómbralas en la idea y las describimos nosotros.</p>
-        </div>
-        {ficha.cast.map((c, i) => (
-          <div key={i} className="card grid gap-4" data-testid={`cast-${i}`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex gap-2">
-                {(["persona", "mascota"] as const).map((k) => (
-                  <button type="button" key={k} className={`chip ${c.kind === k ? "chip-on" : ""}`} onClick={() => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, kind: k } : x)))}>
-                    {k === "persona" ? "Persona" : "Mascota"}
-                  </button>
-                ))}
+        <Row icon={<Icon.people />} tint="bg-sage" title="Quién más sale" summary={castSummary || "Hasta dos personas o mascotas"} done={!!castSummary}>
+          <p className="text-sm text-ink-soft">Personas o mascotas que salgan en varias páginas. A las demás, nómbralas en la idea y las describimos nosotros.</p>
+          {ficha.cast.map((c, i) => (
+            <div key={i} className="rise grid gap-4 rounded-[18px] bg-paper p-4" data-testid={`cast-${i}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex gap-2" role="group" aria-label="Persona o mascota">
+                  {(["persona", "mascota"] as const).map((k) => (
+                    <button type="button" key={k} aria-pressed={c.kind === k} className={`chip ${c.kind === k ? "chip-on" : ""}`} onClick={() => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, kind: k } : x)))}>
+                      {k === "persona" ? "Persona" : "Mascota"}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" className="text-sm font-semibold text-ink-soft hover:text-ink" onClick={() => setCast(ficha.cast.filter((_, j) => j !== i))}>
+                  Quitar
+                </button>
               </div>
-              <button type="button" className="text-sm text-ink-soft underline" onClick={() => setCast(ficha.cast.filter((_, j) => j !== i))}>
-                Quitar
-              </button>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1">
-                <span className="field-label">Nombre</span>
-                <input className="input" value={c.name} maxLength={LIMITS.castName} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "Toby" : "Carmen"} />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <span className="field-label">Nombre</span>
+                  <input className="input" value={c.name} maxLength={LIMITS.castName} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "Toby" : "Carmen"} />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="field-label">Qué es de {name}</span>
+                  <input className="input" value={c.relation} maxLength={LIMITS.castRelation} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, relation: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "su perro" : "su abuela"} />
+                </label>
+              </div>
+              {c.kind === "mascota" && (
+                <Tiles
+                  label={`Cómo es ${c.name.trim() || "la mascota"}`}
+                  picks={PET_PICKS}
+                  value={PET_PICKS.find((p) => p.text === c.look)?.id}
+                  cols="grid-cols-4 sm:grid-cols-8"
+                  onPick={(id) => {
+                    const pick = PET_PICKS.find((p) => p.id === id)!;
+                    const off = c.look === pick.text;
+                    setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: off ? "" : pick.text, relation: x.relation.trim() || off ? x.relation : pick.relation } : x)));
+                  }}
+                />
+              )}
+              <label className="grid gap-1.5">
+                <span className="field-label">Cómo es, en una línea</span>
+                <input className="input" value={c.look} maxLength={LIMITS.castLook} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "pelo blanco recogido y gafas rojas"} />
               </label>
-              <label className="grid gap-1">
-                <span className="field-label">Qué es de {name}</span>
-                <input className="input" value={c.relation} maxLength={LIMITS.castRelation} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, relation: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "su perro" : "su abuela"} />
-              </label>
             </div>
-            {c.kind === "mascota" && (
-              <Tiles
-                label={`Cómo es ${c.name.trim() || "la mascota"}`}
-                picks={PET_PICKS}
-                value={PET_PICKS.find((p) => p.text === c.look)?.id}
-                cols="grid-cols-4 sm:grid-cols-8"
-                onPick={(id) => {
-                  const pick = PET_PICKS.find((p) => p.id === id)!;
-                  const off = c.look === pick.text;
-                  setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: off ? "" : pick.text, relation: (x.relation.trim() || off) ? x.relation : pick.relation } : x)));
-                }}
-              />
-            )}
-            <label className="grid gap-1">
-              <span className="field-label">Cómo es, en una línea</span>
-              <input className="input" value={c.look} maxLength={LIMITS.castLook} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "pelo blanco recogido y gafas rojas"} />
-            </label>
-          </div>
-        ))}
-        {ficha.cast.length < LIMITS.cast && (
-          <button type="button" className="btn-ghost btn-sm justify-self-start" onClick={() => setCast([...ficha.cast, { id: "c1", kind: "mascota", name: "", relation: "", look: "" }])} data-testid="add-cast">
-            Añadir a alguien
-          </button>
-        )}
-      </section>
+          ))}
+          {ficha.cast.length < LIMITS.cast && (
+            <button type="button" className="btn-soft btn-sm justify-self-start" onClick={() => setCast([...ficha.cast, { id: "c1", kind: "mascota", name: "", relation: "", look: "" }])} data-testid="add-cast">
+              Añadir a alguien
+            </button>
+          )}
+        </Row>
 
-      <section className="grid gap-4">
-        <div className="grid gap-2">
-          <h2 className="display text-2xl sm:text-3xl">Lo que solo tú sabes</h2>
-          <p className="text-ink-soft">Frases que dice, manías, sitios, lo que le encanta. Las repartimos por el cuento.</p>
-        </div>
-        {details.map((d, i) => (
-          <input
-            key={i}
-            className="input"
-            value={d}
-            maxLength={LIMITS.detail}
-            placeholder={["le encantan los dinosaurios", "dice «¡despegue!» por todo", "duerme con una linterna"][i] ?? "otro detalle"}
-            onChange={(e) => {
-              const next = [...details];
-              next[i] = e.target.value;
-              onChange({ ...ficha, details: next });
-            }}
-            data-testid={`detail-${i}`}
-          />
-        ))}
-        {details.length < LIMITS.details && details.every((d) => d.trim()) && (
-          <button type="button" className="btn-ghost btn-sm justify-self-start" onClick={() => onChange({ ...ficha, details: [...details, ""] })}>
-            Otro detalle
-          </button>
-        )}
-      </section>
+        <Row icon={<Icon.pencil />} tint="bg-paper-deep" title="Lo que solo tú sabes" summary={detailSummary || "Frases, manías, lo que le encanta"} done={!!detailSummary}>
+          <p className="text-sm text-ink-soft">Frases que dice, manías, sitios, lo que le encanta. Lo repartimos por el cuento.</p>
+          {details.map((d, i) => (
+            <input
+              key={i}
+              className="input"
+              aria-label={`Detalle ${i + 1}`}
+              value={d}
+              maxLength={LIMITS.detail}
+              placeholder={["le encantan los dinosaurios", "dice «¡despegue!» por todo", "duerme con una linterna"][i] ?? "otro detalle"}
+              onChange={(e) => {
+                const next = [...details];
+                next[i] = e.target.value;
+                onChange({ ...ficha, details: next });
+              }}
+              data-testid={`detail-${i}`}
+            />
+          ))}
+          {details.length < LIMITS.details && details.every((d) => d.trim()) && (
+            <button type="button" className="btn-soft btn-sm justify-self-start" onClick={() => onChange({ ...ficha, details: [...details, ""] })}>
+              Otro detalle
+            </button>
+          )}
+        </Row>
 
-      <section className="grid gap-4">
-        <h2 className="display text-2xl sm:text-3xl">La dedicatoria</h2>
-        <label className="grid gap-1">
-          <span className="field-label">De parte de</span>
-          <input className="input" value={ficha.from ?? ""} maxLength={LIMITS.from} onChange={(e) => onChange({ ...ficha, from: e.target.value })} placeholder="mamá y papá" />
-        </label>
-        <label className="grid gap-1">
-          <span className="field-label">Dedicatoria (si la dejas vacía, te proponemos una)</span>
-          <textarea className="min-h-20 w-full rounded-[6px] border border-line bg-card p-3 leading-relaxed outline-none focus:border-ink" value={ficha.dedication ?? ""} maxLength={LIMITS.dedication} onChange={(e) => onChange({ ...ficha, dedication: e.target.value })} />
-        </label>
-      </section>
+        <Row icon={<Icon.mail />} tint="bg-paper-deep" title="La dedicatoria" summary={ficha.from?.trim() ? `De parte de ${ficha.from.trim()}` : "Si la dejas vacía, te proponemos una"} done={!!(ficha.from?.trim() || ficha.dedication?.trim())}>
+          <label className="grid gap-1.5">
+            <span className="field-label">De parte de</span>
+            <input className="input" value={ficha.from ?? ""} maxLength={LIMITS.from} onChange={(e) => onChange({ ...ficha, from: e.target.value })} placeholder="mamá y papá" />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="field-label">Dedicatoria (si la dejas vacía, te proponemos una)</span>
+            <textarea className="input story min-h-24 resize-y leading-relaxed" value={ficha.dedication ?? ""} maxLength={LIMITS.dedication} onChange={(e) => onChange({ ...ficha, dedication: e.target.value })} />
+          </label>
+        </Row>
+      </div>
 
-      <div className="flex flex-wrap gap-3">
-        <button type="button" className="btn-ghost" onClick={onBack}>
-          Atrás
-        </button>
-        <button type="submit" className="btn-primary" data-testid="next-2">
+      <div className="actionbar">
+        <button type="submit" className="btn-primary btn-lg w-full sm:w-auto" data-testid="next-2">
+          <Icon.pencil />
           Escribir el cuento
         </button>
+        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">Tarda medio minuto. Lo lees antes de seguir.</p>
       </div>
     </form>
+  );
+}
+
+/** Fila plegable: icono, título y resumen de lo elegido; check si ya tiene algo. */
+function Row({ icon, tint, title, summary, done, children }: { icon: React.ReactNode; tint: string; title: string; summary?: string; done: boolean; children: React.ReactNode }) {
+  return (
+    <details className="row group">
+      <summary>
+        <span aria-hidden className={`grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink ${tint}`}>
+          {icon}
+        </span>
+        <span className="grid min-w-0 flex-1">
+          <span className="font-bold text-ink">{title}</span>
+          <span className="truncate text-sm text-ink-soft">{summary}</span>
+        </span>
+        {done ? (
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sage text-sage-ink">
+            <Icon.check size={14} />
+            <span className="sr-only">(elegido)</span>
+          </span>
+        ) : (
+          <Icon.next className="shrink-0 text-ink-soft transition-transform duration-300 group-open:rotate-90" />
+        )}
+      </summary>
+      <div className="row-body">{children}</div>
+    </details>
   );
 }

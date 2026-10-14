@@ -36,9 +36,12 @@ async function writeStory(page: Page) {
   // el paso 2 enseña lo que se elige: miniatura marcada y repintada con el color de pelo elegido
   await expect(page.getByRole("button", { name: "Rizos media melena" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('[data-pick="rizos-media"] img')).toHaveAttribute("src", /^data:image\/png/);
+  // el reparto y los detalles van en filas plegables
+  await page.locator("summary", { hasText: "Quién más sale" }).click();
   await page.getByTestId("add-cast").click();
   await page.getByTestId("cast-0").getByPlaceholder("Toby").fill("Toby");
   await page.getByTestId("cast-0").getByPlaceholder("su perro").fill("su perro");
+  await page.locator("summary", { hasText: "Lo que solo tú sabes" }).click();
   await page.getByTestId("detail-0").fill("le encantan los dinosaurios");
   await page.getByTestId("next-2").click();
   await expect(page.getByTestId("plan-pages").locator("li")).toHaveCount(12, { timeout: 20_000 });
@@ -119,6 +122,23 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
     expect(info).toMatch(/Pages:\s+15/);
     expect(info).toMatch(/Page size:.*\(A4\)/);
   }
+  expect(errors).toEqual([]);
+});
+
+test("Llegar con una idea de la landing (/crear?idea=) y empezar otro sin ventanas del navegador", async ({ page }) => {
+  page.removeAllListeners("dialog");
+  page.on("dialog", (d) => {
+    errors.push(`diálogo inesperado: ${d.message()}`);
+    void d.dismiss();
+  });
+  await page.goto("/crear?idea=luna");
+  await expect(page.getByRole("button", { name: "Viaje a la Luna" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("hero-name").fill("Vera");
+  // la idea elegida sigue al nombre mientras no se toca a mano
+  await expect(page.getByTestId("idea")).toHaveValue(/^Vera construye un cohete/);
+  await page.getByRole("button", { name: "Nuevo" }).or(page.getByRole("button", { name: "Empezar otro" })).first().click();
+  await page.getByRole("dialog", { name: "Empezar un cuento nuevo" }).getByRole("button", { name: "Empezar otro" }).click();
+  await expect(page.getByTestId("hero-name")).toHaveValue("");
   expect(errors).toEqual([]);
 });
 

@@ -32,28 +32,28 @@ const paras = (t: string) =>
 
 export function book2Html({ plan, heroName, from, coverUrl, pageUrls, kind }: Book2PdfInput): string {
   const css = `
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Geist:wght@400;500&display=block");
+@import url("https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Figtree:wght@400;500;600&display=block");
 @page { size: A4; margin: 0; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-body { background: #fbf7ef; color: #2b2520; font-family: Fraunces, Georgia, serif; }
+body { background: #fbf7ef; color: #2b2520; font-family: Lora, Georgia, serif; }
 .page { width: 210mm; height: 297mm; position: relative; overflow: hidden; break-after: page; background: #fbf7ef; }
 .img { width: 210mm; height: 140mm; display: block; object-fit: cover; background: #efe8dc; }
 .band { height: 157mm; padding: 0 26mm 24mm; display: flex; flex-direction: column; justify-content: center; }
-.band p { font-size: 20pt; line-height: 1.48; font-variation-settings: "opsz" 24; margin-bottom: 3.5mm; text-wrap: pretty; }
+.band p { font-size: 19pt; line-height: 1.5; margin-bottom: 3.5mm; text-wrap: pretty; }
 .free .band { height: 297mm; padding: 40mm 30mm; }
-.free .band p { font-size: 21pt; }
-.num { position: absolute; bottom: 14mm; left: 0; right: 0; text-align: center; font-family: Geist, sans-serif; font-size: 9pt; letter-spacing: .12em; color: #8a7d6e; }
+.free .band p { font-size: 20pt; }
+.num { position: absolute; bottom: 14mm; left: 0; right: 0; text-align: center; font-family: Figtree, sans-serif; font-size: 9pt; letter-spacing: .12em; color: #8a7d6e; }
 .cover:not(.noimg)::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 70mm; background: linear-gradient(to bottom, rgba(15,20,40,.5), rgba(15,20,40,0)); }
-.cover h1 { position: absolute; top: 9mm; left: 14mm; right: 14mm; font-size: 38pt; line-height: 1.05; font-weight: 600; color: #fbf3df; font-variation-settings: "opsz" 144; text-shadow: 0 1mm 4mm rgba(10,20,50,.5); }
+.cover h1 { position: absolute; top: 9mm; left: 14mm; right: 14mm; font-size: 38pt; line-height: 1.05; font-weight: 600; letter-spacing: -.01em; color: #fbf3df; text-shadow: 0 1mm 4mm rgba(10,20,50,.5); }
 .cover .sub { height: 157mm; display: flex; flex-direction: column; justify-content: center; text-align: center; padding-bottom: 12mm; }
-.cover .sub .para { font-style: italic; font-size: 20pt; }
-.cover .sub .name { font-size: 40pt; font-weight: 600; margin-top: 4mm; font-variation-settings: "opsz" 144; }
-.cover .sub .from { font-family: Geist, sans-serif; font-size: 10pt; letter-spacing: .14em; text-transform: uppercase; color: #8a7d6e; margin-top: 10mm; }
+.cover .sub .para { font-size: 19pt; color: #6f6457; }
+.cover .sub .name { font-size: 40pt; font-weight: 600; letter-spacing: -.01em; margin-top: 4mm; }
+.cover .sub .from { font-family: Figtree, sans-serif; font-size: 10pt; letter-spacing: .14em; text-transform: uppercase; color: #8a7d6e; margin-top: 10mm; }
 .cover.noimg h1 { position: static; color: #2b2520; text-shadow: none; padding: 40mm 20mm 0; text-align: center; }
 .ded { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 0 30mm; text-align: center; }
-.ded p { text-wrap: balance; font-style: italic; font-size: 20pt; line-height: 1.45; font-variation-settings: "opsz" 30; }
-.end { display: flex; align-items: center; justify-content: center; height: 100%; font-style: italic; font-size: 26pt; }
+.ded p { text-wrap: balance; font-size: 19pt; line-height: 1.5; color: #4a4140; }
+.end { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 26pt; font-weight: 600; }
 `;
   const cover = `<section class="page cover${coverUrl ? "" : " noimg"}">${coverUrl ? `<img class="img" src="${esc(coverUrl)}">` : ""}<h1>${esc(plan.title)}</h1>
 <div class="sub"><div class="para">Un cuento escrito para</div><div class="name">${esc(heroName)}</div>${from ? `<div class="from">De parte de ${esc(from)}</div>` : ""}</div></section>`;

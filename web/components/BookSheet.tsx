@@ -64,7 +64,7 @@ export function BookCover({
           {title}
         </Title>
         <div className="mt-[3.4cqw] h-px w-[8cqw] bg-ink/40" />
-        <p className="story mt-[3cqw] max-w-[34ch] text-[1.9cqw] italic leading-[1.45] text-ink/80">{dedication}</p>
+        <p className="story mt-[3cqw] max-w-[34ch] text-[1.9cqw] leading-[1.45] text-ink/80">{dedication}</p>
       </div>
       <div className="absolute bottom-[6cqw] right-[9cqw] top-[8cqw] flex w-[30cqw] items-end justify-center">
         {imageUrl ? (

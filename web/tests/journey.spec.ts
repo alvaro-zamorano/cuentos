@@ -40,12 +40,23 @@ test("Lead magnet /gratis abre el cuento demo", async ({ page, context }) => {
 test("Landing: estructura editorial y SEO", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/Cuento personalizado/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Un libro escrito y pintado para un solo lector.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Una frase tuya. Un libro suyo.");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-  for (const h of ["Cómo se hace", "Un libro de muestra", "Ediciones", "Cómo lo hacemos", "Preguntas"]) await expect(page.getByRole("heading", { name: h, level: 2 })).toBeVisible();
+  for (const h of [
+    "De una frase a un libro, en tres pasos.",
+    "Hojea el libro de Vera.",
+    "Cada uno, su historia.",
+    "Lo que lo hace suyo",
+    "Empiezas gratis. Pagas solo por el libro ilustrado.",
+    "Preguntas",
+  ])
+    await expect(page.getByRole("heading", { name: h, level: 2 })).toBeVisible();
   await expect(page.getByText("14,90 €").first()).toBeVisible();
   await expect(page.getByText("desde 39,90 €").first()).toBeVisible();
-  await expect(page.getByText(/\bpeques?\b/i)).toHaveCount(0);
+  // «peque(s)» como palabra suelta; \b no sirve porque en JS la «ñ» de «pequeño» cuenta como límite de palabra
+  await expect(page.getByText(/(?<!\p{L})peques?(?!\p{L})/iu)).toHaveCount(0);
+  // el cuento se escribe en el servidor: la landing no puede prometer que los datos se quedan en el navegador
+  await expect(page.getByText(/se queda en tu navegador/i)).toHaveCount(0);
   expect(consoleErrors).toEqual([]);
 });
 

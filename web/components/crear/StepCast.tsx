@@ -6,8 +6,10 @@ import type { BookView } from "@/lib/book/service";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
 import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
+import { BookCover, Icon, Sparkle } from "@/components/brand";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
+import { ErrorNote, Status, Taped } from "./ui";
 
 /**
  * Paso 4: con el email (captura del lead, D3) pintamos la hoja de personajes y la portada (≈ 10 c, D2). El padre las
@@ -19,7 +21,6 @@ export function StepCast({
   bookId,
   email,
   onBook,
-  onBack,
   onNext,
 }: {
   ficha: Ficha;
@@ -27,7 +28,6 @@ export function StepCast({
   bookId?: string;
   email?: string;
   onBook: (bookId: string, email: string) => void;
-  onBack: () => void;
   onNext: () => void;
 }) {
   const [view, setView] = useState<BookView | null>(null);
@@ -80,12 +80,20 @@ export function StepCast({
     })();
   }, [bookId, paint, refresh]);
 
-  if (!bookId) return <EmailGate ficha={ficha} record={record} initialEmail={email} onBack={onBack} onStarted={async (id, mail, sheet, cover) => {
-    onBook(id, mail);
-    resumed.current = true;
-    await refresh(id);
-    await paint(id, sheet, cover);
-  }} />;
+  if (!bookId)
+    return (
+      <EmailGate
+        ficha={ficha}
+        record={record}
+        initialEmail={email}
+        onStarted={async (id, mail, sheet, cover) => {
+          onBook(id, mail);
+          resumed.current = true;
+          await refresh(id);
+          await paint(id, sheet, cover);
+        }}
+      />
+    );
 
   const sheets = view?.jobs.filter((j) => j.kind === "sheet") ?? [];
   const current = sheets[sheets.length - 1];
@@ -94,29 +102,30 @@ export function StepCast({
   const cover = shownSheet ? view?.jobs.find((j) => j.kind === "cover" && j.sheetJobId === shownSheet.id) : undefined;
   const name = ficha.hero.name.trim();
 
+  const ready = shownSheet?.status === "done";
   return (
     <div className="grid gap-8">
       <div className="grid gap-2">
-        <h2 className="display text-3xl sm:text-4xl">Así será {name}</h2>
-        <p className="text-ink-soft">La hoja de personajes es la referencia del ilustrador: así saldrán en todas las páginas. Si algo no encaja, pídelo con palabras.</p>
+        <p className="hand text-[20px] text-accent">{ready ? "aquí están" : "manos a la obra"}</p>
+        <h2 className="display text-[32px] sm:text-[42px]">Así será {name}</h2>
+        <p className="text-ink-soft">Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras.</p>
       </div>
 
-      {painting && (
-        <p className="notice" aria-live="polite" data-testid="painting">
-          {painting}
-        </p>
-      )}
-      {error && <p className="notice !text-[#8a2a1c]">{error}</p>}
+      {painting && <Status testId="painting">{painting}</Status>}
+      {error && <ErrorNote>{error}</ErrorNote>}
 
-      <figure className="grid gap-2">
-        <BookImage job={shownSheet} alt={`Hoja de personajes de ${name}`} testId="sheet" />
-        <figcaption className="text-sm text-ink-soft">Hoja de personajes{sheets.length > 1 ? ` · versión ${shownSheet?.variant}` : ""}</figcaption>
+      <figure className="m-0 grid gap-3">
+        <Taped>
+          <BookImage job={shownSheet} alt={`Así será ${name} en el libro: varias poses y caras`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
+        </Taped>
+        <figcaption className="text-sm text-mute">Sus personajes{sheets.length > 1 ? ` · versión ${shownSheet?.variant}` : ""}</figcaption>
       </figure>
       {sheets.length > 1 && (
-        <div className="flex flex-wrap gap-2" aria-label="Versiones de la hoja">
+        <div className="-mt-4 flex flex-wrap gap-2" role="group" aria-label="Versiones de los personajes">
           {sheets.map((s) => (
             <button
               key={s.id}
+              aria-pressed={s.id === shownSheet?.id}
               className={`chip ${s.id === shownSheet?.id ? "chip-on" : ""}`}
               disabled={s.status !== "done"}
               onClick={async () => {
@@ -129,11 +138,6 @@ export function StepCast({
           ))}
         </div>
       )}
-
-      <figure className="grid gap-2">
-        <BookImage job={cover} alt="Portada" testId="cover" title={record.plan.title} />
-        <figcaption className="text-sm text-ink-soft">Portada (el título lo componemos encima)</figcaption>
-      </figure>
 
       {view && current?.status === "done" && !painting && (
         <ChangeSheet
@@ -148,15 +152,38 @@ export function StepCast({
         />
       )}
 
+      <section className="grid items-center gap-6 sm:grid-cols-[230px_1fr] sm:gap-9" aria-label="La portada">
+        <BookCover
+          name={name}
+          title={record.plan.title}
+          from={ficha.from?.trim()}
+          tilt={-2}
+          className="w-[210px] justify-self-center sm:w-full"
+          image={<BookImage job={cover} alt="Portada" testId="cover" box="absolute inset-0 overflow-hidden" />}
+        />
+        <div className="grid gap-3">
+          <h3 className="display text-[26px]">La portada</h3>
+          <p className="text-ink-soft">Pintada con estos personajes. El título lo componemos encima, como en el libro.</p>
+          {cover?.status === "done" && (
+            <a className="rise flex items-center gap-3 rounded-[18px] bg-sage p-4 text-sage-ink transition-transform hover:-translate-y-0.5" href={`/api/libro/pdf?b=${bookId}&kind=free`} data-testid="free-pdf">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-card">
+                <Icon.download />
+              </span>
+              <span className="grid">
+                <span className="font-bold">Tu cuento gratis en PDF</span>
+                <span className="text-sm">Portada y texto, para imprimir en A4</span>
+              </span>
+            </a>
+          )}
+        </div>
+      </section>
+
       <BookLink bookId={bookId} mail={view?.mail} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button className="btn-ghost" onClick={onBack}>
-          Volver al texto
-        </button>
+      <div className="actionbar">
         <button
-          className="btn-primary"
-          disabled={!shownSheet || shownSheet.status !== "done" || !!painting}
+          className="btn-primary btn-lg w-full sm:w-auto"
+          disabled={!ready || !!painting}
           data-testid="approve"
           onClick={async () => {
             const r = await postJson("/api/libro/approve", { bookId, sheetJobId: shownSheet!.id });
@@ -164,13 +191,10 @@ export function StepCast({
             else setError(errorMessage(r.json));
           }}
         >
-          Me gustan, seguir
+          Me gustan, ver el libro
+          <Icon.arrow />
         </button>
-        {cover?.status === "done" && (
-          <a className="link text-sm" href={`/api/libro/pdf?b=${bookId}&kind=free`} data-testid="free-pdf">
-            Descargar el cuento gratis en PDF (portada + texto)
-          </a>
-        )}
+        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{ready ? "Gratis hasta aquí. Después decides si lo quieres ilustrado." : "En cuanto estén, podrás seguir."}</p>
       </div>
     </div>
   );
@@ -180,10 +204,10 @@ function ChangeSheet({ left, onAsk }: { left: number; onAsk: (instruction: strin
   const [ask, setAsk] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  if (left <= 0) return <p className="text-sm text-ink-soft">Ya has usado los dos cambios de la hoja. Puedes elegir cualquiera de las versiones.</p>;
+  if (left <= 0) return <p className="notice">Ya has usado los dos cambios de la hoja. Puedes elegir cualquiera de las versiones.</p>;
   return (
     <form
-      className="card grid gap-3"
+      className="card grid gap-3 p-5 sm:p-6"
       onSubmit={async (e) => {
         e.preventDefault();
         if (!ask.trim()) return;
@@ -193,16 +217,33 @@ function ChangeSheet({ left, onAsk }: { left: number; onAsk: (instruction: strin
         setAsk("");
       }}
     >
-      <label className="grid gap-1">
-        <span className="field-label">¿Cambiamos algo? (te quedan {left})</span>
-        <input className="input" value={ask} maxLength={240} onChange={(e) => setAsk(e.target.value)} placeholder="más rizos; que el perro sea más pequeño; sin pecas" />
-      </label>
-      <div className="flex items-center gap-3">
-        <button className="btn-ghost btn-sm" disabled={busy || !ask.trim()}>
-          {busy ? "Preparando…" : "Pedir el cambio"}
-        </button>
-        {err && <span className="text-sm text-[#8a2a1c]">{err}</span>}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <label htmlFor="change-sheet" className="display text-[20px]">
+          ¿Cambiamos algo?
+        </label>
+        <span className="text-[13px] text-mute">te quedan {left}</span>
       </div>
+      <div className="flex items-center gap-2 rounded-full border-2 border-[#e5d7c1] bg-white py-1.5 pr-1.5 pl-4 transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-[0_0_0_5px_rgba(200,73,44,0.12)]">
+        <input
+          id="change-sheet"
+          className="min-w-0 flex-1 bg-transparent text-[16px] text-ink outline-none placeholder:text-ink-soft/55 focus-visible:outline-none"
+          value={ask}
+          maxLength={240}
+          onChange={(e) => setAsk(e.target.value)}
+          placeholder="más rizos; que el perro sea más pequeño; sin pecas"
+        />
+        <button aria-label="Pedir el cambio" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-paper transition-[transform,opacity] active:scale-95 disabled:opacity-35" disabled={busy || !ask.trim()}>
+          {busy ? <Sparkle className="twinkle" size={16} /> : <Icon.arrow />}
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {["sin pecas", "otras gafas", "el pelo más corto"].map((t) => (
+          <button type="button" key={t} className="rounded-full bg-paper-deep px-3 py-1.5 text-[13px] font-medium text-ink-soft transition-colors hover:text-ink" onClick={() => setAsk(t)}>
+            {t}
+          </button>
+        ))}
+      </div>
+      {err && <p className="text-sm text-danger">{err}</p>}
     </form>
   );
 }
@@ -211,13 +252,11 @@ function EmailGate({
   ficha,
   record,
   initialEmail,
-  onBack,
   onStarted,
 }: {
   ficha: Ficha;
   record: PlanRecord;
   initialEmail?: string;
-  onBack: () => void;
   onStarted: (bookId: string, email: string, sheetJobId: string, coverJobId: string) => Promise<void>;
 }) {
   const [email, setEmail] = useState(initialEmail ?? "");
@@ -226,10 +265,13 @@ function EmailGate({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const name = ficha.hero.name.trim();
+  const others = ficha.cast.map((c) => c.name.trim()).filter(Boolean);
+  const who = others.length ? `a ${name} y a ${others.join(" y a ")}` : `a ${name}`;
+  const check = "flex cursor-pointer items-start gap-3 rounded-[18px] bg-card p-4 text-sm leading-relaxed text-ink-soft shadow-[0_2px_0_#eaddc6] transition-shadow has-checked:shadow-[0_0_0_2px_var(--ink)]";
 
   return (
     <form
-      className="grid max-w-xl gap-5"
+      className="grid gap-6"
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -255,43 +297,59 @@ function EmailGate({
         }
       }}
     >
-      <div className="grid gap-2">
-        <h2 className="display text-3xl sm:text-4xl">Vamos a dibujar a {name}</h2>
-        <p className="text-ink-soft">
-          Te enseñamos cómo serán {name} y su reparto, y la portada del libro, en alrededor de un minuto. Es gratis, igual que el cuento en PDF con la portada. Necesitamos tu email para guardarlo
-          y mandarte el enlace.
+      <div className="relative overflow-hidden rounded-[28px] bg-night px-6 pt-7 pb-7 text-moon sm:px-9 sm:pt-9">
+        <Sparkle className="twinkle absolute top-6 right-7" size={16} />
+        <Sparkle className="twinkle-slow absolute top-[46%] left-[46%]" size={9} color="var(--moon)" />
+        <h2 className="display max-w-[16ch] text-[32px] text-moon sm:text-[42px]">
+          Vamos a dibujar a <span className="text-star">{name}</span>
+        </h2>
+        <p className="mt-3 max-w-[48ch] text-moon-soft">
+          En uno o dos minutos verás {who} y la portada del libro. Es gratis, igual que el cuento en PDF con la portada.
         </p>
+        <div aria-hidden className="mt-7 grid max-w-[440px] grid-cols-[1.5fr_1fr] items-end gap-5">
+          <div className="grid aspect-[3/2] place-items-center rounded-2xl border-2 border-dashed border-moon/25 bg-night-2">
+            <span className="hand px-3 text-center text-[18px] text-moon-soft">sus personajes</span>
+          </div>
+          <BookCover name={name} tilt={3} placeholder="su portada" />
+        </div>
       </div>
-      <label className="grid gap-1">
-        <span className="field-label">Email</span>
+
+      <label className="grid gap-1.5">
+        <span className="field-label text-ink">Tu email</span>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@email.com" autoComplete="email" className="input" data-testid="email" />
+        <span className="text-[13px] text-mute">Lo necesitamos para guardar el libro y mandarte el enlace con el que vuelves a él desde cualquier sitio.</span>
       </label>
-      <label className="flex items-start gap-3 text-sm leading-relaxed text-ink-soft">
-        <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" data-testid="consent" />
-        <span>
-          Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Acepto que el cuento se guarde 30 días para poder recuperarlo con un enlace; después se borra. He leído la{" "}
-          <Link href="/privacidad" target="_blank" className="link">
-            política de privacidad
-          </Link>{" "}
-          y las{" "}
-          <Link href="/condiciones" target="_blank" className="link">
-            condiciones
-          </Link>
-          .
-        </span>
-      </label>
-      <label className="flex items-start gap-3 text-sm leading-relaxed text-ink-soft">
-        <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]" />
-        <span>Quiero recibir avisos de nuevas ideas y ediciones. Opcional; puedes darte de baja cuando quieras.</span>
-      </label>
-      {err && <p className="text-sm text-[#8a2a1c]">{err}</p>}
-      <div className="flex flex-wrap gap-3">
-        <button type="button" className="btn-ghost" onClick={onBack}>
-          Atrás
-        </button>
-        <button type="submit" className="btn-primary" disabled={busy} data-testid="start">
+      <div className="grid gap-2.5">
+        <label className={check}>
+          <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--ink)]" data-testid="consent" />
+          <span>
+            Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Acepto que el cuento se guarde 30 días para poder recuperarlo con un enlace; después se borra. He leído la{" "}
+            <Link href="/privacidad" target="_blank" className="link">
+              política de privacidad
+            </Link>{" "}
+            y las{" "}
+            <Link href="/condiciones" target="_blank" className="link">
+              condiciones
+            </Link>
+            .
+          </span>
+        </label>
+        <label className={check}>
+          <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--ink)]" />
+          <span>Quiero recibir avisos de nuevas ideas y ediciones. Opcional; puedes darte de baja cuando quieras.</span>
+        </label>
+      </div>
+      <p className="flex items-start gap-2 text-[13px] text-mute">
+        <Icon.lock size={15} className="mt-0.5 shrink-0" />
+        No pedimos fotos, apellidos ni fecha de nacimiento. A los 30 días, el libro se borra.
+      </p>
+      {err && <ErrorNote>{err}</ErrorNote>}
+      <div className="actionbar">
+        <button type="submit" className="btn-primary btn-lg w-full sm:w-auto" disabled={busy} data-testid="start">
+          {busy ? <Sparkle className="twinkle" size={16} color="#fff" /> : <Icon.brush />}
           {busy ? "Preparando…" : `Dibujar a ${name}`}
         </button>
+        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">Gratis · Tarda alrededor de un minuto</p>
       </div>
     </form>
   );
