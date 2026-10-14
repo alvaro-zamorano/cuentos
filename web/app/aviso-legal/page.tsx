@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Aviso legal" };
 
 export default function AvisoLegal() {
   return (
-    <LegalPage title="Aviso legal" updated="9 de octubre de 2026">
+    <LegalPage title="Aviso legal" updated="14 de octubre de 2026">
       <h2>1. Titular (art. 10 LSSI)</h2>
       <ul>
         <li>Titular: <Pending>nombre y apellidos o razón social</Pending></li>
@@ -17,12 +17,15 @@ export default function AvisoLegal() {
       </ul>
 
       <h2>2. Uso de la web</h2>
-      <p>La web permite crear cuentos personalizados y descargarlos o comprarlos. Quien la usa se compromete a no introducir datos de terceros sin autorización.</p>
+      <p>
+        La web permite crear cuentos personalizados, escritos e ilustrados con inteligencia artificial, y descargarlos o comprarlos. Quien la usa
+        se compromete a no introducir datos de terceros sin autorización.
+      </p>
 
       <h2>3. Propiedad intelectual</h2>
       <p>
-        Los textos de los cuentos, las ilustraciones, los estilos y el diseño de la web son de <Pending>titular</Pending>. El cuento descargado o
-        comprado es para uso personal y familiar; no se permite su venta ni su distribución comercial.
+        El diseño de la web, su marca, sus textos y el libro de muestra son de <Pending>titular</Pending>. El libro que creas es para uso personal
+        y familiar; no se permite su venta ni su distribución comercial.
       </p>
 
       <h2>4. Responsabilidad</h2>

@@ -10,10 +10,12 @@ import { normalizeFicha } from "@/lib/plan/ficha";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { planBook } from "@/lib/plan/planner";
 import { plannerSystem, plannerUser } from "@/lib/plan/prompt";
+import { devAccessAllowed, devTokenFrom } from "@/lib/devAccess";
 
 /**
- * Pruebas internas en las previews (B1). En producción no existe (404). La preview está detrás de la protección de
- * Vercel, así que no es pública. Nunca devuelve claves.
+ * Pruebas internas en las previews (B1). En producción no existe (404). Las previews son públicas (la protección de
+ * despliegues está desactivada), así que en Vercel solo responde con DEV_TOKEN y `?token=` o `x-dev-token` iguales;
+ * sin DEV_TOKEN, 404 (lib/devAccess.ts). En local, abierta. Nunca devuelve claves.
  *
  *   GET /api/dev?task=models               ids de los modelos de Anthropic disponibles para la clave
  *   GET /api/dev?task=plan&case=1..10      planificador con una ficha de lib/plan/evalCases.ts (de pago: ~5 c)
@@ -39,7 +41,7 @@ function withModel(llm: Llm, model: string | null, url?: URL): Llm {
 }
 
 export async function GET(req: Request) {
-  if (process.env.VERCEL_ENV === "production") return NextResponse.json({ ok: false }, { status: 404 });
+  if (!devAccessAllowed(process.env, devTokenFrom(req))) return NextResponse.json({ ok: false }, { status: 404 });
   const url = new URL(req.url);
   const task = url.searchParams.get("task");
 
