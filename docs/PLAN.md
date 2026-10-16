@@ -142,7 +142,11 @@ Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environ
 Hecho: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GENERATION_PROVIDER=gemini-images` en Preview, app de GitHub de Claude en el repo.
 
 Pendiente, en orden (detalle de cada bloqueo en ESTADO §4):
-1. **Marca y dominio** (ESTADO §4.9). De ahí salen el email de envío, `LEGAL_EMAIL`, `SITE_URL` y el nombre en Stripe.
+1. **Marca «Érase su vez»** (16 oct). Antes de pagar nada, mirar que `@erasesuvez` está libre en Instagram y TikTok y buscar la marca en OEPM y EUIPO. Después:
+   - Comprar `erasesuvez.com` en Vercel (Domains, 11,25 $ al año) y `erasesuvez.es` en un registrador español, porque Vercel no vende `.es`.
+   - En el proyecto `cuentos` → Settings → Domains: añadir los dos, con `erasesuvez.es` como principal y `.com` redirigido a él. En el registrador del `.es`, los registros DNS que enseñe Vercel.
+   - Buzón `hola@erasesuvez.es` para recibir (reenvío del registrador o un buzón); Resend con el mismo dominio para enviar.
+   - Variables: `SITE_URL=https://erasesuvez.es`, `LEGAL_EMAIL=hola@erasesuvez.es`, `MAIL_FROM` con «Érase su vez». En Stripe, el nombre del negocio.
 2. **Bloqueos de salida:** Gemini y menores de 18 (§4.16), plan Pro de Vercel y región de funciones en la UE (§4.17), región de Supabase (§4.18), clave de Gemini de un proyecto con facturación (§4.19).
 3. **B5** (pasos exactos en `docs/PAGO.md`): Stripe en modo test en la preview (`STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`) y un pago con la tarjeta 4242 4242 4242 4242. Resend con el dominio verificado (`RESEND_API_KEY` y `MAIL_FROM`).
 4. **Variables de producción** (ámbito Production): las tres claves, `GENERATION_PROVIDER=gemini-images`, `CRON_SECRET` (obligatorio), `SITE_URL`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`, `LEGAL_EMAIL`, Stripe en modo real y Resend. Sin `NEXT_PUBLIC_DRY_RUN_PAYMENT`. `HEALTH_TOKEN` si se quiere la comprobación profunda. Borrar la variable antigua `service_role`.

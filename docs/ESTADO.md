@@ -57,6 +57,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-16 | Los datos del titular salen de `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS` y `LEGAL_EMAIL` en Vercel, no del código. Las páginas legales son estáticas: tras cambiarlos, volver a desplegar | El repo es público: en el código quedarían para siempre en el historial | `lib/legal.ts`, `.env.example` |
 | 2026-10-16 | Proveedores de la política con lo verificado en sus páginas oficiales (entidad, contrato de encargo, cláusulas tipo, Marco de Privacidad). Stripe (fraude, blanqueo) y Microsoft Clarity son responsables independientes, no encargados. Clarity recibe la señal `consentv2` (medición sí, publicidad no) y no graba `/crear` | La política decía «encargados» para todos y no lo son | `/privacidad`, `CookieConsent.tsx`, `app/crear/page.tsx` |
 | 2026-10-16 | robots y sitemap: solo se indexa producción con `SITE_URL`; `/crear?…` (los libros de cada familia) nunca. La descripción del sitio deja de prometer tapa dura | Abrir al público con el dominio de la marca, sin indexar el alias de Vercel ni los libros | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts`, `layout.tsx` |
+| 2026-10-16 | Marca «Érase su vez» (Álvaro). Dominio principal `erasesuvez.es` y `erasesuvez.com` redirigido a él (propuesta; libres el 16 oct). En la web: nombre en cabecera, pie, títulos y emails; favicon (luna y estrella en noche), icono de iOS e imagen para compartir de 1200×630 con el libro de muestra (JPEG de 78 KB, para que WhatsApp la enseñe) | Distintiva, explica el producto y la búsqueda no dio marcas iguales; «Su cuento» chocaba con MiCuento | `SiteHeader.tsx`, `layout.tsx`, `app/{icon.svg,apple-icon.png,opengraph-image.jpg}`, `lib/mail.ts` (PR #5) |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -105,7 +106,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 6. ~~**Antes de unir el PR #1:** ¿se borran las rutas del flujo antiguo y `/api/dev`?~~ El flujo antiguo redirige a `/crear` (16 oct). `/api/dev` sigue: en producción da 404 siempre.
 7. **`claude/ASSETS.md` está superado por D1.** ¿Se retira del Project? Sigue en el repo.
 8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
-9. **Marca comercial y dominio** (16 oct: Álvaro pide propuestas). Con `.es` y `.com` libres el 16 oct: «Érase su vez» (`erasesuvez`), «Noche de cuento» (`nochedecuento`), «Cuento suyo» (`cuentosuyo`). `.com` a 11,25 $ al año en Vercel; `.es`, en un registrador que lo venda. Antes de comprar: usuario de Instagram libre y búsqueda en OEPM y EUIPO. Descartada «Su cuento» por MiCuento.
+9. ~~**Marca comercial y dominio**~~ «Érase su vez» (16 oct). Falta comprar los dominios, el usuario de Instagram y la búsqueda en OEPM y EUIPO (PLAN §7). Propuestas que se barajaron: Con `.es` y `.com` libres el 16 oct: «Érase su vez» (`erasesuvez`), «Noche de cuento» (`nochedecuento`), «Cuento suyo» (`cuentosuyo`). `.com` a 11,25 $ al año en Vercel; `.es`, en un registrador que lo venda. Antes de comprar: usuario de Instagram libre y búsqueda en OEPM y EUIPO. Descartada «Su cuento» por MiCuento.
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
 12. ~~**¿Se une el PR #2 (estilo) a la rama de trabajo?**~~ Unido el 14 oct, con el copy (PR #4) y la demo abierta (PR #3).
@@ -123,7 +124,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. Si el PR #5 no está unido, preguntar a Álvaro y unirlo a la rama de trabajo (merge commit).
-3. Preguntar a Álvaro por la marca (§4.9) y por los bloqueos §4.16 a §4.19, en ese orden. Con la marca: cambiar «cuentos» en `layout.tsx` (título y plantilla), favicon e imagen para compartir (no existen), y `LEGAL_EMAIL` con el dominio.
+3. Preguntar a Álvaro por los dominios de «Érase su vez» (PLAN §7.1) y por los bloqueos §4.16 a §4.19, en ese orden. Cuando el dominio apunte a Vercel: comprobar `https://erasesuvez.es/robots.txt` en producción y la vista previa del enlace en WhatsApp.
 4. `GET /api/health` en la preview: si `payment.mode` es `stripe`, un pago con la tarjeta 4242 4242 4242 4242; comprobar el webhook (200 en Stripe), el libro pintado con la pestaña cerrada y los dos emails si `mail.enabled` es `true`.
 5. `GET /api/cron/purge?dry=1` en la preview: comprobar que `leads` y `spend` salen sin error (consultas nuevas del PR #5 contra la base real).
 6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN), CI en verde, descripción del PR al día y la prueba con tres personas (B7).

@@ -69,6 +69,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 
 | Qué | Dónde |
 |---|---|
+| Marca «Érase su vez» | `components/SiteHeader.tsx` (`Wordmark`), `app/layout.tsx` (títulos y `openGraph`), `app/icon.svg`, `app/apple-icon.png`, `app/opengraph-image.jpg` (+ `.alt.txt`), `lib/mail.ts` |
 | Estilo (tokens, capas, movimiento) | `app/globals.css`, `app/layout.tsx` (fuentes), `components/brand.tsx` (estrella, luna, colina, iconos, `BookCover`), `docs/ESTILO.md` |
 | Landing | `app/page.tsx`, `components/landing/SampleFlipper.tsx` (+ `lib/muestra.ts`, `public/muestra/`, miniaturas en `public/muestra/mini/`) |
 | Flujo `/crear` (5 pasos) | `app/crear/page.tsx` (cabecera, progreso, «así va su libro», `?b=` y `?idea=`), `components/crear/Step{Idea,Hero,Story,Cast,Book}.tsx`, `BookImage`, `BookLink`, `ui.tsx` (avisos, cinta), `lib/crearStore.ts`, `lib/bookClient.ts` |
