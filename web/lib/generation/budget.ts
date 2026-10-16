@@ -5,7 +5,10 @@
  *   LEAD_CAP_CENTS   tope por lead antes del pago (por defecto 30, D2 del 13 oct: hoja 1K + portada 2K y hasta 2 cambios de hoja,
  *                    cada uno con su portada: 3 × (4 + 6) c). `paid: true` lo salta (libro pagado;
  *                    ahí manda MAX_COST_CENTS_PER_BOOK del worker).
- *   DAILY_CAP_CENTS  tope global por día UTC (por defecto 500). Se aplica a todo el gasto, pagado o no.
+ *   DAILY_CAP_CENTS  tope global por día UTC (por defecto 500). Cuenta todo el gasto del día. Lo frena todo salvo los
+ *                    libros cobrados de verdad con Stripe (16 oct): un cliente que paga no se queda sin libro por el tope;
+ *                    a esos los limita MAX_COST_CENTS_PER_BOOK. Los pagos de prueba (`dry-run:<libro>`) sí se frenan,
+ *                    porque en la preview cualquiera puede «pagar».
  *
  * Sin cliente admin, o si la lectura falla, canSpend devuelve ok:false: nunca se gasta a ciegas.
  * Dónde se llama: lib/generation/service.ts (al crear los jobs en /api/generate/sample y /book, y antes de cada
@@ -56,7 +59,17 @@ function sum(rows: { cost_cents: number | null }[] | null): number {
   return (rows ?? []).reduce((a, r) => a + (r.cost_cents ?? 0), 0);
 }
 
-/** ¿Se pueden gastar `cents` más para este lead hoy? Comprueba el tope por lead (salvo `paid`) y el diario. */
+/**
+ * ¿El libro tiene un pedido cobrado de verdad? Solo los crea el webhook firmado de Stripe; los pagos de prueba llevan
+ * `dry-run:<libro>` como sesión. Si la lectura falla, se trata como no cobrado (se aplica el tope diario).
+ */
+export async function hasChargedOrder(db: Db, bookId: string): Promise<boolean> {
+  const { data, error } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
+  if (error || !data) return false;
+  return data.some((o) => !!o.stripe_session_id && !o.stripe_session_id.startsWith("dry-run"));
+}
+
+/** ¿Se pueden gastar `cents` más para este lead hoy? Comprueba el tope por lead (salvo `paid`) y el diario (salvo libro cobrado con Stripe). */
 export async function canSpend(
   db: Db | null,
   { leadId, cents, paid = false, now = new Date() }: { leadId: string; cents: number; paid?: boolean; now?: Date },
@@ -65,11 +78,14 @@ export async function canSpend(
   if (!leadId) return { ok: false, reason: "lead sin identificar" };
   if (!Number.isFinite(cents) || cents < 0) return { ok: false, reason: "coste no válido" };
 
-  const day = await db.from("cuentos_spend").select("cost_cents").gte("created_at", utcDayStart(now));
-  if (day.error) return { ok: false, reason: "no se pudo leer el gasto del día" };
-  const dailyCap = dailyCapCents();
-  const spentToday = sum(day.data);
-  if (spentToday + cents > dailyCap) return { ok: false, reason: `tope diario (${dailyCap} c) alcanzado: ${spentToday} c gastados hoy` };
+  const charged = paid && (await hasChargedOrder(db, leadId));
+  if (!charged) {
+    const day = await db.from("cuentos_spend").select("cost_cents").gte("created_at", utcDayStart(now));
+    if (day.error) return { ok: false, reason: "no se pudo leer el gasto del día" };
+    const dailyCap = dailyCapCents();
+    const spentToday = sum(day.data);
+    if (spentToday + cents > dailyCap) return { ok: false, reason: `tope diario (${dailyCap} c) alcanzado: ${spentToday} c gastados hoy` };
+  }
 
   if (!paid) {
     const lead = await db.from("cuentos_spend").select("cost_cents").eq("lead_id", leadId);

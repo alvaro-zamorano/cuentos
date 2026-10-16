@@ -265,10 +265,11 @@ test("requestBook: 11 páginas + portada (la 9 de la muestra no se repite), paid
 
 type Row = { lead_id: string; cost_cents: number; created_at: string };
 
-/** Cliente Supabase falso con lo que usa budget.ts (cuentos_spend: select → eq|gte, insert). */
+/** Cliente Supabase falso con lo que usa budget.ts (cuentos_spend: select → eq|gte, insert; cuentos_orders: sin pedidos). */
 function fakeSpendDb(rows: Row[]) {
   const client = {
-    from() {
+    from(table: string) {
+      if (table === "cuentos_orders") return { select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }) };
       return {
         select() {
           return {
