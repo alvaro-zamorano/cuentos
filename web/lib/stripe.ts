@@ -25,16 +25,29 @@ export function dryRunPaymentAllowed(env: Record<string, string | undefined> = p
   return env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1" && env.VERCEL_ENV !== "production";
 }
 
+/**
+ * Renuncia al desistimiento (art. 103 c) y m) TRLGDCU): libro personalizado y contenido digital. Quien paga marca la casilla
+ * del paso 5; el servidor no abre el pago sin ella y la deja apuntada en los metadatos de Stripe (sesión y cobro), que
+ * duran más que el libro. WAIVER_VERSION cambia si cambia el texto de la casilla.
+ */
+export const WAIVER_VERSION = "2026-10-16";
+
+export function waiverAccepted(body: Record<string, unknown> | null | undefined): boolean {
+  return body?.waiver === true;
+}
+
 export interface CheckoutInput {
   bookId: string;
   email: string | null;
   title: string;
   amountCents: number;
   origin: string;
+  /** Momento (ISO) en que se aceptó la renuncia al desistimiento. */
+  waiverAt?: string;
 }
 
 /** Cuerpo form-encoded de /v1/checkout/sessions (exportado para los tests). */
-export function checkoutBody({ bookId, email, title, amountCents, origin }: CheckoutInput): URLSearchParams {
+export function checkoutBody({ bookId, email, title, amountCents, origin, waiverAt }: CheckoutInput): URLSearchParams {
   const p = new URLSearchParams();
   p.set("mode", "payment");
   p.set("success_url", `${origin}/crear?b=${bookId}&pagado=1`);
@@ -42,6 +55,12 @@ export function checkoutBody({ bookId, email, title, amountCents, origin }: Chec
   p.set("client_reference_id", bookId);
   p.set("metadata[bookId]", bookId);
   p.set("payment_intent_data[metadata][bookId]", bookId);
+  if (waiverAt) {
+    for (const k of ["metadata", "payment_intent_data[metadata]"]) {
+      p.set(`${k}[withdrawal_waiver_at]`, waiverAt);
+      p.set(`${k}[withdrawal_waiver_version]`, WAIVER_VERSION);
+    }
+  }
   if (email) p.set("customer_email", email);
   p.set("line_items[0][quantity]", "1");
   p.set("line_items[0][price_data][currency]", "eur");

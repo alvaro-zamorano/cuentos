@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
 import { PRICE_ILLUSTRATED } from "@/lib/pricing";
@@ -264,10 +265,12 @@ function LockedPages({ pages, onText }: { pages: PlanPage[]; onText: (n: number,
 function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: string; payment: NonNullable<BookView["payment"]>; onPaid: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // renuncia al desistimiento (condiciones §7): sin marcarla no se abre el pago, ni el real ni el de prueba
+  const [waiver, setWaiver] = useState(false);
   const checkout = async () => {
     setBusy(true);
     setErr(null);
-    const r = await postJson<{ url?: string }>("/api/libro/checkout", { bookId });
+    const r = await postJson<{ url?: string }>("/api/libro/checkout", { bookId, waiver });
     if (r.status === 200 && r.json.url) {
       window.location.assign(r.json.url);
       return;
@@ -278,7 +281,7 @@ function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: stri
   const dryRun = async () => {
     setBusy(true);
     setErr(null);
-    const r = await postJson("/api/libro/pay", { bookId });
+    const r = await postJson("/api/libro/pay", { bookId, waiver });
     setBusy(false);
     if (r.status === 200) onPaid();
     else setErr(errorMessage(r.json));
@@ -297,9 +300,27 @@ function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: stri
           </li>
         ))}
       </ul>
+      {payment !== "none" && (
+        <label className="mt-7 flex cursor-pointer items-start gap-3 rounded-2xl bg-white/[0.07] p-4 text-[14px] leading-snug text-moon">
+          <input
+            type="checkbox"
+            checked={waiver}
+            onChange={(e) => setWaiver(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--accent)]"
+            data-testid="waiver"
+          />
+          <span>
+            Quiero que empecéis a pintar el libro en cuanto pague. Sé que, al ser un libro personalizado y digital, no podré desistir de la compra (
+            <Link href="/condiciones" target="_blank" className="underline underline-offset-2">
+              condiciones
+            </Link>
+            ).
+          </span>
+        </label>
+      )}
       {payment === "stripe" && (
         <>
-          <button className="btn-primary btn-lg mt-7 w-full" disabled={busy} data-testid="pay" onClick={() => void checkout()}>
+          <button className="btn-primary btn-lg mt-4 w-full" disabled={busy || !waiver} data-testid="pay" onClick={() => void checkout()}>
             {busy ? "Abriendo el pago…" : "Pagar y pintar el libro"}
           </button>
           <p className="mt-3 flex items-start gap-2 text-[13px] text-moon-soft">
@@ -310,8 +331,8 @@ function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: stri
       )}
       {payment === "dry-run" && (
         <button
-          className="btn-primary btn-lg mt-7 w-full"
-          disabled={busy}
+          className="btn-primary btn-lg mt-4 w-full"
+          disabled={busy || !waiver}
           data-testid="pay"
           onClick={() => void dryRun()}
         >

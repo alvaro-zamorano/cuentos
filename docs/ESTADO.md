@@ -1,14 +1,14 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-14 (PR #2, #3 y #4 unidos a la rama de trabajo) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 pendiente
+Actualizado: 2026-10-16 (PR #5: lo que faltaba en el código para abrir al público) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 en curso
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora:** la preview de la rama de trabajo está completa desde el 14 oct: estilo «La hora del cuento», copy nuevo de la landing, `/api/dev` cerrado y legales al día, con imágenes reales (Nano Banana). Que Álvaro la recorra y la enseñe, y juzgue la UX y el recorrido.
-- **Después:** claves de Stripe y Resend (B5), legales (E6), prueba con tres personas ajenas (B7) y salida a producción.
-- **Fuera de foco ahora:** tapa dura, más estilos de ilustración, el Reel (B6), el flujo antiguo (`/clasico`, `/ilustrado`, `/libro`, `/gratis`).
+- **Ahora (16 oct):** salir al público. El código que faltaba está en el PR #5 (desistimiento, tope, E18, legales, flujo antiguo, robots). Lo que queda es de Álvaro, en este orden: marca y dominio, cuatro bloqueos de §4 (Gemini y menores, plan de Vercel, región de Supabase, clave de Gemini de pago), Stripe y Resend, variables de producción, gestoría, y la prueba con tres personas.
+- **Después:** unir el PR #1 a `main` (salida a producción).
+- **Fuera de foco ahora:** tapa dura, más estilos de ilustración, el Reel (B6). El flujo antiguo redirige a `/crear` desde el 16 oct.
 
 ## 2. Log de decisiones (append-only)
 
@@ -50,6 +50,14 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-14 | `/api/dev` en Vercel solo responde con `DEV_TOKEN` (en `?token=` o en la cabecera `x-dev-token`); sin la variable, 404. Producción, siempre 404; en local, abierta. Legales reescritos con el producto actual: qué es gratis (D3), proceso, uso de IA (Anthropic y Gemini, también antes de pagar), qué se guarda y el borrado a 30 días aunque se compre | La preview es pública y se va a enseñar: cualquiera con la URL podía gastar con `/api/dev`, y los legales describían el flujo antiguo | `lib/devAccess.ts`, `app/api/dev`, `app/{privacidad,condiciones,aviso-legal}`, `.env.example` (PR #3) |
 | 2026-10-14 | Copy de la landing orientado a quien compra (padres, abuelos, tíos). Título «Una frase tuya. Un libro suyo.». Fuera la jerga interna: «hoja de personajes» pasa a «cómo será en el libro» o «sus personajes» (también en `/crear`), y fuera «igual en las doce páginas», «la misma niña», «plantillas» y «una versión más». Cuatro preguntas nuevas: parecido, personaje favorito, edades, Navidad y Reyes | Álvaro: varios apartados no se entendían. El texto hablaba de nuestros problemas técnicos (consistencia, plantillas) y creaba dudas que el padre no tenía | `app/page.tsx`, `SampleFlipper.tsx`, `components/crear/Step{Hero,Cast,Book}.tsx`, `app/crear/page.tsx`; rama `copy/landing-target` |
 | 2026-10-14 | PR #4 (copy) unido a la rama del estilo; PR #3 (demo abierta) y PR #2 (estilo + copy) unidos a la rama de trabajo, con merge commits. La preview de la rama de trabajo lleva todo | Álvaro: «que el preview quede completo». La unión se probó antes en local (82 unitarios, build, 8 Playwright, capturas) y el resultado en GitHub es el mismo árbol | — |
+| 2026-10-16 | E18 (Álvaro): el email dado solo para recibir el libro, sin aceptar novedades, se borra a los 30 días con el libro. La purga borra esos leads si no tienen libro vigente y quita el email de las filas de gasto de más de 30 días (el tope por lead vuelve a empezar para ese email) | Sin consentimiento no se les puede escribir: guardarlos no sirve | `lib/purge.ts`, `/privacidad` (PR #5) |
+| 2026-10-16 | Flujo antiguo (Álvaro): `/clasico`, `/ilustrado`, `/libro` y `/gratis` redirigen a `/crear` con 307. El código se queda | `/gratis` captaba emails con el producto viejo; redirigir es reversible | `next.config.ts` (PR #5). Cierra §4.6 salvo `/api/dev` |
+| 2026-10-16 | Renuncia al desistimiento: casilla obligatoria en el paso 5, comprobada también en el servidor (400 sin ella), con hora y versión en los metadatos de Stripe | Las condiciones decían que se aceptaba antes de pagar y no existía; los metadatos de Stripe duran más que el libro | `lib/stripe.ts`, `StepBook.tsx`, rutas `checkout` y `pay` |
+| 2026-10-16 | El tope diario no frena a un libro con pedido de Stripe real (lo limita el tope por libro); el pago de prueba sí se frena | Con 500 c al día, un cliente que paga se quedaba sin libro a partir del cuarto o quinto del día | `lib/generation/budget.ts` |
+| 2026-10-16 | Los datos del titular salen de `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS` y `LEGAL_EMAIL` en Vercel, no del código. Las páginas legales son estáticas: tras cambiarlos, volver a desplegar | El repo es público: en el código quedarían para siempre en el historial | `lib/legal.ts`, `.env.example` |
+| 2026-10-16 | Proveedores de la política con lo verificado en sus páginas oficiales (entidad, contrato de encargo, cláusulas tipo, Marco de Privacidad). Stripe (fraude, blanqueo) y Microsoft Clarity son responsables independientes, no encargados. Clarity recibe la señal `consentv2` (medición sí, publicidad no) y no graba `/crear` | La política decía «encargados» para todos y no lo son | `/privacidad`, `CookieConsent.tsx`, `app/crear/page.tsx` |
+| 2026-10-16 | robots y sitemap: solo se indexa producción con `SITE_URL`; `/crear?…` (los libros de cada familia) nunca. La descripción del sitio deja de prometer tapa dura | Abrir al público con el dominio de la marca, sin indexar el alias de Vercel ni los libros | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts`, `layout.tsx` |
+| 2026-10-16 | Marca «Érase su vez» (Álvaro). Dominio principal `erasesuvez.es` y `erasesuvez.com` redirigido a él (propuesta; libres el 16 oct). En la web: nombre en cabecera, pie, títulos y emails; favicon (luna y estrella en noche), icono de iOS e imagen para compartir de 1200×630 con el libro de muestra (JPEG de 78 KB, para que WhatsApp la enseñe) | Distintiva, explica el producto y la búsqueda no dio marcas iguales; «Su cuento» chocaba con MiCuento | `SiteHeader.tsx`, `layout.tsx`, `app/{icon.svg,apple-icon.png,opengraph-image.jpg}`, `lib/mail.ts` (PR #5) |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -78,36 +86,45 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **El test de «peques» daba falsos positivos:** usaba `\b`, y en JavaScript la «ñ» cuenta como límite de palabra, así que «pequeños» caía. Ahora con `\p{L}`.
 - Comprobado: tsc, eslint, 77 unitarios, build, 8 Playwright y capturas de la landing en móvil (390 px) y escritorio (1440 px). Los textos cambiados en `/crear` los recorre Playwright; sin capturas de esos pasos.
 
+### 16 oct (salir al público)
+
+- **Gemini y menores:** los términos de la API de Gemini (vigentes desde el 23 mar 2026) prohíben usarla en un servicio «dirigido a menores de 18 años o al que probablemente accedan». Comprobado en ai.google.dev/gemini-api/terms. La web la usan los padres, pero el producto es infantil. Es una cuestión de interpretación: decide Álvaro, mejor con consejo legal (§4).
+- **Vercel Hobby no permite uso comercial** (Términos de Vercel, §4). Claude no puede ver el plan del equipo.
+- **Las funciones corren en iad1 (EE. UU.).** Vercel permite fijar una región de la UE en cualquier plan (Settings → Functions o `"regions"` en `vercel.json`). Conviene la más cercana a Supabase, cuya región no se ve con el acceso de Claude.
+- **Clarity no es encargado:** sus términos dicen que Microsoft es responsable independiente y que puede usar los datos para sus fines. Desde el 31 oct 2025 exige la señal de consentimiento en el EEE. Hecho en el PR #5.
+- **Gemini de pago:** solo es «de pago» con un proyecto de Google Cloud con facturación activa. En el EEE solo se puede ofrecer el de pago; en el gratuito Google usa los datos para entrenar.
+- **«Su cuento» como marca choca con MiCuento** (micuento.com, Barcelona, libros personalizados). Descartado. Propuestas en §4.9.
+- Comprobado en local: tsc, eslint, 87 unitarios, build, 8 Playwright y capturas del paso 5 y de `/privacidad`. Proveedores, con fuentes: `PROVEEDORES.md`.
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
 2. **Stripe y Resend:** claves y dominio de envío (pasos en `PAGO.md`). Álvaro.
-3. **Legales (E6):** datos del responsable para privacidad, condiciones y aviso legal (21 campos `Pending`). Falta también fijar el plazo de los emails de leads sin consentimiento de marketing (E18). Álvaro.
+3. **Legales (E6):** los cuatro datos del titular van en las variables `LEGAL_*` de Vercel (PR #5). Quedan como hueco: región de Supabase, IVA y epígrafe IAE. E18 decidido el 16 oct. Álvaro.
 4. **Fiscal:** IVA aplicable y facturas, antes de cobrar. Álvaro con su gestoría.
 5. **Formato del PDF (D5):** con A4 vertical e imagen 3:2 queda blanco bajo el texto. ¿Se mantiene, o se prueba una imagen más alta (4:3) o un formato cuadrado? Decisión de Álvaro.
-6. **Antes de unir el PR #1:** ¿se borran las rutas del flujo antiguo y `/api/dev`?
+6. ~~**Antes de unir el PR #1:** ¿se borran las rutas del flujo antiguo y `/api/dev`?~~ El flujo antiguo redirige a `/crear` (16 oct). `/api/dev` sigue: en producción da 404 siempre.
 7. **`claude/ASSETS.md` está superado por D1.** ¿Se retira del Project? Sigue en el repo.
 8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
-9. **Marca comercial y dominio** (el PRD la deja pendiente).
+9. ~~**Marca comercial y dominio**~~ «Érase su vez» (16 oct). Falta comprar los dominios, el usuario de Instagram y la búsqueda en OEPM y EUIPO (PLAN §7). Propuestas que se barajaron: Con `.es` y `.com` libres el 16 oct: «Érase su vez» (`erasesuvez`), «Noche de cuento» (`nochedecuento`), «Cuento suyo» (`cuentosuyo`). `.com` a 11,25 $ al año en Vercel; `.es`, en un registrador que lo venda. Antes de comprar: usuario de Instagram libre y búsqueda en OEPM y EUIPO. Descartada «Su cuento» por MiCuento.
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
 12. ~~**¿Se une el PR #2 (estilo) a la rama de trabajo?**~~ Unido el 14 oct, con el copy (PR #4) y la demo abierta (PR #3).
 13. ~~**Copy de la landing**~~ Unido el 14 oct (PR #4).
-14. **Pendientes de los legales (PR #3):** datos del titular, DPA de cada proveedor, plazo de los emails de leads (E18), IVA y la casilla de desistimiento que falta en el paso del pago. Álvaro, salvo la casilla, que es código.
+14. ~~**Pendientes de los legales (PR #3)**~~ Hechos en el PR #5, salvo región de Supabase, IVA y epígrafe IAE (punto 3).
 15. **`DEV_TOKEN` en Preview** si se quiere seguir usando `/api/dev` en la preview (sin él, 404). Álvaro.
+
+16. **Gemini y menores de 18 (bloquea la salida):** ¿se interpreta que la web, para padres, no está «dirigida a menores»? Alternativas si no: Gemini por Vertex AI (términos de Google Cloud, sin comprobar) u OpenAI Images, que el código ya soporta (`openai-images`, sin comprobar sus términos). Álvaro, con consejo legal.
+17. **Plan de Vercel:** para vender hace falta Pro. Y elegir región de funciones en la UE, la más cercana a Supabase. Álvaro.
+18. **Región de Supabase:** se ve en Storage → S3 (endpoint y región). Si no es de la UE, la región no se puede cambiar: habría que mover las tablas `cuentos_*` a un proyecto en la UE. Álvaro.
+19. **Clave de Gemini de pago:** confirmar que sale de un proyecto de Google Cloud con facturación activa y que el registro de AI Studio está apagado. Álvaro.
+20. **Clarity:** si se activa, poner la ocultación en Strict en su panel. El código ya oculta `/crear`. Álvaro.
 
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
-2. Preguntar a Álvaro qué le parece el paso 2 con imágenes en la preview y apuntarlo aquí.
-3. `curl https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/health` y mirar:
-   - `images.provider` debe ser `gemini-images`. Comprobar que el libro pagado de prueba de Álvaro (12 páginas con imágenes reales y segundo plano) terminó bien; si no, mirar los logs de Vercel. Anotar aquí lo que se vea de la UX.
-4. Si `payment.mode` es `stripe`: un pago con la tarjeta 4242 4242 4242 4242, comprobar el webhook (200 en Stripe), el libro pintado sin la pestaña abierta y los dos emails si `mail.enabled` es `true`.
-5. Con Álvaro: leer los 10 cuentos de prueba (criterio de B1, `PLANIFICADOR.md`) y decidir las preguntas 5 y 6.
-6. Con los datos legales: rellenar E6.
-7. Preguntar a Álvaro qué le parece la preview completa (estilo y copy nuevos) en su móvil, y si en Safari el hojeador ya no monta el texto sobre la ilustración. Apuntarlo aquí.
-8. Antes de unir el PR #1:
-   - `CRON_SECRET` y `SITE_URL` en producción.
-   - Quitar `/api/dev` si se decide.
-   - Actualizar la descripción del PR.
-   - CI en verde y revisión.
+2. Si el PR #5 no está unido, preguntar a Álvaro y unirlo a la rama de trabajo (merge commit).
+3. Preguntar a Álvaro por los dominios de «Érase su vez» (PLAN §7.1) y por los bloqueos §4.16 a §4.19, en ese orden. Cuando el dominio apunte a Vercel: comprobar `https://erasesuvez.es/robots.txt` en producción y la vista previa del enlace en WhatsApp.
+4. `GET /api/health` en la preview: si `payment.mode` es `stripe`, un pago con la tarjeta 4242 4242 4242 4242; comprobar el webhook (200 en Stripe), el libro pintado con la pestaña cerrada y los dos emails si `mail.enabled` es `true`.
+5. `GET /api/cron/purge?dry=1` en la preview: comprobar que `leads` y `spend` salen sin error (consultas nuevas del PR #5 contra la base real).
+6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN), CI en verde, descripción del PR al día y la prueba con tres personas (B7).

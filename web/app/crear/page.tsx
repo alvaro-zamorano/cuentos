@@ -123,7 +123,7 @@ function Crear() {
   const aside = s.step <= 3;
 
   return (
-    <main className="min-h-dvh pb-16">
+    <main className="min-h-dvh pb-16" data-clarity-mask="True">
       <h1 className="sr-only">Crear su cuento</h1>
       <CrearHeader step={s.step} reachable={reachable} go={go} dirty={dirty} />
       <div className={`mx-auto w-full px-4 pt-6 sm:px-6 lg:pt-10 ${aside ? "max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-14" : "max-w-3xl"}`}>
@@ -183,7 +183,7 @@ function CrearHeader({ step, reachable, go, dirty }: { step: Step; reachable: (n
       </div>
 
       <div className="mx-auto hidden max-w-6xl items-center justify-between gap-6 px-6 py-5 lg:flex">
-        <Link href="/" aria-label="cuentos, inicio" className="text-ink">
+        <Link href="/" aria-label="Érase su vez, inicio" className="text-ink">
           <Wordmark />
         </Link>
         <nav aria-label="Pasos">

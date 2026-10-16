@@ -21,3 +21,19 @@ export function LegalPage({ title, updated, children }: { title: string; updated
 export function Pending({ children }: { children: React.ReactNode }) {
   return <span className="rounded-[3px] bg-paper-deep px-1 text-ink-soft">[{children}]</span>;
 }
+
+/** Un dato del titular (lib/legal.ts): el valor si está en las variables de entorno; si no, el hueco marcado. */
+export function Dato({ value, children }: { value?: string; children: React.ReactNode }) {
+  return value ? <>{value}</> : <Pending>{children}</Pending>;
+}
+
+/** El email de contacto como enlace, o el hueco. */
+export function ContactEmail({ value }: { value?: string }) {
+  return value ? (
+    <a href={`mailto:${value}`} className="link">
+      {value}
+    </a>
+  ) : (
+    <Pending>email de contacto</Pending>
+  );
+}

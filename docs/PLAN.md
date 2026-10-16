@@ -135,18 +135,23 @@ Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de
 6. **Errores:** URL + captura + qué se esperaba; entran en §1 antes de corregirse.
 7. **Copy:** registro adulto, sin diminutivos, sin emojis en interfaz.
 
-## 7. Lista de Álvaro (actualizada 13 oct, noche)
+## 7. Lista de Álvaro (actualizada 16 oct)
 
 Ninguna clave por el chat: a Vercel (proyecto `cuentos` → Settings → Environment Variables) o a un archivo local.
 
-Hecho el 13 oct: `ANTHROPIC_API_KEY` (con workspace), `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, app de GitHub de Claude en el repo.
+Hecho: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GENERATION_PROVIDER=gemini-images` en Preview, app de GitHub de Claude en el repo.
 
-Pendiente:
-1. **Preview:** `GENERATION_PROVIDER=gemini-images` (imágenes de verdad en la interfaz). Claude lo intentó el 13 oct y Vercel le devolvió 403 (su acceso no puede crear variables). `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` ya está. Borrar la variable antigua `service_role`.
-2. **Probar el recorrido entero** en la preview con un niño real y leer los 10 cuentos de prueba (criterio de B1).
-3. **B5** (pasos exactos en `docs/PAGO.md`): Stripe en modo test → `STRIPE_SECRET_KEY` (sk_test_…) y un webhook a `/api/stripe/webhook` → `STRIPE_WEBHOOK_SECRET`. Resend con un dominio verificado → `RESEND_API_KEY` y `MAIL_FROM`. `SITE_URL` en producción. Luego, un pago con la tarjeta de prueba 4242 4242 4242 4242 y comprobar los dos emails.
-4. **B7:** datos legales del responsable (E6), dominio, tres personas ajenas que hagan un libro sin ayuda. Antes de producción: `CRON_SECRET` (obligatorio, E17) y `HEALTH_TOKEN` si se quiere la comprobación profunda.
-5. **Fiscal:** confirmar con la gestoría el IVA aplicable y cómo emitir las facturas antes de cobrar.
+Pendiente, en orden (detalle de cada bloqueo en ESTADO §4):
+1. **Marca «Érase su vez»** (16 oct). Antes de pagar nada, mirar que `@erasesuvez` está libre en Instagram y TikTok y buscar la marca en OEPM y EUIPO. Después:
+   - Comprar `erasesuvez.com` en Vercel (Domains, 11,25 $ al año) y `erasesuvez.es` en un registrador español, porque Vercel no vende `.es`.
+   - En el proyecto `cuentos` → Settings → Domains: añadir los dos, con `erasesuvez.es` como principal y `.com` redirigido a él. En el registrador del `.es`, los registros DNS que enseñe Vercel.
+   - Buzón `hola@erasesuvez.es` para recibir (reenvío del registrador o un buzón); Resend con el mismo dominio para enviar.
+   - Variables: `SITE_URL=https://erasesuvez.es`, `LEGAL_EMAIL=hola@erasesuvez.es`, `MAIL_FROM` con «Érase su vez». En Stripe, el nombre del negocio.
+2. **Bloqueos de salida:** Gemini y menores de 18 (§4.16), plan Pro de Vercel y región de funciones en la UE (§4.17), región de Supabase (§4.18), clave de Gemini de un proyecto con facturación (§4.19).
+3. **B5** (pasos exactos en `docs/PAGO.md`): Stripe en modo test en la preview (`STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`) y un pago con la tarjeta 4242 4242 4242 4242. Resend con el dominio verificado (`RESEND_API_KEY` y `MAIL_FROM`).
+4. **Variables de producción** (ámbito Production): las tres claves, `GENERATION_PROVIDER=gemini-images`, `CRON_SECRET` (obligatorio), `SITE_URL`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`, `LEGAL_EMAIL`, Stripe en modo real y Resend. Sin `NEXT_PUBLIC_DRY_RUN_PAYMENT`. `HEALTH_TOKEN` si se quiere la comprobación profunda. Borrar la variable antigua `service_role`.
+5. **Fiscal:** confirmar con la gestoría el IVA (4 % como libro), el epígrafe IAE y cómo emitir las facturas.
+6. **B7:** tres personas ajenas hacen un libro sin ayuda. Después, unir el PR #1 a `main`.
 
 ## 8. Registro de decisiones
 

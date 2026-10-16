@@ -94,6 +94,11 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await page.getByTestId("approve").click();
   await expect(page.getByTestId("paywall")).toBeVisible();
   await expect(page.getByTestId("book-page-12")).toBeVisible();
+  // sin la renuncia al desistimiento no se puede pagar, y el servidor tampoco lo acepta
+  await expect(page.getByTestId("pay")).toBeDisabled();
+  const sinCasilla = await page.request.post("/api/libro/pay", { data: { bookId: await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string) } });
+  expect(sinCasilla.status()).toBe(400);
+  await page.getByTestId("waiver").check();
   await page.getByTestId("pay").click();
   await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
 

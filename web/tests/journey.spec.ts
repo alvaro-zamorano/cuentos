@@ -24,16 +24,14 @@ test.beforeEach(async ({ page, context }) => {
   });
 });
 
-test("Lead magnet /gratis abre el cuento demo", async ({ page, context }) => {
+test("Flujo antiguo: /clasico, /ilustrado, /libro y /gratis llevan a /crear", async ({ page }) => {
+  for (const path of ["/clasico", "/ilustrado", "/libro?print=1", "/gratis"]) {
+    const r = await page.request.get(path, { maxRedirects: 0 });
+    expect(r.status(), path).toBe(307);
+    expect(new URL(r.headers()["location"], "http://x").pathname, path).toBe("/crear");
+  }
   await page.goto("/gratis");
-  await page.getByPlaceholder("tu@email.com").fill("demo@example.com");
-  await page.getByRole("checkbox").first().check();
-  const [tab] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Descargar PDF" }).click()]);
-  await expect(page.getByTestId("gratis-ok")).toBeVisible();
-  await tab.waitForLoadState();
-  await expect(tab.locator("section.sheet")).toHaveCount(13);
-  await expect(tab.getByRole("heading", { level: 1 })).toContainText("Lucas");
-  await expect(tab.getByText("Toby").first()).toBeVisible();
+  await expect(page).toHaveURL(/\/crear$/);
   expect(consoleErrors).toEqual([]);
 });
 
