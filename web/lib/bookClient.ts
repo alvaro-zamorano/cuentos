@@ -94,6 +94,8 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return "Falta marcar la declaración.";
     case "email":
       return "Revisa el email.";
+    case "waiver_required":
+      return "Falta marcar la casilla de encima del botón.";
     case "payment_unavailable":
       return "El pago todavía no está disponible.";
     case "already_paid":
