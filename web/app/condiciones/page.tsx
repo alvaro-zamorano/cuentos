@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, Pending } from "@/components/LegalPage";
+import { ContactEmail, Dato, LegalPage, Pending } from "@/components/LegalPage";
+import { titular } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Condiciones" };
 
 export default function Condiciones() {
+  const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="14 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="16 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
-        <Pending>nombre o razón social</Pending>, NIF <Pending>NIF</Pending>, <Pending>dirección</Pending>, <Pending>email de contacto</Pending>. Datos completos en el{" "}
+        <Dato value={t.name}>nombre o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, <Dato value={t.address}>dirección</Dato>, <ContactEmail value={t.email} />. Datos completos en el{" "}
         <Link href="/aviso-legal" className="link">aviso legal</Link>.
       </p>
 
@@ -57,15 +59,15 @@ export default function Condiciones() {
       <p>
         Los cuentos se confeccionan según las especificaciones de quien los encarga y están claramente personalizados. Por eso, de acuerdo con el{" "}
         <strong>art. 103.c) del Texto Refundido de la Ley General para la Defensa de los Consumidores y Usuarios</strong> (TRLGDCU), no se aplica
-        el derecho de desistimiento. Lo aceptas expresamente antes de pagar <Pending>falta esa casilla en el paso del pago; necesaria antes de
-        cobrar</Pending>. Esto no afecta a tus derechos si el producto llega defectuoso o
+        el derecho de desistimiento. Lo mismo dice el art. 103.m) para el contenido digital que empieza a prepararse en cuanto pagas. Lo
+        aceptas expresamente antes de pagar, en una casilla junto al botón de pago, y queda registrado con el pago. Esto no afecta a tus derechos si el producto llega defectuoso o
         no corresponde con lo pedido.
       </p>
 
       <h2>8. Garantía y reclamaciones</h2>
       <p>
-        Si el PDF no se puede abrir, le falta alguna página o la tapa dura llega dañada, escríbenos a <Pending>email de contacto</Pending> en un
-        plazo de <Pending>plazo</Pending> y lo reponemos. Hojas de reclamación disponibles a petición.
+        Si el PDF no se abre o le falta alguna página, escríbenos a <ContactEmail value={t.email} /> y lo reponemos sin coste. Esto no limita la
+        garantía legal que te corresponde como consumidor. Hojas de reclamación disponibles a petición.
       </p>
 
       <h2>9. Guarda tu PDF</h2>
