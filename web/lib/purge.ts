@@ -5,6 +5,10 @@
  * - Libro caducado pagado: el pedido se conserva (contabilidad), así que la fila queda vacía: sin ficha ni plan
  *   (draft = {}), sin jobs y sin imágenes, con estado `expired`. Se queda el email del cliente junto al pedido.
  * - Planes cacheados en cuentos_stories con más de 30 días: se vacían la ficha y el cuento; se quedan coste y modelo.
+ * - Emails sin consentimiento de novedades (E18, 16 oct): la fila de cuentos_leads se borra a los 30 días si ese email
+ *   ya no tiene ningún libro vigente. Con consentimiento, se queda hasta la baja.
+ * - Gasto (cuentos_spend) con más de 30 días: el email del lead se sustituye por «borrado»; se quedan importe y fecha.
+ *   El tope por lead vuelve a empezar para ese email, lo que se acepta.
  *
  * El acceso a la base se inyecta (PurgeDb) para probarlo sin Supabase.
  */
@@ -29,6 +33,10 @@ export interface PurgeDb {
   scrubPaidBook(bookId: string): Promise<void>;
   /** Vacía input y story de los planes anteriores a `before` (con `dryRun`, solo los cuenta); devuelve cuántos. */
   scrubStories(before: Date, dryRun: boolean): Promise<number>;
+  /** Borra los leads sin consentimiento de novedades anteriores a `before` sin libro vigente; devuelve cuántos. */
+  scrubLeads(before: Date, dryRun: boolean): Promise<number>;
+  /** Quita el email de las filas de gasto anteriores a `before`; devuelve cuántas. */
+  scrubSpend(before: Date, dryRun: boolean): Promise<number>;
 }
 
 export interface PurgeReport {
@@ -37,13 +45,18 @@ export interface PurgeReport {
   scrubbedPaid: number;
   files: number;
   stories: number;
+  leads: number;
+  spend: number;
   remaining: boolean;
 }
 
 export const RETENTION_DAYS = 30;
 
+/** Lo que queda en cuentos_spend.lead_id cuando se quita el email. */
+export const ANON_LEAD = "borrado";
+
 export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date(), batch = 100, deadline = Date.now() + 50_000 }: { dryRun?: boolean; now?: Date; batch?: number; deadline?: number } = {}): Promise<PurgeReport> {
-  const report: PurgeReport = { dryRun, deleted: 0, scrubbedPaid: 0, files: 0, stories: 0, remaining: false };
+  const report: PurgeReport = { dryRun, deleted: 0, scrubbedPaid: 0, files: 0, stories: 0, leads: 0, spend: 0, remaining: false };
   const seen = new Set<string>();
   while (Date.now() < deadline) {
     const books = (await db.expiredBooks(batch)).filter((b) => !seen.has(b.id));
@@ -72,7 +85,11 @@ export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date
     if (report.remaining) break;
   }
   if (Date.now() >= deadline) report.remaining = true;
-  report.stories = await db.scrubStories(new Date(now.getTime() - RETENTION_DAYS * 86_400_000), dryRun);
+  const before = new Date(now.getTime() - RETENTION_DAYS * 86_400_000);
+  report.stories = await db.scrubStories(before, dryRun);
+  // después de los libros: un email cuyo último libro acaba de caducar ya no tiene libro vigente
+  report.leads = await db.scrubLeads(before, dryRun);
+  report.spend = await db.scrubSpend(before, dryRun);
   return report;
 }
 
@@ -124,6 +141,31 @@ export function supabasePurgeDb(db: SupabaseClient<Database>): PurgeDb {
       }
       const { data, error } = await db.from("cuentos_stories").update({ input: {}, story: {} }).lt("created_at", before.toISOString()).neq("input", "{}").select("id");
       must(error, "stories.scrub");
+      return data?.length ?? 0;
+    },
+    async scrubLeads(before, dryRun) {
+      // por tandas de 200: la lista de emails va en la URL del filtro
+      const { data: leads, error } = await db.from("cuentos_leads").select("id, email").eq("marketing", false).lt("created_at", before.toISOString()).order("created_at").limit(200);
+      must(error, "leads");
+      if (!leads?.length) return 0;
+      const emails = [...new Set(leads.map((l) => l.email))];
+      const live = await db.from("cuentos_books").select("email").in("email", emails).gt("expires_at", new Date().toISOString());
+      must(live.error, "books.live");
+      const keep = new Set((live.data ?? []).map((b) => b.email));
+      const ids = leads.filter((l) => !keep.has(l.email)).map((l) => l.id);
+      if (dryRun || ids.length === 0) return ids.length;
+      const del = await db.from("cuentos_leads").delete().in("id", ids);
+      must(del.error, "leads.delete");
+      return ids.length;
+    },
+    async scrubSpend(before, dryRun) {
+      if (dryRun) {
+        const { count, error } = await db.from("cuentos_spend").select("id", { count: "exact", head: true }).like("lead_id", "%@%").lt("created_at", before.toISOString());
+        must(error, "spend.count");
+        return count ?? 0;
+      }
+      const { data, error } = await db.from("cuentos_spend").update({ lead_id: ANON_LEAD }).like("lead_id", "%@%").lt("created_at", before.toISOString()).select("id");
+      must(error, "spend.scrub");
       return data?.length ?? 0;
     },
   };
