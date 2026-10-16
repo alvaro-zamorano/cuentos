@@ -9,7 +9,7 @@ import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
 
 export const metadata: Metadata = {
-  title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · cuentos" },
+  title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
   description:
     "Un cuento personalizado con tu hijo, tu nieta o tu sobrino de protagonista y la historia que tú quieras: su cumpleaños, un viaje a la Luna o el primer día de cole. Lo escribimos y lo ilustramos; lo lees gratis y lo imprimes en casa.",
 };

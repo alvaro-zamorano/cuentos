@@ -103,7 +103,7 @@ export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000
     const sheets = await page.$$("section.sheet");
     const doc = await PDFDocument.create();
     doc.setTitle(`El cumpleaños de ${draft.hero.name.trim()}`);
-    doc.setProducer("cuentos");
+    doc.setProducer("Érase su vez");
     for (const sheet of sheets.slice(0, 13)) {
       const jpg = await sheet.screenshot({ type: "jpeg", quality: 86 });
       const img = await doc.embedJpg(jpg);

@@ -183,7 +183,7 @@ function CrearHeader({ step, reachable, go, dirty }: { step: Step; reachable: (n
       </div>
 
       <div className="mx-auto hidden max-w-6xl items-center justify-between gap-6 px-6 py-5 lg:flex">
-        <Link href="/" aria-label="cuentos, inicio" className="text-ink">
+        <Link href="/" aria-label="Érase su vez, inicio" className="text-ink">
           <Wordmark />
         </Link>
         <nav aria-label="Pasos">

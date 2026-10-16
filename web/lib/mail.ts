@@ -29,13 +29,13 @@ async function send(to: string, subject: string, html: string, text: string): Pr
 }
 
 function layout(title: string, body: string, link: string, cta: string): string {
-  return `<!doctype html><html lang="es"><body style="margin:0;background:#f7f3ec;font-family:Georgia,serif;color:#1f1a17">
+  return `<!doctype html><html lang="es"><body style="margin:0;background:#fbf5ea;font-family:Georgia,serif;color:#232036">
 <div style="max-width:520px;margin:0 auto;padding:32px 24px">
-<p style="font-style:italic;font-size:22px;margin:0 0 24px">cuentos</p>
+<p style="font-style:italic;font-size:22px;margin:0 0 24px"><span style="color:#f2b84b">&#10022;</span> Érase su vez</p>
 <h1 style="font-size:26px;font-weight:500;margin:0 0 16px">${esc(title)}</h1>
-<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5c534b">${body}</p>
-<p style="margin:28px 0"><a href="${esc(link)}" style="background:#1f4d3a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:6px;font-family:Helvetica,Arial,sans-serif;font-size:15px">${esc(cta)}</a></p>
-<p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#8a7d6e">Guardamos el libro 30 días. Si no lo has pedido tú, ignora este mensaje.</p>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">${body}</p>
+<p style="margin:28px 0"><a href="${esc(link)}" style="background:#c8492c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:bold;font-family:Helvetica,Arial,sans-serif;font-size:15px">${esc(cta)}</a></p>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6f6457">Guardamos el libro 30 días. Si no lo has pedido tú, ignora este mensaje.</p>
 </div></body></html>`;
 }
 
