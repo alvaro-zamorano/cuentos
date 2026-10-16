@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     template: "%s · cuentos",
   },
   description:
-    "Un cuento personalizado con tu hijo o tu hija como protagonista: su nombre, cómo es y quién le acompaña. Un regalo de cumpleaños para imprimir en casa o recibir en tapa dura.",
+    "Un cuento personalizado con tu hijo o tu hija como protagonista: su nombre, cómo es y quién le acompaña. Un regalo para leer juntos e imprimir en casa.",
 };
 
 /** Microsoft Clarity: solo si NEXT_PUBLIC_CLARITY_ID existe en el entorno del build (nunca en el repo) y tras consentimiento (CookieConsent). */
