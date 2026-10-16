@@ -28,6 +28,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `PLANIFICADOR.md` — B1: de la ficha al plan del libro; evaluación con 10 fichas · vigente
 - `MUESTRA-LUNA.md` — el libro de muestra «Vera y Toby viajan a la Luna» · vigente
 - `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía (Lora + Figtree + Patrick Hand), cambios por paso e implementación · **aprobado e implementado**; unido a la rama de trabajo el 14 oct (PR #2)
+- `PROVEEDORES.md` — contratos de encargo, transferencias y papel de cada proveedor, con fuentes (16 oct); respalda `/privacidad` · vigente
 - `FASE0.md` — calibración inicial con Nano Banana, la base de D1–D6 · histórico
 - `ASSETS.md` — fondos y poses para el compositor de piezas · **superado por D1** (pendiente de retirar del Project)
 
@@ -53,6 +54,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 | Esquema de la base | `supabase/migrations/` + `docs/sql/` | `docs/supabase.md` |
 | Texto del libro de muestra | `web/lib/muestra.ts` | `MUESTRA-LUNA.md` |
 | Reglas de trabajo con Álvaro | `PLAN.md` §6 | `CLAUDE.md` |
+| Proveedores y sus contratos | `PROVEEDORES.md` | `/privacidad` §7 |
 
 ## 4. Bloques
 
@@ -76,12 +78,14 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Libro: hoja, portada, pago, páginas, vista | `lib/book/service.ts`, rutas `app/api/libro/*` |
 | Pintar imágenes (jobs, presupuesto, Gemini) | `lib/generation/{service,adapter,budget,store,postprocess}.ts`, `app/api/generate/run` |
 | Segundo plano | `lib/book/background.ts` + `paintLater` en `app/api/libro/_shared.ts` |
-| Stripe y Resend | `lib/stripe.ts`, `lib/mail.ts`, `app/api/libro/checkout`, `app/api/stripe/webhook` |
+| Stripe y Resend | `lib/stripe.ts` (también la renuncia al desistimiento: `waiverAccepted`, metadatos `withdrawal_waiver_*`), `lib/mail.ts`, `app/api/libro/checkout`, `app/api/stripe/webhook` |
 | PDF | `lib/pdf/book2.ts` (maqueta), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf` |
-| Borrado a 30 días | `lib/purge.ts`, `app/api/cron/purge`, `vercel.json` |
+| Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` |
+| Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`); proveedores en `docs/PROVEEDORES.md` |
+| Buscadores | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts` (solo producción con `SITE_URL`) |
 | Salud y pruebas | `app/api/health`; `app/api/dev` (fuera de producción; en Vercel solo con `DEV_TOKEN`, `lib/devAccess.ts`; fuerza Gemini y cuesta dinero) |
-| Tests | `tests/unit/*.test.ts` (82), `tests/crear.spec.ts` + `tests/journey.spec.ts` (8 Playwright), `.github/workflows/ci.yml` |
-| Flujo antiguo (fuera del embudo por D1) | `app/{clasico,ilustrado,libro,gratis}`, `lib/{story,pieces,arcs,…}`, `app/api/{story,jobs,books,pdf,generate/book,generate/sample}` |
+| Tests | `tests/unit/*.test.ts` (87), `tests/crear.spec.ts` + `tests/journey.spec.ts` (8 Playwright), `.github/workflows/ci.yml` |
+| Flujo antiguo (fuera del embudo por D1; redirige a `/crear` desde el 16 oct, `next.config.ts`) | `app/{clasico,ilustrado,libro,gratis}`, `lib/{story,pieces,arcs,…}`, `app/api/{story,jobs,books,pdf,generate/book,generate/sample}` |
 
 ## 6. Cómo trabajar
 
