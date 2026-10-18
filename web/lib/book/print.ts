@@ -14,6 +14,7 @@ import type { PaidOrder, PrintStatus } from "../print/types";
 import type { GenStore } from "../generation/store";
 import type { Fail } from "../generation/service";
 import type { PrintBookInput } from "../pdf/printHtml";
+import { printableInEnv } from "../stripe";
 import { bookView, draftV2, loadBook } from "./service";
 
 export interface PrintDeps {
@@ -46,7 +47,12 @@ const FILE_URL_SECONDS = 7 * 24 * 3600;
  * «Mandar a imprimir»: comprueba que se puede y pasa el pedido a `sending` (una sola vez aunque lleguen dos peticiones).
  * El trabajo largo (maquetar, subir, crear el pedido) lo hace `completePrint`, en segundo plano.
  */
-export async function startPrint(store: GenStore, bookId: unknown, mode: PrintMode): Promise<{ ok: true; orderId: string } | Fail> {
+export async function startPrint(
+  store: GenStore,
+  bookId: unknown,
+  mode: PrintMode,
+  env: Record<string, string | undefined> = process.env,
+): Promise<{ ok: true; orderId: string } | Fail> {
   if (mode === "none") return fail(501, "print_unavailable");
   const loaded = await loadBook(store, bookId);
   if ("ok" in loaded) return loaded;
@@ -54,6 +60,7 @@ export async function startPrint(store: GenStore, bookId: unknown, mode: PrintMo
   const order = await store.getOrder(book.id);
   if (!order || order.edition !== "hardcover" || !order.printStatus) return fail(409, "not_hardcover");
   if (order.printStatus !== "awaiting_approval" && order.printStatus !== "failed") return fail(409, "already_sent");
+  if (!printableInEnv(order.sessionId, env)) return fail(409, "test_order", "Este libro se pagó en modo de prueba y no se imprime.");
   if (!order.shipping) return fail(409, "no_shipping", "Falta la dirección de envío.");
   const view = await bookView(store, bookId);
   if (!view.ok) return view;

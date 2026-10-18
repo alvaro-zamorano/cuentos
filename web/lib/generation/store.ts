@@ -117,7 +117,7 @@ export interface OrderPatch {
 }
 
 const ORDER_COLUMNS =
-  "id, book_id, edition, amount_cents, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, created_at";
+  "id, book_id, edition, amount_cents, stripe_session_id, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, created_at";
 
 function asOrder(r: Record<string, unknown>): PaidOrder {
   return {
@@ -125,6 +125,7 @@ function asOrder(r: Record<string, unknown>): PaidOrder {
     bookId: String(r.book_id),
     edition: r.edition === "hardcover" ? "hardcover" : "illustrated",
     amountCents: Number(r.amount_cents ?? 0),
+    sessionId: (r.stripe_session_id as string | null) ?? null,
     shipping: (r.shipping as Shipping | null) ?? null,
     printStatus: (r.print_status as PrintStatus | null) ?? null,
     printOrderId: (r.print_order_id as string | null) ?? null,
@@ -364,6 +365,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
         bookId,
         edition: o.edition === "hardcover" ? "hardcover" : "illustrated",
         amountCents: o.amountCents,
+        sessionId: o.sessionId ?? null,
         shipping: o.shipping ?? null,
         printStatus: o.printStatus ?? null,
         printOrderId: null,

@@ -1,12 +1,12 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-18 (decisiones de Álvaro sobre los bloqueos; funciones en Dublín) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
+Actualizado: 2026-10-18, noche (variables y webhook de Gelato; preview comprobada con Stripe, Resend y Gelato) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora (18 oct, tarde):** MVP con family and friends en producción. Bloqueos resueltos (§2). Lo que queda es de Álvaro: Gelato (en curso), Stripe, buzón de `hola@erasesuvez.com`, variables de producción (PLAN §7.4) y la prueba con tres personas. Después, unir el PR #1 a `main`.
+- **Ahora (18 oct, noche):** MVP con family and friends en producción. La preview ya tiene Stripe (test), Resend y Gelato (borradores), con todas las comprobaciones en verde (§3). Falta: la compra de prueba completa en la preview, Stripe real en Production (§4.29), `SITE_URL` y los `LEGAL_*` en Production, el buzón de `hola@erasesuvez.com` y la prueba con tres personas. Después, unir el PR #1 a `main`.
 - **Producto (18 oct, D7):** se sale con el libro de tapa dura (34,90 €, envío a la Península y Baleares, PDF incluido). La conexión con Gelato está en el PR de B8; falta que Álvaro cree la cuenta, ponga la clave en Preview y pida la muestra (`IMPRESION.md` §7).
 - **Después:** unir el PR #1 a `main` (salida a producción).
 - **Fuera de foco ahora:** más estilos de ilustración, el Reel (B6). El flujo antiguo redirige a `/crear` desde el 16 oct.
@@ -75,6 +75,10 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-18 | Supabase está en eu-west-1 (Irlanda): no hace falta moverla. Las funciones de Vercel pasan de iad1 (Washington) a dub1 (Dublín), junto a la base | Región sacada de la IPv6 de `db.<ref>.supabase.co` contra la lista oficial de IP de AWS. Menos latencia por consulta y los datos se procesan en la UE | `web/vercel.json`, `/privacidad` §7 |
 | 2026-10-18 | IVA (Álvaro): libros al 4 %, el PDF y la tapa dura | Decisión de Álvaro | `/condiciones` §6 |
 | 2026-10-18 | Resend creado y conectado a `erasesuvez.com` (DKIM y registros de envío en el DNS de Vercel, región eu-west-1). Falta recibir correo en `hola@` (sin registro MX) | Lo hizo Álvaro; comprobado en el DNS | PLAN §7.1 |
+| 2026-10-18 | Stripe en producción con **cobro real** durante el MVP (Álvaro). Claves `sk_live_` y secreto del endpoint real solo en Production; Preview sigue en modo de prueba | En producción Gelato imprime de verdad: con claves de prueba, la tarjeta 4242 daría libros impresos gratis | `PAGO.md` |
+| 2026-10-18 | Salvaguarda en el código: en producción el webhook de Stripe ignora los eventos con `livemode: false` y «Mandar a imprimir» rechaza los pedidos sin sesión `cs_live_` (error `test_order`) | La base es la misma que la de la preview: un libro pagado allí de prueba se puede abrir en el dominio de producción | `lib/stripe.ts`, `lib/book/print.ts` |
+| 2026-10-18 | Correo de `hola@erasesuvez.com`: reenvío gratuito a Gmail (Álvaro). Él crea la cuenta del servicio; Claude pone los MX en el DNS de Vercel | Lo más simple para el MVP; no hace falta un buzón | §4.30 |
+| 2026-10-18 | Borrar la variable antigua `service_role` de Vercel (Álvaro) | Sobraba desde E11 | — |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -125,6 +129,13 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Comprobado en local:** PDF de imprenta del libro de muestra, 33 páginas con los tamaños exactos; recorrido completo con la imprenta simulada en Playwright (pago de prueba, dirección, mandar a imprimir, libro bloqueado).
 - **Autoguardado tras imprimir:** el guardado diferido del plan llegaba después de mandar a imprimir y daba 409. Ahora, si el libro está bloqueado y el texto no cambia, se responde bien sin tocar nada.
 
+### 18 oct, noche (configuración para salir)
+
+- **Hecho en Vercel y Gelato (Claude con Chrome, con el visto bueno de Álvaro):** webhook de Gelato a la preview (`/api/print/webhook?token=…`, eventos `order_status_updated` y `order_item_tracking_code_updated`); el mismo token en `GELATO_WEBHOOK_SECRET` (Production y Preview), pegado sin verlo; `CRON_SECRET` en Production, generado en la propia página sin verlo. `SITE_URL` quedó rellena en el diálogo sin guardar: el permiso automático bloqueó el Save de una variable de producción.
+- **Preview desplegada desde git** (`c0e0b09`) y `/api/health?deep=1` en verde: Supabase, Anthropic y Gemini «ok»; `payment.mode` = `stripe`; `mail.enabled` = `true`; `print.mode` = `gelato`, `orderType` = `draft`, `webhookSecret` = `true`. En la preview `SITE_URL` no hace falta: los enlaces usan el origen de la petición.
+- **Dominio:** `www.erasesuvez.com` y `erasesuvez.com` (308 a www) unidos al proyecto y verificados; DNS en Vercel. Registros de Resend presentes (DKIM `resend._domainkey`, `send` y `rsend`). **No hay registro MX:** `hola@erasesuvez.com` no recibe correo todavía.
+- **Riesgo antes de producción:** en producción Gelato crea siempre pedidos reales (`gelatoOrderType`), y el webhook de Stripe no mira `livemode`. Si producción tuviera claves de Stripe de prueba, cualquiera con la tarjeta 4242 recibiría un libro impreso real pagado por la cuenta de Gelato. Además, `STRIPE_WEBHOOK_SECRET` tiene un solo valor para Production y Preview, y los secretos de los endpoints de prueba y real son distintos. Resuelto con cobro real y una salvaguarda en el código (§2, §4.29).
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
@@ -150,20 +161,23 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 20. **Clarity:** si se activa, poner la ocultación en Strict en su panel. El código ya oculta `/crear`. Álvaro.
 21. ~~**Precio del libro impreso (D7)**~~ 34,90 € con envío y el PDF incluido; el PDF solo, 14,90 € (18 oct). Probar 39,90 € más adelante.
 22. **Qué es gratis (D3):** con D7, el PDF casero gratis compite con lo que se vende. Propuesta: mantener gratis el cuento, los personajes y la portada en la web, y pasar el PDF casero a pago o marcarlo con la marca. Álvaro.
-23. **Imprenta:** Gelato conectado (18 oct). Falta: cuenta, clave en Preview, webhook, método de pago en Gelato y la muestra (`IMPRESION.md` §7), la entidad del contrato y su DPA (`PROVEEDORES.md`, `/privacidad` §7), y presupuesto a Podiprint y Realisaprint para comparar. Álvaro.
+23. **Imprenta:** Gelato conectado (18 oct). Cuenta, clave en Preview y webhook hechos (18 oct, noche). Falta: método de pago en Gelato y la muestra (`IMPRESION.md` §7), la entidad del contrato y su DPA (`PROVEEDORES.md`, `/privacidad` §7), y presupuesto a Podiprint y Realisaprint para comparar. Álvaro.
 24. ~~**IVA del libro impreso**~~ 4 % (Álvaro, 18 oct).
 25. **Segundo ejemplar y tarjeta regalo:** propuestas para subir el ticket medio (un segundo ejemplar a 24,90 € a la misma dirección) y para quien regala sin conocer al niño. Álvaro.
 26. ~~**Orden de salida**~~ Se sale con la tapa dura (18 oct). Queda fijar la fecha límite de Navidad con los plazos reales de la muestra.
 27. **Producto exacto de Gelato:** el código busca en el catálogo una tapa dura cuadrada de 20×20; si encuentra otra cosa o nada, poner `GELATO_PRODUCT_UID`. Se ve en la muestra. Claude con Álvaro.
-28. **Sin probar contra Gelato:** la API real, el webhook y que acepte el PDF. Necesita la clave en Preview. Claude, cuando esté.
+28. **Sin probar contra Gelato:** la API real, el webhook y que acepte el PDF. La clave y el webhook ya están en la preview (18 oct, noche): falta la compra de prueba (§5). Álvaro y Claude.
+29. ~~**Stripe en producción**~~ Cobro real (Álvaro, 18 oct) y salvaguarda en el código (§2). Falta que Álvaro active la cuenta, ponga `sk_live_` y el secreto del endpoint real en Production y separe `STRIPE_WEBHOOK_SECRET` de Preview (`PAGO.md`). Álvaro.
+30. **Buzón de `hola@erasesuvez.com`:** reenvío gratuito a Gmail (Álvaro, 18 oct). Álvaro crea la cuenta (p. ej. ImprovMX), añade el dominio y el alias `hola`; Claude pone en el DNS de Vercel los MX y el SPF que muestre el servicio. Después, `LEGAL_EMAIL=hola@erasesuvez.com` en Production. Álvaro y Claude.
+31. **Variable antigua `service_role`** en Vercel: sobra (E11). Borrarla con el visto bueno de Álvaro.
 
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. Preguntar a Álvaro por §4.19 (Gemini de pago) y §4.22 (qué es gratis).
-3. Correo del dominio (PLAN §7.1): cuando Álvaro tenga los registros de Resend y del buzón, añadirlos en el DNS de Vercel (`erasesuvez.com`) con su visto bueno. No son secretos.
-4. B8: si `GELATO_API_KEY` está en Preview, `GET /api/health` (`print.mode` debe ser `gelato`) y un libro de prueba con «Mandar a imprimir» (borrador en Gelato); comprobar el producto elegido, las medidas de la cubierta y el webhook. Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.24 y §4.25.
-5. `GET /api/health` en la preview: si `payment.mode` es `stripe`, un pago con la tarjeta 4242 4242 4242 4242; comprobar el webhook (200 en Stripe), el libro pintado con la pestaña cerrada y los dos emails si `mail.enabled` es `true`.
-6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN), CI en verde, descripción del PR al día y la prueba con tres personas (B7). Después, comprobar en producción `https://www.erasesuvez.com/robots.txt` (debe permitir y apuntar al sitemap) y la vista previa del enlace en WhatsApp.
+3. Correo del dominio (§4.30): Resend ya está en el DNS; cuando Álvaro tenga el reenvío o el buzón, añadir sus MX en el DNS de Vercel (`erasesuvez.com`) con su visto bueno. No son secretos.
+4. **Compra de prueba completa en la preview** (todo configurado el 18 oct, noche): Álvaro crea un libro de tapa dura, paga con la tarjeta 4242 4242 4242 4242 y pulsa «Mandar a imprimir». Claude comprueba el webhook de Stripe (200), el pedido en `cuentos_orders`, las 12 páginas pintadas con la pestaña cerrada, los dos emails, el borrador en Gelato (producto, medidas de la cubierta, que acepte el PDF) y los avisos del webhook de Gelato. Coste: unos 1 $ de generación. Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.25 y §4.27.
+5. Stripe real en Production (§4.29, `PAGO.md`): lo pone Álvaro. La salvaguarda del código va en el PR de `feat/stripe-livemode`.
+6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN; ya están `CRON_SECRET` y `GELATO_WEBHOOK_SECRET`), cambiar el webhook de Gelato a `https://www.erasesuvez.com/api/print/webhook?token=…` (mismo token), CI en verde, descripción del PR al día y la prueba con tres personas (B7). Después, comprobar en producción `https://www.erasesuvez.com/robots.txt` (debe permitir y apuntar al sitemap) y la vista previa del enlace en WhatsApp.
 
 Hecho del antiguo §5: la purga en simulación contra la base real (16 oct, sin errores: `leads` 0 y `spend` 0, la base tiene menos de 30 días).

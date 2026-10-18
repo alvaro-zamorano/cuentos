@@ -98,7 +98,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 
 - **GitHub:** app de Claude instalada en el repo. Siempre rama + PR; nada directo a `main`.
 - **Vercel:** team `wcoach24s-projects`, proyecto `prj_Ldda556jlY1RnT8HmMtgOfDZpnuU`.
-  - Claude puede ver despliegues y logs, pero **no crear variables** (403). Las variables las pone Álvaro en Settings → Environment Variables.
+  - Claude puede ver despliegues y logs. Por la API **no puede crear variables** (403). Con Claude in Chrome sí, con el visto bueno de Álvaro: los secretos se generan o se pegan dentro de la página sin verlos. Guardar una variable de **Production** lo bloquea el permiso automático: la guarda Álvaro.
 - **Supabase:** proyecto compartido con otros productos de Álvaro (`bcicjjkgjgajxbrwmeyf`).
   - Tablas `cuentos_*` con RLS; bucket privado `cuentos`.
   - El conector de Supabase de Claude («Carche») llega a esta misma base por SQL.

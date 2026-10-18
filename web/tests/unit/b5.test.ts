@@ -10,7 +10,7 @@ import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll, publicOrigin } from "../../lib/book/background";
 import { bookView, prepareCheckout, notifyBookReady, payDryRun, pendingPageJobs, recordStripePayment, requestPages, startBook, PRICE_CENTS } from "../../lib/book/service";
-import { checkoutBody, dryRunPaymentAllowed, paymentMode, verifyWebhook, waiverAccepted, WAIVER_VERSION } from "../../lib/stripe";
+import { checkoutBody, dryRunPaymentAllowed, eventModeAllowed, paymentMode, verifyWebhook, waiverAccepted, WAIVER_VERSION } from "../../lib/stripe";
 import { mailEnabled } from "../../lib/mail";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -104,6 +104,15 @@ test("paintAll: hoja y portada se terminan en segundo plano (una detrás de otra
   // sin tiempo no se empieza nada
   const late = await paintAll(store, dryRunAdapter, [start.sheetJobId], { deadline: Date.now() - 1 });
   assert.deepEqual(late, { [start.sheetJobId]: "timeout" });
+});
+
+test("webhook: en producción solo cuentan los cobros reales (Gelato imprime de verdad)", () => {
+  const prod = { VERCEL_ENV: "production" };
+  assert.equal(eventModeAllowed({ livemode: true }, prod), true);
+  assert.equal(eventModeAllowed({ livemode: false }, prod), false, "tarjeta 4242 en producción: no se imprime");
+  assert.equal(eventModeAllowed({}, prod), false, "sin livemode no se da por real");
+  assert.equal(eventModeAllowed({ livemode: false }, { VERCEL_ENV: "preview" }), true, "en la preview, pagos de prueba");
+  assert.equal(eventModeAllowed({ livemode: false }, {}), true, "en local, pagos de prueba");
 });
 
 test("webhook: el pedido se registra una vez; lo que no es un cobro se ignora", async () => {
