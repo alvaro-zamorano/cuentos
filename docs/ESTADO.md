@@ -1,12 +1,12 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-18 (B8: conexión con la imprenta, código hecho) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 en curso · B8 código hecho (falta la clave de Gelato y la muestra)
+Actualizado: 2026-10-18 (PR #5, #6 y #7 unidos a la rama de trabajo; dominio `erasesuvez.com` comprado) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 en curso · B8 código hecho (falta la clave de Gelato y la muestra)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora (16 oct):** salir al público. El código que faltaba está en el PR #5 (desistimiento, tope, E18, legales, flujo antiguo, robots). Lo que queda es de Álvaro, en este orden: marca y dominio, cuatro bloqueos de §4 (Gemini y menores, plan de Vercel, región de Supabase, clave de Gemini de pago), Stripe y Resend, variables de producción, gestoría, y la prueba con tres personas.
+- **Ahora (18 oct):** salir al público. Todo el código está en la rama de trabajo (PR #5, #6 y #7 unidos el 18 oct) y el dominio `erasesuvez.com` está comprado y apuntando a Vercel. Lo que queda es de Álvaro, en este orden: los bloqueos de §4 (16 a 19 y 22), el correo del dominio, Stripe, Gelato, las variables de producción, la gestoría y la prueba con tres personas.
 - **Producto (18 oct, D7):** se sale con el libro de tapa dura (34,90 €, envío a la Península y Baleares, PDF incluido). La conexión con Gelato está en el PR de B8; falta que Álvaro cree la cuenta, ponga la clave en Preview y pida la muestra (`IMPRESION.md` §7).
 - **Después:** unir el PR #1 a `main` (salida a producción).
 - **Fuera de foco ahora:** más estilos de ilustración, el Reel (B6). El flujo antiguo redirige a `/crear` desde el 16 oct.
@@ -68,6 +68,8 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-18 | Migración `0005_cuentos_5_impreso` aplicada en Supabase con el visto bueno de Álvaro: dirección, estado de imprenta, id de Gelato, seguimiento y marcas de email en `cuentos_orders` | Lo necesita el pedido impreso | `supabase/migrations/0005_cuentos_5_impreso.sql` |
 | 2026-10-18 | Maqueta de imprenta: 30 páginas interiores con las escenas a doble página y cubierta en noche con lomo; un solo PDF de 33 páginas. Sin las medidas reales de la cubierta (API de Gelato) no se manda | Gelato pide un archivo así para los fotolibros; una cubierta mal medida se imprime mal | `lib/pdf/printHtml.ts`, `lib/pdf/print.ts` |
 | 2026-10-18 | Fuera de producción, los pedidos de Gelato se crean como borrador (no se imprimen) salvo `GELATO_ORDER_TYPE=order` | Que una prueba en la preview no imprima ni cobre por error | `lib/print/gelato.ts` |
+| 2026-10-18 | Dominio: Álvaro compra `erasesuvez.com` en Vercel. Principal `https://www.erasesuvez.com`; `erasesuvez.com` redirige con 308 (lo configuró Vercel al añadirlo). DNS en Vercel, sin errores de configuración. El `.es` sigue libre y queda opcional. Sustituye «principal `erasesuvez.es`» del 16 oct | Comprado el `.com`; la redirección a www es la que propone Vercel | PLAN §7.1 |
+| 2026-10-18 | PR #7 (B8) unido a su base, #6 (D7) a la suya y #5 a la rama de trabajo, con merge commits. Aprobado por Álvaro | Comprobado antes sobre la pila completa: tsc, eslint, 100 unitarios, build y 9 Playwright; CI en verde. La rama de trabajo queda idéntica a lo probado | — |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -128,7 +130,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 6. ~~**Antes de unir el PR #1:** ¿se borran las rutas del flujo antiguo y `/api/dev`?~~ El flujo antiguo redirige a `/crear` (16 oct). `/api/dev` sigue: en producción da 404 siempre.
 7. **`claude/ASSETS.md` está superado por D1.** ¿Se retira del Project? Sigue en el repo.
 8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
-9. ~~**Marca comercial y dominio**~~ «Érase su vez» (16 oct). Falta comprar los dominios, el usuario de Instagram y la búsqueda en OEPM y EUIPO (PLAN §7). Propuestas que se barajaron: Con `.es` y `.com` libres el 16 oct: «Érase su vez» (`erasesuvez`), «Noche de cuento» (`nochedecuento`), «Cuento suyo» (`cuentosuyo`). `.com` a 11,25 $ al año en Vercel; `.es`, en un registrador que lo venda. Antes de comprar: usuario de Instagram libre y búsqueda en OEPM y EUIPO. Descartada «Su cuento» por MiCuento.
+9. ~~**Marca comercial y dominio**~~ «Érase su vez» (16 oct); `erasesuvez.com` comprado el 18 oct, con `www` como principal. Falta, si no está hecho: el usuario de Instagram y TikTok y la búsqueda en OEPM y EUIPO. El `.es` sigue libre (opcional).
 10. **¿Miniaturas también para personas y accesorios?** El catálogo tiene 8 abuelos y 8 accesorios. Las miniaturas tienen el estilo del catálogo, parecido pero no idéntico al del libro.
 11. ~~**Estilo nuevo, «La hora del cuento»**~~: aprobado el 13 oct con Lora en vez de Fraunces e implementado (§2, `ESTILO.md`).
 12. ~~**¿Se une el PR #2 (estilo) a la rama de trabajo?**~~ Unido el 14 oct, con el copy (PR #4) y la demo abierta (PR #3).
@@ -153,9 +155,10 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
-2. Si el PR #5 no está unido, preguntar a Álvaro y unirlo a la rama de trabajo (merge commit).
-3. B8: si el PR de la imprenta no está unido, preguntar a Álvaro. Si `GELATO_API_KEY` está en Preview, `GET /api/health` (`print.mode` debe ser `gelato`) y un libro de prueba con «Mandar a imprimir» (borrador en Gelato); comprobar el producto elegido, las medidas de la cubierta y el webhook. Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.22, §4.24, §4.25.
-4. Preguntar a Álvaro por los dominios de «Érase su vez» (PLAN §7.1) y por los bloqueos §4.16 a §4.19, en ese orden. Cuando el dominio apunte a Vercel: comprobar `https://erasesuvez.es/robots.txt` en producción y la vista previa del enlace en WhatsApp.
+2. Preguntar a Álvaro por los bloqueos §4.16 a §4.19 y §4.22, en ese orden.
+3. Correo del dominio (PLAN §7.1): cuando Álvaro tenga los registros de Resend y del buzón, añadirlos en el DNS de Vercel (`erasesuvez.com`) con su visto bueno. No son secretos.
+4. B8: si `GELATO_API_KEY` está en Preview, `GET /api/health` (`print.mode` debe ser `gelato`) y un libro de prueba con «Mandar a imprimir» (borrador en Gelato); comprobar el producto elegido, las medidas de la cubierta y el webhook. Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.24 y §4.25.
 5. `GET /api/health` en la preview: si `payment.mode` es `stripe`, un pago con la tarjeta 4242 4242 4242 4242; comprobar el webhook (200 en Stripe), el libro pintado con la pestaña cerrada y los dos emails si `mail.enabled` es `true`.
-6. `GET /api/cron/purge?dry=1` en la preview: comprobar que `leads` y `spend` salen sin error (consultas nuevas del PR #5 contra la base real).
-7. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN), CI en verde, descripción del PR al día y la prueba con tres personas (B7).
+6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN), CI en verde, descripción del PR al día y la prueba con tres personas (B7). Después, comprobar en producción `https://www.erasesuvez.com/robots.txt` (debe permitir y apuntar al sitemap) y la vista previa del enlace en WhatsApp.
+
+Hecho del antiguo §5: la purga en simulación contra la base real (16 oct, sin errores: `leads` 0 y `spend` 0, la base tiene menos de 30 días).
