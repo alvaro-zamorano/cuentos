@@ -150,10 +150,14 @@ Pendiente, en orden (detalle de cada bloqueo en ESTADO §4):
    - Resend para enviar: añadir `erasesuvez.com` y poner en el DNS de Vercel los registros que dé (no son secretos; Claude puede meterlos).
    - Variables: `SITE_URL=https://www.erasesuvez.com`, `LEGAL_EMAIL=hola@erasesuvez.com`, `MAIL_FROM="Érase su vez <hola@erasesuvez.com>"`. En Stripe, el nombre del negocio.
    - Opcional: `erasesuvez.es` en un registrador español, redirigido al `.com`.
-2. **Bloqueos de salida:** Gemini y menores de 18 (§4.16), plan Pro de Vercel y región de funciones en la UE (§4.17), región de Supabase (§4.18), clave de Gemini de un proyecto con facturación (§4.19).
+2. ~~**Bloqueos de salida**~~ Resueltos el 18 oct (ESTADO §2), salvo comprobar que la clave de Gemini es de pago (ESTADO §4.19).
 3. **B5** (pasos exactos en `docs/PAGO.md`): Stripe en modo test en la preview (`STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`) y un pago con la tarjeta 4242 4242 4242 4242. Resend con el dominio verificado (`RESEND_API_KEY` y `MAIL_FROM`).
-4. **Variables de producción** (ámbito Production): las tres claves, `GENERATION_PROVIDER=gemini-images`, `CRON_SECRET` (obligatorio; lo usan los dos crons), `GELATO_API_KEY` y `GELATO_WEBHOOK_SECRET` (sin ellas no se ofrece la tapa dura), `SITE_URL`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`, `LEGAL_EMAIL`, Stripe en modo real y Resend. Sin `NEXT_PUBLIC_DRY_RUN_PAYMENT`. `HEALTH_TOKEN` si se quiere la comprobación profunda. Borrar la variable antigua `service_role`.
-5. **Fiscal:** confirmar con la gestoría el IVA (4 % como libro), el epígrafe IAE y cómo emitir las facturas. Preguntar también si el libro impreso personalizado (un ejemplar único) va al 4 % o al 21 % como fotolibro.
+4. **Variables de producción** (Settings → Environment Variables, ámbito **Production**; tras cambiarlas, volver a desplegar):
+   - Claves (las pones tú, nunca por el chat): `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY` (`sk_live_…`), `STRIPE_WEBHOOK_SECRET` (del endpoint live `https://www.erasesuvez.com/api/stripe/webhook`), `GELATO_API_KEY`, `GELATO_WEBHOOK_SECRET` (el mismo valor va en el webhook de Gelato `https://www.erasesuvez.com/api/print/webhook?token=…`), `CRON_SECRET` (obligatorio; un valor aleatorio largo, p. ej. `openssl rand -hex 32`).
+   - Valores sin secreto: `NEXT_PUBLIC_SUPABASE_URL=https://bcicjjkgjgajxbrwmeyf.supabase.co`, `GENERATION_PROVIDER=gemini-images`, `SITE_URL=https://www.erasesuvez.com`, `MAIL_FROM=Érase su vez <hola@erasesuvez.com>`, `LEGAL_EMAIL=hola@erasesuvez.com`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`.
+   - Que **no** estén en Production: `NEXT_PUBLIC_DRY_RUN_PAYMENT`, `GELATO_ORDER_TYPE`, `DEV_TOKEN`. Borrar la variable antigua `service_role`.
+   - Opcionales: `HEALTH_TOKEN` (comprobación profunda de `/api/health`), `NEXT_PUBLIC_CLARITY_ID`, `GELATO_PRODUCT_UID` (si la muestra dice que hace falta).
+5. **Fiscal:** IVA al 4 % (decidido). Con la gestoría: epígrafe IAE y facturas.
 6. **B7:** tres personas ajenas hacen un libro sin ayuda. Después, unir el PR #1 a `main`.
 7. **Libro impreso (D7, B8), pasos en `IMPRESION.md` §7:**
    - Cuenta de empresa en Gelato, con método de pago. Clave de API → `GELATO_API_KEY` en Preview.

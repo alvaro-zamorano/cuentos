@@ -1,12 +1,12 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-18 (PR #5, #6 y #7 unidos a la rama de trabajo; dominio `erasesuvez.com` comprado) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 en curso · B8 código hecho (falta la clave de Gelato y la muestra)
+Actualizado: 2026-10-18 (decisiones de Álvaro sobre los bloqueos; funciones en Dublín) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora (18 oct):** salir al público. Todo el código está en la rama de trabajo (PR #5, #6 y #7 unidos el 18 oct) y el dominio `erasesuvez.com` está comprado y apuntando a Vercel. Lo que queda es de Álvaro, en este orden: los bloqueos de §4 (16 a 19 y 22), el correo del dominio, Stripe, Gelato, las variables de producción, la gestoría y la prueba con tres personas.
+- **Ahora (18 oct, tarde):** MVP con family and friends en producción. Bloqueos resueltos (§2). Lo que queda es de Álvaro: Gelato (en curso), Stripe, buzón de `hola@erasesuvez.com`, variables de producción (PLAN §7.4) y la prueba con tres personas. Después, unir el PR #1 a `main`.
 - **Producto (18 oct, D7):** se sale con el libro de tapa dura (34,90 €, envío a la Península y Baleares, PDF incluido). La conexión con Gelato está en el PR de B8; falta que Álvaro cree la cuenta, ponga la clave en Preview y pida la muestra (`IMPRESION.md` §7).
 - **Después:** unir el PR #1 a `main` (salida a producción).
 - **Fuera de foco ahora:** más estilos de ilustración, el Reel (B6). El flujo antiguo redirige a `/crear` desde el 16 oct.
@@ -70,6 +70,11 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-18 | Fuera de producción, los pedidos de Gelato se crean como borrador (no se imprimen) salvo `GELATO_ORDER_TYPE=order` | Que una prueba en la preview no imprima ni cobre por error | `lib/print/gelato.ts` |
 | 2026-10-18 | Dominio: Álvaro compra `erasesuvez.com` en Vercel. Principal `https://www.erasesuvez.com`; `erasesuvez.com` redirige con 308 (lo configuró Vercel al añadirlo). DNS en Vercel, sin errores de configuración. El `.es` sigue libre y queda opcional. Sustituye «principal `erasesuvez.es`» del 16 oct | Comprado el `.com`; la redirección a www es la que propone Vercel | PLAN §7.1 |
 | 2026-10-18 | PR #7 (B8) unido a su base, #6 (D7) a la suya y #5 a la rama de trabajo, con merge commits. Aprobado por Álvaro | Comprobado antes sobre la pila completa: tsc, eslint, 100 unitarios, build y 9 Playwright; CI en verde. La rama de trabajo queda idéntica a lo probado | — |
+| 2026-10-18 | Gemini y menores (Álvaro): la web es para los padres, no está dirigida a menores. Se dice en el aviso legal | Los términos de Gemini prohíben servicios dirigidos a menores; el producto lo usan adultos para un niño | `/aviso-legal` §2 |
+| 2026-10-18 | Vercel (Álvaro): se sigue en Hobby mientras sea MVP con family and friends. Pasar a Pro antes de abrir al público | Hobby no permite uso comercial; el MVP es cerrado | ESTADO §4.17 |
+| 2026-10-18 | Supabase está en eu-west-1 (Irlanda): no hace falta moverla. Las funciones de Vercel pasan de iad1 (Washington) a dub1 (Dublín), junto a la base | Región sacada de la IPv6 de `db.<ref>.supabase.co` contra la lista oficial de IP de AWS. Menos latencia por consulta y los datos se procesan en la UE | `web/vercel.json`, `/privacidad` §7 |
+| 2026-10-18 | IVA (Álvaro): libros al 4 %, el PDF y la tapa dura | Decisión de Álvaro | `/condiciones` §6 |
+| 2026-10-18 | Resend creado y conectado a `erasesuvez.com` (DKIM y registros de envío en el DNS de Vercel, región eu-west-1). Falta recibir correo en `hola@` (sin registro MX) | Lo hizo Álvaro; comprobado en el DNS | PLAN §7.1 |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -123,9 +128,9 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
-2. **Stripe y Resend:** claves y dominio de envío (pasos en `PAGO.md`). Álvaro.
+2. **Stripe:** claves (pasos en `PAGO.md`). Resend ya está (18 oct). Álvaro.
 3. **Legales (E6):** los cuatro datos del titular van en las variables `LEGAL_*` de Vercel (PR #5). Quedan como hueco: región de Supabase, IVA y epígrafe IAE. E18 decidido el 16 oct. Álvaro.
-4. **Fiscal:** IVA aplicable y facturas, antes de cobrar. Álvaro con su gestoría.
+4. **Fiscal:** IVA al 4 % decidido (18 oct). Quedan el epígrafe IAE y cómo emitir las facturas. Álvaro con su gestoría.
 5. **Formato del PDF (D5):** con A4 vertical e imagen 3:2 queda blanco bajo el texto. ¿Se mantiene, o se prueba una imagen más alta (4:3) o un formato cuadrado? Decisión de Álvaro.
 6. ~~**Antes de unir el PR #1:** ¿se borran las rutas del flujo antiguo y `/api/dev`?~~ El flujo antiguo redirige a `/crear` (16 oct). `/api/dev` sigue: en producción da 404 siempre.
 7. **`claude/ASSETS.md` está superado por D1.** ¿Se retira del Project? Sigue en el repo.
@@ -138,15 +143,15 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 14. ~~**Pendientes de los legales (PR #3)**~~ Hechos en el PR #5, salvo región de Supabase, IVA y epígrafe IAE (punto 3).
 15. **`DEV_TOKEN` en Preview** si se quiere seguir usando `/api/dev` en la preview (sin él, 404). Álvaro.
 
-16. **Gemini y menores de 18 (bloquea la salida):** ¿se interpreta que la web, para padres, no está «dirigida a menores»? Alternativas si no: Gemini por Vertex AI (términos de Google Cloud, sin comprobar) u OpenAI Images, que el código ya soporta (`openai-images`, sin comprobar sus términos). Álvaro, con consejo legal.
-17. **Plan de Vercel:** para vender hace falta Pro. Y elegir región de funciones en la UE, la más cercana a Supabase. Álvaro.
-18. **Región de Supabase:** se ve en Storage → S3 (endpoint y región). Si no es de la UE, la región no se puede cambiar: habría que mover las tablas `cuentos_*` a un proyecto en la UE. Álvaro.
-19. **Clave de Gemini de pago:** confirmar que sale de un proyecto de Google Cloud con facturación activa y que el registro de AI Studio está apagado. Álvaro.
+16. ~~**Gemini y menores de 18**~~ Decidido el 18 oct: la web es para padres (§2).
+17. ~~**Plan de Vercel**~~ Hobby durante el MVP con family and friends; Pro antes de abrir al público. Funciones en Dublín (18 oct).
+18. ~~**Región de Supabase**~~ eu-west-1 (Irlanda), en la UE (18 oct).
+19. **Clave de Gemini de pago:** Álvaro dice que tiene créditos. Para ser de pago, el proyecto necesita una cuenta de facturación de Cloud vinculada y prepago (mínimo 5 $) o pospago; los créditos de prueba y de bienvenida no cuentan. Comprobarlo en AI Studio → API keys (columna «Plan»: «Paid») y vigilar el saldo: con prepago, sin saldo la API deja de responder. Álvaro.
 20. **Clarity:** si se activa, poner la ocultación en Strict en su panel. El código ya oculta `/crear`. Álvaro.
 21. ~~**Precio del libro impreso (D7)**~~ 34,90 € con envío y el PDF incluido; el PDF solo, 14,90 € (18 oct). Probar 39,90 € más adelante.
 22. **Qué es gratis (D3):** con D7, el PDF casero gratis compite con lo que se vende. Propuesta: mantener gratis el cuento, los personajes y la portada en la web, y pasar el PDF casero a pago o marcarlo con la marca. Álvaro.
 23. **Imprenta:** Gelato conectado (18 oct). Falta: cuenta, clave en Preview, webhook, método de pago en Gelato y la muestra (`IMPRESION.md` §7), la entidad del contrato y su DPA (`PROVEEDORES.md`, `/privacidad` §7), y presupuesto a Podiprint y Realisaprint para comparar. Álvaro.
-24. **IVA del libro impreso:** ¿4 % como libro o 21 % como fotolibro, siendo un ejemplar único? Va con la pregunta 4, a la gestoría. Álvaro.
+24. ~~**IVA del libro impreso**~~ 4 % (Álvaro, 18 oct).
 25. **Segundo ejemplar y tarjeta regalo:** propuestas para subir el ticket medio (un segundo ejemplar a 24,90 € a la misma dirección) y para quien regala sin conocer al niño. Álvaro.
 26. ~~**Orden de salida**~~ Se sale con la tapa dura (18 oct). Queda fijar la fecha límite de Navidad con los plazos reales de la muestra.
 27. **Producto exacto de Gelato:** el código busca en el catálogo una tapa dura cuadrada de 20×20; si encuentra otra cosa o nada, poner `GELATO_PRODUCT_UID`. Se ve en la muestra. Claude con Álvaro.
@@ -155,7 +160,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
-2. Preguntar a Álvaro por los bloqueos §4.16 a §4.19 y §4.22, en ese orden.
+2. Preguntar a Álvaro por §4.19 (Gemini de pago) y §4.22 (qué es gratis).
 3. Correo del dominio (PLAN §7.1): cuando Álvaro tenga los registros de Resend y del buzón, añadirlos en el DNS de Vercel (`erasesuvez.com`) con su visto bueno. No son secretos.
 4. B8: si `GELATO_API_KEY` está en Preview, `GET /api/health` (`print.mode` debe ser `gelato`) y un libro de prueba con «Mandar a imprimir» (borrador en Gelato); comprobar el producto elegido, las medidas de la cubierta y el webhook. Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.24 y §4.25.
 5. `GET /api/health` en la preview: si `payment.mode` es `stripe`, un pago con la tarjeta 4242 4242 4242 4242; comprobar el webhook (200 en Stripe), el libro pintado con la pestaña cerrada y los dos emails si `mail.enabled` es `true`.
