@@ -37,6 +37,8 @@ export interface PaidOrder {
   bookId: string;
   edition: PaidEdition;
   amountCents: number;
+  /** Sesión de Stripe (`cs_live_…`, `cs_test_…`) o `dry-run:…` del pago de prueba. */
+  sessionId?: string | null;
   shipping: Shipping | null;
   printStatus: PrintStatus | null;
   printOrderId: string | null;

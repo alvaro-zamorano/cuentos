@@ -35,13 +35,33 @@ Ninguna clave por el chat. En Vercel, proyecto `cuentos` → Settings → Enviro
    - URL: `https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/stripe/webhook`. Es el alias fijo de la rama; la protección de despliegues está desactivada en el proyecto, así que Stripe puede llegar.
    - Eventos: `checkout.session.completed` y `checkout.session.async_payment_succeeded`.
 4. En ese endpoint, el «Signing secret» (`whsec_…`) → `STRIPE_WEBHOOK_SECRET`.
-5. Para producción: lo mismo con las claves «live» y el endpoint en el dominio definitivo.
+5. Para producción: lo mismo con las claves «live» y el endpoint en el dominio definitivo (abajo).
+
+**Stripe en producción: cobro real** (decidido el 18 oct)
+
+En producción Gelato imprime de verdad. Con claves de prueba, un pago con la tarjeta 4242 acabaría en un libro impreso pagado por la cuenta de Gelato.
+
+1. Activar la cuenta de Stripe para cobros reales (datos del negocio y cuenta bancaria). Nombre público: «Érase su vez».
+2. En modo real, Developers → API keys → `sk_live_…` → `STRIPE_SECRET_KEY`, solo en **Production**. Preview sigue con `sk_test_…`.
+3. En modo real, Webhooks → Add endpoint `https://www.erasesuvez.com/api/stripe/webhook`, con los mismos dos eventos. Su «Signing secret» → `STRIPE_WEBHOOK_SECRET`, solo en **Production**. Hasta que el PR #1 llegue a `main`, el dominio da 404 y Stripe reintenta: no pasa nada.
+4. Hoy `STRIPE_WEBHOOK_SECRET` tiene un solo valor para Production y Preview (el del endpoint de prueba). Hay que dejarlo solo en Preview y crear aparte el de Production.
+5. Salvaguarda en el código (18 oct): en producción el webhook ignora los eventos con `livemode: false`, y «Mandar a imprimir» rechaza los pedidos cuya sesión no empieza por `cs_live_` (la base es la misma que la de la preview).
 
 **Resend**
 
 1. Crear la cuenta y verificar el dominio de envío (registros DNS que indica Resend).
 2. API Keys → crear una con permiso de envío → `RESEND_API_KEY`.
 3. `MAIL_FROM` con ese dominio, por ejemplo `Cuentos <hola@tudominio.es>`.
+
+**Correo entrante: `hola@erasesuvez.com` → tu Gmail** (18 oct, código en `lib/inbound.ts` y `/api/mail/inbound`)
+
+Resend recibe lo que llega a cualquier dirección de `erasesuvez.com`, avisa con un webhook firmado y la web lo reenvía a `MAIL_FORWARD_TO`. El correo reenviado sale de `hola@` con el nombre de quien escribió («Ana (vía Érase su vez)»), lleva arriba el remitente y el destinatario originales y tiene «Responder a» el remitente: al contestar desde Gmail, la respuesta le llega a él, pero desde tu Gmail. Los adjuntos van por enlace (Resend los descarga); si alguno no se puede mandar, llega sin adjuntos y con una nota. No se reenvía lo que no pasa DMARC (casi siempre spam o suplantación): se queda en Resend → Emails → Receiving. No se guarda nada en nuestra base.
+
+1. Resend → Domains → `erasesuvez.com` → activar la recepción (Receiving). Da un registro MX: Claude lo pone en el DNS de Vercel.
+2. Resend → Webhooks → Add webhook: URL `https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/mail/inbound` (la preview; al salir a producción, `https://www.erasesuvez.com/api/mail/inbound`), evento `email.received`. Su «Signing secret» → `RESEND_WEBHOOK_SECRET` en Vercel.
+3. `MAIL_FORWARD_TO` = tu Gmail, en Vercel (Preview y Production).
+4. La `RESEND_API_KEY` tiene que ser de acceso completo para leer los correos recibidos. `GET /api/health?deep=1` → `inbound.receivingCheck`: `ok` vale; 401 o 403, crear una clave de acceso completo y cambiarla en Vercel.
+5. Probar: escribir a `hola@erasesuvez.com` desde otra cuenta y ver que llega a Gmail.
 
 **Otras**
 

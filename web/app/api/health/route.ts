@@ -5,6 +5,7 @@ import { DEFAULT_MODEL, selectLlm } from "@/lib/llm";
 import { selectProvider } from "@/lib/story/provider";
 import { geminiModel, providerName } from "@/lib/generation/adapter";
 import { mailEnabled } from "@/lib/mail";
+import { forwardTargets, inboundEnabled } from "@/lib/inbound";
 import { paymentMode } from "@/lib/stripe";
 import { gelatoOrderType, gelatoPageCount, printMode } from "@/lib/print/gelato";
 
@@ -60,6 +61,8 @@ export async function GET(req: Request) {
     // mode: "stripe" con STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET; "dry-run" nunca en producción
     payment: { mode: paymentMode(), dryRun: process.env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1", stripeKey: has("STRIPE_SECRET_KEY"), stripeWebhookSecret: has("STRIPE_WEBHOOK_SECRET") },
     mail: { enabled: mailEnabled(), resendKey: has("RESEND_API_KEY"), from: has("MAIL_FROM"), siteUrl: has("SITE_URL") },
+    // correo entrante: reenvío de hola@ (lib/inbound.ts). receivingCheck: la clave de Resend puede leer correos recibidos
+    inbound: { enabled: inboundEnabled(), webhookSecret: has("RESEND_WEBHOOK_SECRET"), forwardTo: forwardTargets().length > 0, receivingCheck: "skipped" as Check },
     background: process.env.BACKGROUND_PAINT !== "0",
     cron: { secret: has("CRON_SECRET") },
     // libro impreso (B8): "gelato" con clave; fuera de producción los pedidos son borradores salvo GELATO_ORDER_TYPE=order
@@ -91,6 +94,15 @@ export async function GET(req: Request) {
       checks.push(
         status(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel())}`, { "x-goog-api-key": geminiKey }).then((c) => {
           out.images.check = c;
+        }),
+      );
+    }
+    const resendKey = process.env.RESEND_API_KEY?.trim();
+    if (resendKey) {
+      // lista vacía o no, solo importa el código: 401/403 = la clave solo puede enviar
+      checks.push(
+        status("https://api.resend.com/emails/receiving?limit=1", { authorization: `Bearer ${resendKey}` }).then((c) => {
+          out.inbound.receivingCheck = c;
         }),
       );
     }

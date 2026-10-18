@@ -14,7 +14,7 @@ import { completePrint, handlePrintWebhook, printCron, refreshPrint, startPrint,
 import { advances, coverFromApi, estimatedCover, gelatoOrderBody, gelatoOrderType, gelatoPageCount, isSquareHardcover, mapGelatoStatus, printMode, type GelatoOrder } from "../../lib/print/gelato";
 import { cleanShipping, splitName } from "../../lib/print/shipping";
 import { PRICE_CENTS, eur } from "../../lib/print/prices";
-import { checkoutBody } from "../../lib/stripe";
+import { checkoutBody, printableInEnv } from "../../lib/stripe";
 import { printCoverHtml, printInteriorHtml } from "../../lib/pdf/printHtml";
 import { purgeExpired, type PurgeDb } from "../../lib/purge";
 import { normalizeFicha } from "../../lib/plan/ficha";
@@ -210,6 +210,13 @@ test("mandar a imprimir: solo con las 12 páginas, una vez, y después el libro 
   assert.equal((await startPrint(store, bookId, "none") as { status: number }).status, 501, "sin imprenta aquí");
   assert.equal((await startPrint(store, bookId, "dry-run") as { error: string }).error, "pages_missing");
   await paintPages(store, bookId);
+  // la base es la misma que la de la preview: un libro pagado de prueba no se imprime en producción
+  const prod = { VERCEL_ENV: "production" };
+  assert.equal((await startPrint(store, bookId, "gelato", prod) as { error: string }).error, "test_order");
+  assert.equal(printableInEnv("cs_test_a1", prod), false);
+  assert.equal(printableInEnv(null, prod), false);
+  assert.equal(printableInEnv("cs_live_a1", prod), true);
+  assert.equal(printableInEnv("dry-run:abc", { VERCEL_ENV: "preview" }), true, "en la preview, todo");
 
   const first = await startPrint(store, bookId, "dry-run");
   assert.ok(first.ok);

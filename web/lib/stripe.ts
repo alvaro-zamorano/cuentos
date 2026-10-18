@@ -101,7 +101,26 @@ export async function createCheckout(input: CheckoutInput): Promise<{ url: strin
 export interface StripeEvent {
   id: string;
   type: string;
+  /** true en modo real, false en modo de prueba (Stripe lo manda siempre). */
+  livemode?: boolean;
   data: { object: { id?: string; payment_status?: string; amount_total?: number; metadata?: Record<string, string>; client_reference_id?: string; customer_email?: string; customer_details?: { email?: string } } };
+}
+
+/**
+ * En producción solo cuentan los cobros reales. Allí Gelato imprime de verdad, así que un evento de prueba (tarjeta 4242)
+ * con claves de prueba mal puestas no puede acabar en un libro impreso. Fuera de producción vale cualquiera.
+ */
+export function eventModeAllowed(event: Pick<StripeEvent, "livemode">, env: Record<string, string | undefined> = process.env): boolean {
+  return env.VERCEL_ENV !== "production" || event.livemode === true;
+}
+
+/**
+ * ¿El pedido se cobró de verdad? Producción solo manda a la imprenta pedidos con sesión real (`cs_live_…`): la base es la
+ * misma que la de la preview, y un libro pagado allí con la tarjeta 4242 (o con el pago de prueba) se puede abrir en el
+ * dominio de producción.
+ */
+export function printableInEnv(sessionId: string | null | undefined, env: Record<string, string | undefined> = process.env): boolean {
+  return env.VERCEL_ENV !== "production" || (typeof sessionId === "string" && sessionId.startsWith("cs_live_"));
 }
 
 /**

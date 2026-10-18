@@ -23,7 +23,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `00-INDICE.md` — este mapa · vigente
 - `00-ESTADO.md` — foco, log de decisiones, hallazgos, preguntas abiertas y próxima sesión · vigente
 - `PLAN.md` — decisiones D1–D6, producto (ficha, embudo, reglas de generación), bloques B0–B7, abiertos E#, lista de Álvaro · vigente
-- `PAGO.md` — B5: Stripe, Resend, pintar en segundo plano, pasos exactos para las claves · vigente
+- `PAGO.md` — B5: Stripe, Resend (también el correo entrante), pintar en segundo plano, pasos exactos para las claves · vigente
 - `ILUSTRACION.md` — B3–B4: hoja, portada, páginas, control de calidad, PDF; prueba real y costes medidos · vigente
 - `PLANIFICADOR.md` — B1: de la ficha al plan del libro; evaluación con 10 fichas · vigente
 - `MUESTRA-LUNA.md` — el libro de muestra «Vera y Toby viajan a la Luna» · vigente
@@ -83,6 +83,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Pintar imágenes (jobs, presupuesto, Gemini) | `lib/generation/{service,adapter,budget,store,postprocess}.ts`, `app/api/generate/run` |
 | Segundo plano | `lib/book/background.ts` + `paintLater` en `app/api/libro/_shared.ts` |
 | Stripe y Resend | `lib/stripe.ts` (también la renuncia al desistimiento: `waiverAccepted`, metadatos `withdrawal_waiver_*`), `lib/mail.ts`, `app/api/libro/checkout`, `app/api/stripe/webhook` |
+| Correo entrante (`hola@` → Gmail) | `lib/inbound.ts` (firma de Svix, reenvío), `app/api/mail/inbound` |
 | PDF | `lib/pdf/book2.ts` (maqueta), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf` |
 | Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra), migración `0005` |
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (dos crons: borrado e imprenta) |
@@ -98,7 +99,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 
 - **GitHub:** app de Claude instalada en el repo. Siempre rama + PR; nada directo a `main`.
 - **Vercel:** team `wcoach24s-projects`, proyecto `prj_Ldda556jlY1RnT8HmMtgOfDZpnuU`.
-  - Claude puede ver despliegues y logs, pero **no crear variables** (403). Las variables las pone Álvaro en Settings → Environment Variables.
+  - Claude puede ver despliegues y logs. Por la API **no puede crear variables** (403). Con Claude in Chrome sí, con el visto bueno de Álvaro: los secretos se generan o se pegan dentro de la página sin verlos. Guardar una variable de **Production** lo bloquea el permiso automático: la guarda Álvaro.
 - **Supabase:** proyecto compartido con otros productos de Álvaro (`bcicjjkgjgajxbrwmeyf`).
   - Tablas `cuentos_*` con RLS; bucket privado `cuentos`.
   - El conector de Supabase de Claude («Carche») llega a esta misma base por SQL.

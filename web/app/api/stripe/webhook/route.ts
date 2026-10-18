@@ -3,7 +3,7 @@ import { publicOrigin } from "@/lib/book/background";
 import { notifyBookReady, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { sendBookReady } from "@/lib/mail";
-import { verifyWebhook } from "@/lib/stripe";
+import { eventModeAllowed, verifyWebhook } from "@/lib/stripe";
 import { paintLater } from "../../libro/_shared";
 
 /**
@@ -21,6 +21,11 @@ export async function POST(req: Request) {
   if (payload.length > 500_000) return NextResponse.json({ ok: false, error: "too_large" }, { status: 413 });
   const event = verifyWebhook(payload, req.headers.get("stripe-signature"), secret);
   if (!event) return NextResponse.json({ ok: false, error: "signature" }, { status: 400 });
+  if (!eventModeAllowed(event)) {
+    // 200 para que Stripe no reintente: el evento es válido, pero de prueba en producción
+    console.warn(`[stripe] ${event.type} de prueba en producción: ignorado`);
+    return NextResponse.json({ received: true, ignored: "test_mode" });
+  }
   const ctx = generationContext();
   if ("error" in ctx) return NextResponse.json({ ok: false, error: ctx.error }, { status: 503 }); // Stripe reintenta
   const { store, adapter } = ctx;

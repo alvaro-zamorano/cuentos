@@ -67,6 +67,7 @@ export default function Privacidad() {
         <li>Guardarte un enlace para volver a tu libro durante 30 días y mandártelo por email (ejecución del servicio que pides).</li>
         <li>Cobrar y conservar el pedido (ejecución del contrato y obligaciones contables y fiscales).</li>
         <li>Imprimir el libro y enviártelo a la dirección que indiques (ejecución del contrato).</li>
+        <li>Contestar lo que nos escribes (ejecución del contrato si es sobre un pedido; si no, tu consentimiento al escribirnos).</li>
         <li>
           Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla separada y opcional (consentimiento, art. 21 LSSI). Puedes retirarlo
           en cualquier momento desde el propio email o escribiéndonos.
@@ -97,6 +98,7 @@ export default function Privacidad() {
           El email que nos das para recibir el enlace del libro se borra a los 30 días, con el libro, si no has aceptado recibir novedades. Si
           compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
+        <li>Si nos escribes, guardamos tu mensaje el tiempo necesario para atenderte y, si es sobre un pedido, con el pedido.</li>
       </ul>
 
       <h2>7. Proveedores</h2>
@@ -113,7 +115,10 @@ export default function Privacidad() {
         </li>
         <li>Texto del cuento y revisión de las imágenes: Anthropic Ireland, Limited, con la API de Claude, y cláusulas tipo.</li>
         <li>Ilustraciones: Google Cloud EMEA Limited (Irlanda), con la API de pago de Gemini, cláusulas tipo y Marco de Privacidad.</li>
-        <li>Envío de emails: Resend (Plus Five Five, Inc., EE. UU.), con cláusulas tipo y Marco de Privacidad.</li>
+        <li>
+          Envío y recepción de emails: Resend (Plus Five Five, Inc., EE. UU.), con cláusulas tipo y Marco de Privacidad. Lo que nos escribes a
+          nuestra dirección pasa por Resend antes de llegar a nuestro buzón.
+        </li>
         <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
         <li>
           Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo) <Pending>entidad exacta del contrato</Pending>,
