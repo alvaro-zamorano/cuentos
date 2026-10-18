@@ -267,7 +267,7 @@ function BookAside({ s }: { s: CrearState }) {
   return (
     <aside className="sticky top-8 hidden rounded-[28px] bg-paper-deep p-7 lg:grid lg:gap-6" aria-label="Así va su libro">
       <p className="hand text-[20px] text-accent">así va su libro</p>
-      <BookCover name={name} title={s.step >= 3 ? s.record?.plan.title : undefined} from={f.from?.trim()} tilt={-3} className="mx-auto w-[210px]" />
+      <BookCover name={name} title={s.step >= 3 ? s.record?.plan.title : undefined} from={f.from?.trim()} tilt={-3} className="mx-auto w-full max-w-[300px]" />
       <ul className="grid gap-2">
         {items.map((it) => (
           <li key={it.text} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-[14px] ${it.done ? "bg-card font-semibold text-ink" : "text-ink-soft"}`}>

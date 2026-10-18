@@ -123,7 +123,7 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
   expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);
 
-  // PDF del libro: portada, dedicatoria, 12 páginas y «Fin» (15 A4 verticales)
+  // PDF del libro como el impreso: portada, personajes, dedicatoria, 12 dobles (ilustración + texto), «Fin» y colofón (29 A4 apaisados)
   const res = await page.request.get(`/api/libro/pdf?b=${bookId}&kind=full`);
   if (res.status() === 503) test.info().annotations.push({ type: "pdf", description: "sin Chromium local: PDF no comprobado" });
   else {
@@ -132,8 +132,8 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
     const fs = await import("node:fs");
     fs.writeFileSync(file, await res.body());
     const info = execFileSync("pdfinfo", [file]).toString();
-    expect(info).toMatch(/Pages:\s+15/);
-    expect(info).toMatch(/Page size:.*\(A4\)/);
+    expect(info).toMatch(/Pages:\s+29/);
+    expect(info).toMatch(/Page size:\s+841\.\d+ x 59[45]\.\d+ pts \(A4\)/);
   }
   expect(errors).toEqual([]);
 });

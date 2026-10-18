@@ -1,4 +1,6 @@
-# cuentos — cuentos personalizados para imprimir
+# Érase su vez (repo `cuentos`)
+
+Libros infantiles personalizados, escritos e ilustrados con IA: www.erasesuvez.com. Libro apaisado de tapa dura y PDF.
 
 **Para empezar (13 oct 2026):** lee `docs/INDICE.md` (mapa, accesos, cómo probar) y `docs/ESTADO.md` (foco, decisiones, próxima sesión). El plan y los abiertos están en `docs/PLAN.md`. El flujo vigente es `/crear` (B1–B5); lo que este README cuenta debajo es de la etapa anterior (Fase 1 y briefs del 8–9 oct) y se conserva como histórico.
 
