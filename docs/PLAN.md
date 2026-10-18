@@ -146,7 +146,7 @@ Hecho: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GENE
 Pendiente, en orden (detalle de cada bloqueo en ESTADO §4):
 1. **Marca «Érase su vez» y dominio.** Hecho el 18 oct: `erasesuvez.com` comprado en Vercel y unido al proyecto, con `www.erasesuvez.com` como principal. Hasta que el PR #1 llegue a `main`, el dominio da 404. Falta:
    - Si no está hecho: `@erasesuvez` en Instagram y TikTok, y la búsqueda de la marca en OEPM y EUIPO.
-   - Correo para recibir en `hola@erasesuvez.com`: un reenvío a tu Gmail o un buzón. Sus registros MX van en el DNS de Vercel.
+   - Correo para recibir en `hola@erasesuvez.com`: con Resend (18 oct), que lo reenvía a tu Gmail. Pasos en `PAGO.md`; el MX lo pone Claude en el DNS de Vercel.
    - Resend para enviar: añadir `erasesuvez.com` y poner en el DNS de Vercel los registros que dé (no son secretos; Claude puede meterlos).
    - Variables: `SITE_URL=https://www.erasesuvez.com`, `LEGAL_EMAIL=hola@erasesuvez.com`, `MAIL_FROM="Érase su vez <hola@erasesuvez.com>"`. En Stripe, el nombre del negocio.
    - Opcional: `erasesuvez.es` en un registrador español, redirigido al `.com`.
@@ -155,7 +155,7 @@ Pendiente, en orden (detalle de cada bloqueo en ESTADO §4):
 4. **Variables de producción** (Settings → Environment Variables, ámbito **Production**; tras cambiarlas, volver a desplegar):
    - Hecho el 18 oct (noche): `CRON_SECRET` y `GELATO_WEBHOOK_SECRET` en Production; `MAIL_FROM`, `RESEND_API_KEY` y `GELATO_API_KEY` en Production y Preview.
    - Claves (las pones tú, nunca por el chat): `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY` (`sk_live_…`, solo Production: cobro real decidido el 18 oct), `STRIPE_WEBHOOK_SECRET` (del endpoint live `https://www.erasesuvez.com/api/stripe/webhook`, solo Production; hoy comparte valor con Preview y hay que separarlo, pasos en `PAGO.md`), `GELATO_API_KEY`, `GELATO_WEBHOOK_SECRET` (el mismo valor va en el webhook de Gelato `https://www.erasesuvez.com/api/print/webhook?token=…`), `CRON_SECRET` (obligatorio; un valor aleatorio largo, p. ej. `openssl rand -hex 32`).
-   - Valores sin secreto: `NEXT_PUBLIC_SUPABASE_URL=https://bcicjjkgjgajxbrwmeyf.supabase.co`, `GENERATION_PROVIDER=gemini-images`, `SITE_URL=https://www.erasesuvez.com`, `MAIL_FROM=Érase su vez <hola@erasesuvez.com>`, `LEGAL_EMAIL=hola@erasesuvez.com`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`.
+   - Valores sin secreto: `NEXT_PUBLIC_SUPABASE_URL=https://bcicjjkgjgajxbrwmeyf.supabase.co`, `GENERATION_PROVIDER=gemini-images`, `SITE_URL=https://www.erasesuvez.com`, `MAIL_FROM=Érase su vez <hola@erasesuvez.com>`, `LEGAL_EMAIL=hola@erasesuvez.com`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`, `MAIL_FORWARD_TO` (tu Gmail). Y la clave `RESEND_WEBHOOK_SECRET` (del webhook de correo entrante de Resend).
    - Que **no** estén en Production: `NEXT_PUBLIC_DRY_RUN_PAYMENT`, `GELATO_ORDER_TYPE`, `DEV_TOKEN`. La variable antigua `service_role` se borró el 18 oct.
    - Opcionales: `HEALTH_TOKEN` (comprobación profunda de `/api/health`), `NEXT_PUBLIC_CLARITY_ID`, `GELATO_PRODUCT_UID` (si la muestra dice que hace falta).
 5. **Fiscal:** IVA al 4 % (decidido). Con la gestoría: epígrafe IAE y facturas.

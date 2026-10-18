@@ -79,6 +79,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-18 | Salvaguarda en el código: en producción el webhook de Stripe ignora los eventos con `livemode: false` y «Mandar a imprimir» rechaza los pedidos sin sesión `cs_live_` (error `test_order`) | La base es la misma que la de la preview: un libro pagado allí de prueba se puede abrir en el dominio de producción | `lib/stripe.ts`, `lib/book/print.ts` |
 | 2026-10-18 | Correo de `hola@erasesuvez.com`: reenvío gratuito a Gmail (Álvaro). Él crea la cuenta del servicio; Claude pone los MX en el DNS de Vercel | Lo más simple para el MVP; no hace falta un buzón | §4.30 |
 | 2026-10-18 | Borrar la variable antigua `service_role` de Vercel (Álvaro) | Sobraba desde E11 | — |
+| 2026-10-18 | Correo de `hola@erasesuvez.com` con **Resend** en vez de un servicio de reenvío (Álvaro). Sustituye la línea anterior sobre el reenvío. Resend recibe, avisa a `/api/mail/inbound` y la web lo reenvía a `MAIL_FORWARD_TO` con «Responder a» el remitente; no se reenvía lo que no pasa DMARC | Un proveedor menos con datos de clientes: Resend ya está en la política de privacidad | `lib/inbound.ts`, `PAGO.md` |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -168,14 +169,14 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 27. **Producto exacto de Gelato:** el código busca en el catálogo una tapa dura cuadrada de 20×20; si encuentra otra cosa o nada, poner `GELATO_PRODUCT_UID`. Se ve en la muestra. Claude con Álvaro.
 28. **Sin probar contra Gelato:** la API real, el webhook y que acepte el PDF. La clave y el webhook ya están en la preview (18 oct, noche): falta la compra de prueba (§5). Álvaro y Claude.
 29. ~~**Stripe en producción**~~ Cobro real (Álvaro, 18 oct) y salvaguarda en el código (§2). Falta que Álvaro active la cuenta, ponga `sk_live_` y el secreto del endpoint real en Production y separe `STRIPE_WEBHOOK_SECRET` de Preview (`PAGO.md`). Álvaro.
-30. **Buzón de `hola@erasesuvez.com`:** reenvío gratuito a Gmail (Álvaro, 18 oct). Álvaro crea la cuenta (p. ej. ImprovMX), añade el dominio y el alias `hola`; Claude pone en el DNS de Vercel los MX y el SPF que muestre el servicio. Después, `LEGAL_EMAIL=hola@erasesuvez.com` en Production. Álvaro y Claude.
+30. **Buzón de `hola@erasesuvez.com`:** con Resend (§2, 18 oct). Código en el PR de `feat/correo-entrante`. Falta: activar la recepción en Resend, el webhook y su secreto, `MAIL_FORWARD_TO` y quizá una clave de Resend de acceso completo (`PAGO.md`); Claude pone el MX. Después, `LEGAL_EMAIL=hola@erasesuvez.com` en Production. Para revisar con los legales: el buzón de destino es un Gmail personal. Álvaro y Claude.
 31. ~~**Variable antigua `service_role`**~~ Borrada de Vercel el 18 oct (noche), con el visto bueno de Álvaro. Entra en el siguiente despliegue.
 
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. Preguntar a Álvaro por §4.19 (Gemini de pago) y §4.22 (qué es gratis).
-3. Correo del dominio (§4.30): Resend ya está en el DNS; cuando Álvaro tenga el reenvío o el buzón, añadir sus MX en el DNS de Vercel (`erasesuvez.com`) con su visto bueno. No son secretos.
+3. Correo entrante (§4.30, `PAGO.md`): cuando Álvaro active la recepción en Resend, poner su MX en el DNS de Vercel (`erasesuvez.com`), comprobar `inbound` en `/api/health?deep=1` y mandar un correo de prueba a `hola@`.
 4. **Compra de prueba completa en la preview** (todo configurado el 18 oct, noche): Álvaro crea un libro de tapa dura, paga con la tarjeta 4242 4242 4242 4242 y pulsa «Mandar a imprimir». Claude comprueba el webhook de Stripe (200), el pedido en `cuentos_orders`, las 12 páginas pintadas con la pestaña cerrada, los dos emails, el borrador en Gelato (producto, medidas de la cubierta, que acepte el PDF) y los avisos del webhook de Gelato. Coste: unos 1 $ de generación. Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.25 y §4.27.
 5. Stripe real en Production (§4.29, `PAGO.md`): lo pone Álvaro. La salvaguarda del código va en el PR de `feat/stripe-livemode`.
 6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN; ya están `CRON_SECRET` y `GELATO_WEBHOOK_SECRET`), cambiar el webhook de Gelato a `https://www.erasesuvez.com/api/print/webhook?token=…` (mismo token), CI en verde, descripción del PR al día y la prueba con tres personas (B7). Después, comprobar en producción `https://www.erasesuvez.com/robots.txt` (debe permitir y apuntar al sitemap) y la vista previa del enlace en WhatsApp.
