@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { purgeExpired, supabasePurgeDb } from "@/lib/purge";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { cronAuthorized } from "@/lib/print/server";
 
 /**
  * GET /api/cron/purge[?dry=1] — borrado a 30 días (lib/purge.ts). Lo lanza el cron diario de Vercel (vercel.json), que
@@ -10,12 +11,9 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (secret) {
-    if (req.headers.get("authorization") !== `Bearer ${secret}`) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  } else if (process.env.VERCEL_ENV === "production") {
-    return NextResponse.json({ ok: false, error: "cron_secret_missing" }, { status: 503 });
-  }
+  const auth = cronAuthorized(req);
+  if (auth === "unauthorized") return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  if (auth === "missing") return NextResponse.json({ ok: false, error: "cron_secret_missing" }, { status: 503 });
   const db = supabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "storage_unavailable" }, { status: 503 });
   const dryRun = new URL(req.url).searchParams.get("dry") === "1";

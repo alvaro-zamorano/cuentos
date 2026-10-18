@@ -43,7 +43,7 @@ export const MAX_ATTEMPTS = 2;
  */
 export const STALE_RUNNING_MS = 330_000;
 
-export type Fail = { ok: false; status: number; error: string; reason?: string };
+export type Fail = { ok: false; status: number; error: string; reason?: string; /** Campo del formulario que falla (la dirección). */ field?: string };
 
 function fail(status: number, error: string, reason?: string): Fail {
   return { ok: false, status, error, ...(reason ? { reason } : {}) };

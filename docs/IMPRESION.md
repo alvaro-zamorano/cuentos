@@ -1,6 +1,6 @@
 # Libro impreso: imprentas, competencia y números (18 oct 2026)
 
-Respalda D7 (PLAN §2): el libro impreso de tapa dura, con el PDF incluido, pasa a ser el producto principal. Lo único decidido es eso. Precio, imprenta, formato y el resto son propuestas, pendientes en ESTADO §4.21 a §4.26. Precios buscados el 17 y 18 oct; varios son «desde» o de reseñas de 2025: hay que confirmarlos en el panel de cada imprenta antes de fijar el precio.
+Respalda D7 (PLAN §2): el libro impreso de tapa dura, con el PDF incluido, es el producto principal. **Decidido el 18 oct (Álvaro):** se sale con la tapa dura, a 34,90 € con envío a la Península y Baleares, y el libro va a la imprenta solo cuando el padre lo confirma. La conexión con Gelato está hecha (B8, §7). Siguen abiertas las preguntas de ESTADO §4.22, §4.24 y §4.25. Precios buscados el 17 y 18 oct; varios son «desde» o de reseñas de 2025: hay que confirmarlos en el panel de cada imprenta antes de fijar el precio.
 
 ## 1. Por qué el impreso
 
@@ -76,9 +76,37 @@ Costes supuestos: impresión Gelato ≈ 16,5 € sin plan y ≈ 10 € con Gelat
 - Legales: la imprenta entra como encargado (nombre, dirección y el libro), en `PROVEEDORES.md` y `/privacidad`. Condiciones: plazos de entrega y qué pasa con un defecto de impresión. La renuncia al desistimiento sigue valiendo para un bien personalizado.
 - La purga a 30 días no puede borrar el libro antes de que la imprenta lo haya recibido.
 
-## 7. Pendiente
+## 7. Conexión con la imprenta (B8, hecho el 18 oct)
 
-- Muestra de Gelato con el libro de Vera, y presupuesto de Podiprint y Realisaprint.
+**Recorrido**
+
+1. **Paso 5, antes de pagar:** se elige «Libro de tapa dura · 34,90 €» (marcada) o «Libro ilustrado en PDF · 14,90 €». La tapa dura pide la dirección: nombre y apellidos, calle (35 caracteres por línea, como pide Gelato), código postal y población; teléfono opcional. Canarias, Ceuta y Melilla se rechazan por el código postal. La dirección se guarda en el borrador antes de abrir Stripe.
+2. **Pago:** Stripe Checkout lleva `metadata.edition`. El webhook crea el pedido con la edición, la dirección y `print_status = awaiting_approval`. Se pintan las 12 páginas como antes.
+3. **Revisión:** el padre retoca textos y elige versiones. Puede cambiar la dirección. El botón «Mandar a imprimir» pide confirmación («después ya no se pueden cambiar…»). No hay envío automático (decisión de Álvaro).
+4. **A la imprenta** (`POST /api/libro/print`): el pedido pasa a `sending` una sola vez; con `after()` se maqueta el PDF de imprenta, se sube al bucket (`books/<id>/imprenta-<fecha>.pdf`, enlace firmado de 7 días) y se crea el pedido en Gelato con `orderReferenceId` = id de `cuentos_orders`. Queda `sent` y sale el email «ya está en la imprenta». Si falla, `failed` con el motivo y se puede reintentar.
+5. **Después:** el webhook de Gelato (`/api/print/webhook?token=…`) y el cron diario (`/api/cron/print`, 09:23 UTC) consultan el pedido en la API de Gelato (no se fían del aviso) y apuntan `in_production`, `shipped` (con el enlace de seguimiento y el email «va de camino», una vez) y `delivered`.
+6. **Cron diario:** recordatorio a los 2 y a los 7 días a quien pagó y no lo ha mandado; los envíos que se cortaron en `sending` pasan a `failed` a los 15 minutos para reintentar.
+7. **Bloqueo:** en cuanto sale (`sending` en adelante), el servidor rechaza cambios de texto, de versión de página, de dirección y páginas nuevas (409 `printed`).
+8. **Borrado a 30 días:** un libro impreso que no ha salido hacia la imprenta no se borra; al vaciar un libro pagado se borra la dirección, salvo que esté de camino.
+
+**Maqueta** (`lib/pdf/printHtml.ts`, `lib/pdf/print.ts`): un PDF de 33 páginas como pide Gelato para los fotolibros: 1 pliego de cubierta, 2 guarda en blanco, 3 a 32 las 30 páginas interiores, 33 guarda. Interior de 208×208 mm (20 cm + 4 mm de sangre): portadilla, «así son los personajes» con la hoja, dedicatoria, las 12 escenas a doble página (ilustración a la izquierda, texto a la derecha), «Fin», colofón y una en blanco. Cubierta en noche: portada con la ilustración y el título, lomo con el título y trasera con la marca. Las medidas de la cubierta salen de la API de Gelato para ese número de páginas; sin ellas no se manda (la estimada solo sirve para la simulación). `pageCount` = 34 (30 interiores + las dos caras de cada tapa; `GELATO_PAGE_COUNT` lo cambia).
+
+**Modos** (`printMode`): `gelato` con `GELATO_API_KEY`; `dry-run` fuera de producción con `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` (maqueta el PDF pero no llama a Gelato); `none` en producción sin clave (la tapa dura no se ofrece). Fuera de producción los pedidos reales se crean como **borrador** (Gelato no los imprime) salvo `GELATO_ORDER_TYPE=order`.
+
+**Comprobado (18 oct):** 100 unitarios (13 nuevos en `tests/unit/print.test.ts`: dirección, cuerpo del pedido, estados, cubierta, maqueta, recorrido con imprenta simulada y con un doble de Gelato, webhook, cron, borrado), build y 9 Playwright (uno nuevo: tapa dura con dirección rechazada en Canarias, pago de prueba, cambio de dirección, mandar a imprimir y libro bloqueado). PDF de imprenta del libro de muestra maquetado en local con Chromium: 33 páginas, cubierta de 450×230 mm (estimada) e interior de 208 mm, mirado en capturas. Migración `0005` aplicada en Supabase (columnas nuevas en `cuentos_orders`). **Sin probar todavía:** la API real de Gelato (falta la clave), la búsqueda del producto en su catálogo y que acepte este PDF (lo dirá la muestra).
+
+**Lo que tiene que hacer Álvaro** (ninguna clave por el chat):
+
+1. Crear la cuenta de Gelato (empresa) y una clave de API → `GELATO_API_KEY` en Vercel (Preview primero).
+2. Webhook en Gelato (API Portal) → `https://<preview o dominio>/api/print/webhook?token=<valor aleatorio largo>`, eventos de estado del pedido y de seguimiento. El mismo valor → `GELATO_WEBHOOK_SECRET`.
+3. Opcional: `GELATO_PRODUCT_UID` con el producto exacto (tapa dura 20×20); si no, se busca solo.
+4. **Muestra:** `GELATO_ORDER_TYPE=order` en Preview, un libro con la tarjeta de prueba de Stripe y tu dirección, «Mandar a imprimir». Después quitar `GELATO_ORDER_TYPE` para que la preview vuelva a crear borradores.
+5. Mirar la entidad del contrato de Gelato y su DPA (`PROVEEDORES.md`).
+6. En Gelato, el método de pago para que cobre los pedidos (sin él, los pedidos se quedan parados).
+
+## 8. Pendiente
+
+- La muestra con la conexión real (§7, paso 4), y presupuesto de Podiprint y Realisaprint.
 - Precio exacto a España en el panel de Gelato (los de arriba son «desde»).
 - Las decisiones de ESTADO §4.21 a §4.26.
 

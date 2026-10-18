@@ -1,6 +1,6 @@
 # Proveedores: contratos, transferencias y datos
 
-Verificado el 16 oct 2026 en las páginas oficiales de cada proveedor. Respalda la sección 7 de `/privacidad`. El estado del Marco de Privacidad de Datos UE-EE. UU. (DPF) se comprobó en dataprivacyframework.gov. No es asesoramiento legal: lo revisa quien revise los legales.
+Verificado el 16 oct 2026 en las páginas oficiales de cada proveedor (Gelato, el 18 oct). Respalda la sección 7 de `/privacidad`. El estado del Marco de Privacidad de Datos UE-EE. UU. (DPF) se comprobó en dataprivacyframework.gov. No es asesoramiento legal: lo revisa quien revise los legales.
 
 | Proveedor | Contrato de encargo (DPA) | Transferencia | Papel | Notas |
 |---|---|---|---|---|
@@ -9,6 +9,7 @@ Verificado el 16 oct 2026 en las páginas oficiales de cada proveedor. Respalda 
 | Anthropic (API) | Incluido en las Commercial Terms | Cláusulas tipo. No está en el DPF | Encargado; en el EEE contrata Anthropic Ireland, Limited | No entrena con los datos. Borra entradas y salidas en 30 días (hasta 2 años si detecta un incumplimiento) |
 | Google (API de Gemini, de pago) | «Data Processing Addendum for Products Where Google is a Data Processor», que incluye Gemini API Paid Services | DPF (Google LLC activo) y cláusulas tipo | Encargado; con facturación en la EMEA contrata Google Cloud EMEA Limited | De pago: no mejora sus productos con los datos y los guarda 55 días para detectar abusos. Gratuito: sí los usa para entrenar. En el EEE solo se puede ofrecer el de pago. **Sus términos prohíben usarla en servicios dirigidos a menores de 18 años o a los que probablemente accedan** |
 | Resend | Prefirmado al crear la cuenta; copia en Settings → Documents | DPF (activo, recertificación en revisión) y cláusulas tipo | Encargado | Guarda los datos en EE. UU. |
+| Gelato (B8, 18 oct) | «Data Processing Terms» (actualizados el 29 nov 2024), que forman parte del contrato | Gelato es noruega (EEE). Sus subencargados fuera del EEE, con DPF o cláusulas tipo | Encargado (imprime y envía el libro de tapa dura) | Las imprentas de su red son subencargados; los transportistas, responsables independientes. **Entidad exacta del contrato sin confirmar** |
 | Stripe | Incluido en el Services Agreement, con el Data Transfers Addendum | DPF (Stripe, LLC activo) y cláusulas tipo | Encargado del cobro; responsable independiente para fraude, blanqueo y cumplimiento legal | En España contrata Stripe Payments Europe, Limited |
 | Microsoft Clarity | No hay: sus términos dicen que ambos son responsables independientes | DPF (Microsoft Corporation activo); en la UE contrata Microsoft Ireland Operations Limited | Responsable independiente; puede usar los datos para sus fines | Exige la señal de consentimiento en el EEE desde el 31 oct 2025 (hecha en el código). Ocultación por defecto: solo números y emails; el código oculta `/crear` entero |
 
@@ -19,7 +20,8 @@ Verificado el 16 oct 2026 en las páginas oficiales de cada proveedor. Respalda 
 3. **Gemini:** clave de un proyecto de Google Cloud con facturación activa; registro de AI Studio apagado; decidir sobre la cláusula de menores.
 4. **Clarity**, si se activa: ocultación en Strict.
 5. **Resend:** descargar el DPA firmado (Settings → Documents).
-6. Guardar un PDF con fecha de cada DPA.
+6. **Gelato:** al crear la cuenta, mirar qué entidad firma el contrato y descargar sus Data Processing Terms; poner la entidad en `/privacidad` §7.
+7. Guardar un PDF con fecha de cada DPA.
 
 ## Fuentes
 
@@ -30,4 +32,5 @@ Verificado el 16 oct 2026 en las páginas oficiales de cada proveedor. Respalda 
 - Resend: resend.com/legal/dpa · resend.com/docs/knowledge-base/downloading-documents
 - Stripe: stripe.com/legal/dpa · stripe.com/es/legal/ssa · stripe.com/privacy
 - Clarity: clarity.microsoft.com/terms · learn.microsoft.com/en-us/clarity/clarity-consent-api-v2 · learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-masking
+- Gelato: gelato.com/legal/data-processing-terms
 - Lista DPF: dataprivacyframework.gov/list

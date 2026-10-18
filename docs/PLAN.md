@@ -42,7 +42,7 @@ Fuente de verdad del plan: bloques, abiertos (E#) y lista de Álvaro. Para arran
 | D4 | Proveedor en producción | **Decidido (13 oct): API de Gemini**, modelo `gemini-nano-banana-2.1` (el de la Fase 0; cambiado por la tarde desde `gemini-3.1-flash-image`: mitad de precio, 0,0504 $ la imagen 2K) | Coste ≈ 4 c la hoja 1K y 6 c la portada o página 2K; Gemini no depende de una suscripción |
 | D5 | Estilo y formato | **Decidido:** un estilo (el de la Fase 0) y página = imagen 3:2 arriba + texto en banda debajo: A4 vertical (casero) y 20×20 (tapa dura) | El hueco para texto dentro de la imagen no es fiable; 3:2 + banda sirve para los dos formatos |
 | D6 | Libro de muestra para la web y las redes | **Decidido:** «Vera y Toby viajan a la Luna», con la hoja de Vera (12 páginas + portada = 13 imágenes ≈ 26 créditos). Ver `docs/MUESTRA-LUNA.md` | Sin ejemplos reales no hay landing ni Reels; además mide la deriva en 12 páginas |
-| D7 | Producto principal | **Decidido (18 oct): el libro impreso de tapa dura, con el PDF incluido.** El PDF solo se queda como opción más barata. Propuesto y sin decidir: 34,90 € con envío, 20×20 de 24 páginas a doble página, Gelato como imprenta, PDF casero gratis a pago, segundo ejemplar y tarjeta regalo (ESTADO §4.21 a §4.26) | La categoría se vende como objeto de regalo entre 25 y 36 €; el PDF solo deja ≈ 13 € por venta. Ver `docs/IMPRESION.md` |
+| D7 | Producto principal | **Decidido (18 oct): el libro impreso de tapa dura, con el PDF incluido.** El PDF solo se queda como opción más barata. Decidido el 18 oct: se sale con él, a 34,90 € con envío a la Península y Baleares, Gelato como imprenta (20×20, 30 páginas interiores a doble página) y a la imprenta solo cuando el padre lo confirma. Sin decidir: PDF casero gratis a pago, segundo ejemplar y tarjeta regalo (ESTADO §4.22, §4.25) | La categoría se vende como objeto de regalo entre 25 y 36 €; el PDF solo deja ≈ 13 € por venta. Ver `docs/IMPRESION.md` |
 
 ## 3. Producto: el padre cuenta la historia que quiere, nosotros hacemos el libro
 
@@ -82,9 +82,9 @@ Lo que produce el planificador (LLM), la «biblia» del libro:
 | 2 | «¿Quién lo protagoniza?» | Nombre, edad, aspecto en chips, reparto | 0 |
 | 3 | El cuento escrito en 12 tarjetas (texto + qué se verá) en ~10 s | Nada, o cambia una tarjeta con una frase / «escribirlo de otra manera» | ≈ 0,01–0,05 € (LLM) |
 | 4 | Email → «Así será Vera»: hoja de reparto + portada en ~1 min | Aprueba o pide hasta 2 cambios con palabras | ≈ 0,17–0,30 $ (D2) |
-| 5 | Libro con las 12 páginas bloqueadas, las dos ediciones (impreso con PDF, o solo PDF) y su precio (D7) | Paga; si es impreso, también la dirección de envío | 0 |
+| 5 | Libro con las 12 páginas bloqueadas y las dos ediciones: tapa dura con PDF (34,90 €, marcada) o solo PDF (14,90 €) | Elige; si es tapa dura, pone la dirección (Península y Baleares) y paga | 0 |
 | 6 | Las 12 páginas en ~2 min, revisión página a página (1 versión más incluida por página) | Ajusta textos | ≈ 1,6 $ (12 + ~30 % repeticiones a 2K) |
-| 7 | PDF al momento; el libro impreso lo imprime y envía la imprenta (B8) | Descarga y espera el libro | Impresión y envío ≈ 22 € con Gelato sin plan (`IMPRESION.md`); a 2K basta |
+| 7 | PDF al momento. Tapa dura: el padre revisa y pulsa «Mandar a imprimir»; Gelato lo imprime y lo envía, con emails al mandarlo y al salir (B8) | Descarga, manda a imprimir y espera el libro | Impresión y envío ≈ 22 € con Gelato sin plan (`IMPRESION.md`); a 2K basta |
 
 Gratis (D3): pasos 1–4 y PDF con portada + texto. El email del paso 4 es la captura del lead.
 
@@ -123,9 +123,9 @@ Una cosa a la vez; cada tarea se cierra con evidencia.
 | B5 | Pago y entrega: Stripe + emails + segundo plano | Álvaro claves · Claude | **Código hecho (13 oct)**, probado con webhook firmado. Falta: claves, un pago en modo test de Stripe y el email recibido |
 | B6 | Contenidos (§4) y landing nueva | Claude genera · Álvaro elige | **Landing hecha (13 oct)** con el libro de muestra y 4 portadas de ocasiones; falta el Reel |
 | B7 | Legales, dominio, prueba con 3 personas ajenas, merge a `main` | Álvaro · Claude | Tres libros sin ayuda |
-| B8 | Libro impreso (D7): muestra de la imprenta, maqueta de imprenta (20×20, 24 páginas a doble página, cubierta con lomo), dirección de envío en Stripe Checkout, pedido a la imprenta por API tras el pago, seguimiento por email, legales (imprenta como encargado, plazos, defectos de impresión) | Álvaro (cuenta, muestra, precio) · Claude | Un libro pedido por la API llega a casa de Álvaro. Orden respecto a B7: pendiente (ESTADO §4.26) |
+| B8 | Libro impreso (D7). **Código hecho el 18 oct** (`IMPRESION.md` §7): maqueta de imprenta (20×20, 30 páginas interiores a doble página, cubierta con lomo), dirección en el paso 5, pedido a Gelato por API cuando el padre lo confirma, webhook y cron de seguimiento, emails, legales (imprenta como encargado, plazos, reimpresión por defecto). Falta: la clave de Gelato y la muestra | Álvaro (cuenta, clave, muestra) · Claude | Un libro pedido por la API llega a casa de Álvaro. Va con la salida (ESTADO §4.26) |
 
-Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de mediados de noviembre y llegar a Navidad con el PDF casero; tapa dura después. Con D7 (18 oct), la meta de Navidad pasa a ser el libro impreso, y B8 tiene que estar antes de la fecha límite de envío (propuesta, pendiente de ESTADO §4.26).
+Objetivo de calendario (propuesta): B1–B4 en tres semanas para vender antes de mediados de noviembre y llegar a Navidad con el PDF casero; tapa dura después. Con D7 (18 oct), la meta de Navidad pasa a ser el libro impreso: se sale con él, y la fecha límite de envío se fija con los plazos de la muestra.
 
 ## 6. Reglas de trabajo
 
@@ -151,10 +151,16 @@ Pendiente, en orden (detalle de cada bloqueo en ESTADO §4):
    - Variables: `SITE_URL=https://erasesuvez.es`, `LEGAL_EMAIL=hola@erasesuvez.es`, `MAIL_FROM` con «Érase su vez». En Stripe, el nombre del negocio.
 2. **Bloqueos de salida:** Gemini y menores de 18 (§4.16), plan Pro de Vercel y región de funciones en la UE (§4.17), región de Supabase (§4.18), clave de Gemini de un proyecto con facturación (§4.19).
 3. **B5** (pasos exactos en `docs/PAGO.md`): Stripe en modo test en la preview (`STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`) y un pago con la tarjeta 4242 4242 4242 4242. Resend con el dominio verificado (`RESEND_API_KEY` y `MAIL_FROM`).
-4. **Variables de producción** (ámbito Production): las tres claves, `GENERATION_PROVIDER=gemini-images`, `CRON_SECRET` (obligatorio), `SITE_URL`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`, `LEGAL_EMAIL`, Stripe en modo real y Resend. Sin `NEXT_PUBLIC_DRY_RUN_PAYMENT`. `HEALTH_TOKEN` si se quiere la comprobación profunda. Borrar la variable antigua `service_role`.
+4. **Variables de producción** (ámbito Production): las tres claves, `GENERATION_PROVIDER=gemini-images`, `CRON_SECRET` (obligatorio; lo usan los dos crons), `GELATO_API_KEY` y `GELATO_WEBHOOK_SECRET` (sin ellas no se ofrece la tapa dura), `SITE_URL`, `LEGAL_NAME`, `LEGAL_NIF`, `LEGAL_ADDRESS`, `LEGAL_EMAIL`, Stripe en modo real y Resend. Sin `NEXT_PUBLIC_DRY_RUN_PAYMENT`. `HEALTH_TOKEN` si se quiere la comprobación profunda. Borrar la variable antigua `service_role`.
 5. **Fiscal:** confirmar con la gestoría el IVA (4 % como libro), el epígrafe IAE y cómo emitir las facturas. Preguntar también si el libro impreso personalizado (un ejemplar único) va al 4 % o al 21 % como fotolibro.
 6. **B7:** tres personas ajenas hacen un libro sin ayuda. Después, unir el PR #1 a `main`.
-7. **Libro impreso (D7, B8):** decidir ESTADO §4.21 a §4.26. Crear la cuenta en Gelato y pedir una muestra con el libro de Vera (Claude prepara el PDF de imprenta). Pedir presupuesto a Podiprint y Realisaprint para un 20×20 de tapa dura y 24 páginas a todo color, un ejemplar con envío a domicilio.
+7. **Libro impreso (D7, B8), pasos en `IMPRESION.md` §7:**
+   - Cuenta de empresa en Gelato, con método de pago. Clave de API → `GELATO_API_KEY` en Preview.
+   - Webhook en Gelato → `https://<preview>/api/print/webhook?token=<valor largo aleatorio>`; el mismo valor → `GELATO_WEBHOOK_SECRET`.
+   - Muestra: `GELATO_ORDER_TYPE=order` en Preview, un libro con la tarjeta de prueba de Stripe y tu dirección, «Mandar a imprimir». Después, quitar la variable.
+   - Entidad del contrato de Gelato y su DPA (`PROVEEDORES.md`), para `/privacidad`.
+   - Presupuesto a Podiprint y Realisaprint: 20×20 de tapa dura, 30 páginas interiores a todo color, un ejemplar con envío a domicilio.
+   - Decidir ESTADO §4.22 y §4.25; el IVA (§4.24) va con el punto 5.
 
 ## 8. Registro de decisiones
 
