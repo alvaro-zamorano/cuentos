@@ -169,7 +169,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 28. **Sin probar contra Gelato:** la API real, el webhook y que acepte el PDF. La clave y el webhook ya están en la preview (18 oct, noche): falta la compra de prueba (§5). Álvaro y Claude.
 29. ~~**Stripe en producción**~~ Cobro real (Álvaro, 18 oct) y salvaguarda en el código (§2). Falta que Álvaro active la cuenta, ponga `sk_live_` y el secreto del endpoint real en Production y separe `STRIPE_WEBHOOK_SECRET` de Preview (`PAGO.md`). Álvaro.
 30. **Buzón de `hola@erasesuvez.com`:** reenvío gratuito a Gmail (Álvaro, 18 oct). Álvaro crea la cuenta (p. ej. ImprovMX), añade el dominio y el alias `hola`; Claude pone en el DNS de Vercel los MX y el SPF que muestre el servicio. Después, `LEGAL_EMAIL=hola@erasesuvez.com` en Production. Álvaro y Claude.
-31. **Variable antigua `service_role`** en Vercel: sobra (E11). Borrarla con el visto bueno de Álvaro.
+31. ~~**Variable antigua `service_role`**~~ Borrada de Vercel el 18 oct (noche), con el visto bueno de Álvaro. Entra en el siguiente despliegue.
 
 ## 5. Próxima sesión — empezar por
 
