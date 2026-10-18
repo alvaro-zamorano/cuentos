@@ -264,6 +264,15 @@ export type Database = {
           currency: string
           edition: string
           id: string
+          print_error: string | null
+          print_order_id: string | null
+          print_reminded_at: string | null
+          print_sent_at: string | null
+          print_shipped_mailed_at: string | null
+          print_status: string | null
+          print_tracking_url: string | null
+          print_updated_at: string | null
+          shipping: Json | null
           status: string
           stripe_session_id: string | null
         }
@@ -274,6 +283,15 @@ export type Database = {
           currency?: string
           edition: string
           id?: string
+          print_error?: string | null
+          print_order_id?: string | null
+          print_reminded_at?: string | null
+          print_sent_at?: string | null
+          print_shipped_mailed_at?: string | null
+          print_status?: string | null
+          print_tracking_url?: string | null
+          print_updated_at?: string | null
+          shipping?: Json | null
           status?: string
           stripe_session_id?: string | null
         }
@@ -284,6 +302,15 @@ export type Database = {
           currency?: string
           edition?: string
           id?: string
+          print_error?: string | null
+          print_order_id?: string | null
+          print_reminded_at?: string | null
+          print_sent_at?: string | null
+          print_shipped_mailed_at?: string | null
+          print_status?: string | null
+          print_tracking_url?: string | null
+          print_updated_at?: string | null
+          shipping?: Json | null
           status?: string
           stripe_session_id?: string | null
         }

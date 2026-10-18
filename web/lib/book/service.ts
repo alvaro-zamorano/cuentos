@@ -22,10 +22,14 @@ import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
 import { validatePlan } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
+import { cleanShipping } from "../print/shipping";
+import { PRICE_CENTS as PRICES, paidEdition } from "../print/prices";
+import { LOCKED_PRINT_STATUSES, type PaidEdition, type PrintView, type Shipping } from "../print/types";
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
 export const MAX_PAGE_JOBS = 3; // la incluida + 1 versión más + 1 por si el padre cambia la escena
-export const PRICE_CENTS = 1490;
+/** Precio del PDF ilustrado (el de la tapa dura, en lib/print/prices.ts). */
+export const PRICE_CENTS = PRICES.illustrated;
 
 export interface BookDraftV2 {
   v: 2;
@@ -39,6 +43,9 @@ export interface BookDraftV2 {
   pageChoice?: Record<number, string>;
   /** Email de «tu libro está listo» enviado (una vez). */
   readyMailedAt?: number;
+  /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
+  edition?: PaidEdition;
+  shipping?: Shipping;
   updatedAt: number;
 }
 
@@ -116,7 +123,7 @@ async function save(store: GenStore, book: BookRecord, d: BookDraftV2, edition =
   return store.saveBook({ publicId: book.public_id, email: book.email, draft: { ...d, updatedAt: Date.now() }, edition });
 }
 
-async function loadBook(store: GenStore, bookId: unknown): Promise<{ book: BookRecord; d: BookDraftV2 } | Fail> {
+export async function loadBook(store: GenStore, bookId: unknown): Promise<{ book: BookRecord; d: BookDraftV2 } | Fail> {
   const id = typeof bookId === "string" && /^[a-z0-9]{8,16}$/.test(bookId) ? bookId : null;
   if (!id) return fail(400, "book_id");
   const book = await store.findBook({ publicId: id });
@@ -179,6 +186,8 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
     pagesArt: prev?.pagesArt,
     approvedSheetJobId: prev?.approvedSheetJobId,
     readyMailedAt: prev?.readyMailedAt,
+    edition: prev?.edition,
+    shipping: prev?.shipping,
     updatedAt: Date.now(),
   };
   book = await store.saveBook({ publicId: book?.public_id, email, draft: d, edition: "illustrated" });
@@ -278,6 +287,13 @@ export async function approveSheet(store: GenStore, input: { bookId?: unknown; s
   return { ok: true };
 }
 
+/** El libro impreso ya ha salido hacia la imprenta: no admite cambios. */
+async function printLocked(store: GenStore, bookUuid: string): Promise<boolean> {
+  const o = await store.getOrder(bookUuid);
+  return !!o?.printStatus && LOCKED_PRINT_STATUSES.includes(o.printStatus);
+}
+const lockedFail = () => fail(409, "printed", "El libro ya está en la imprenta y no se puede cambiar.");
+
 /** Guarda el plan editado por el padre (textos, o una página reescrita). Las imágenes no se tocan aquí. */
 export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?: unknown }): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
@@ -285,6 +301,11 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
   const { book, d } = loaded;
   const plan = planFromClient(d.ficha, input.plan);
   if (!plan) return fail(400, "plan");
+  if (await printLocked(store, book.id)) {
+    // el guardado automático puede llegar después de mandarlo a imprimir con los mismos textos: eso no es un cambio
+    const same = plan.title === d.plan.title && plan.dedication === d.plan.dedication && plan.pages.every((p, i) => p.text === d.plan.pages[i]?.text);
+    return same ? { ok: true } : lockedFail();
+  }
   const v = validatePlan(plan, d.ficha);
   if (!v.usable) return fail(422, "plan_invalid", v.issues.filter((i) => i.hard).map((i) => i.msg).slice(0, 3).join(" "));
   // el reparto inventado y la portada no cambian después del email: la hoja ya está pintada con ellos
@@ -298,6 +319,7 @@ export async function choosePage(store: GenStore, input: { bookId?: unknown; job
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
+  if (await printLocked(store, book.id)) return lockedFail();
   const job = (await store.listJobs(book.id)).find((j) => j.id === input.jobId && j.kind === "page" && v2Of(j));
   if (!job || job.status !== "done" || !job.page_n) return fail(409, "page_not_ready");
   d.pageChoice = { ...(d.pageChoice ?? {}), [job.page_n]: job.id };
@@ -307,11 +329,65 @@ export async function choosePage(store: GenStore, input: { bookId?: unknown; job
 
 /* ------------------------------ pago simulado ------------------------------ */
 
-export async function payDryRun(store: GenStore, input: { bookId?: unknown }): Promise<{ ok: true } | Fail> {
+export async function payDryRun(store: GenStore, input: { bookId?: unknown; edition?: unknown; shipping?: unknown }): Promise<{ ok: true } | Fail> {
+  const prep = await prepareCheckout(store, input);
+  if (!prep.ok) return prep;
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  if (!(await store.hasPaidOrder(loaded.book.id))) await store.addPaidOrder(loaded.book.id, { amountCents: PRICE_CENTS, edition: "illustrated", sessionId: `dry-run:${loaded.book.public_id}` });
+  const { book, d } = loaded;
+  if (!(await store.hasPaidOrder(book.id))) await store.addPaidOrder(book.id, newOrder(prep.edition, prep.amountCents, `dry-run:${book.public_id}`, d.shipping));
   return { ok: true };
+}
+
+function newOrder(edition: PaidEdition, amountCents: number, sessionId: string | null, shipping: Shipping | undefined) {
+  return edition === "hardcover"
+    ? { amountCents, edition, sessionId, shipping: shipping ?? null, printStatus: "awaiting_approval" as const }
+    : { amountCents, edition, sessionId };
+}
+
+export interface CheckoutPrep {
+  ok: true;
+  bookId: string;
+  email: string | null;
+  title: string;
+  edition: PaidEdition;
+  amountCents: number;
+}
+
+/**
+ * Antes de abrir el pago (real o de prueba): el libro existe y no está pagado, la edición es válida y, si es la tapa dura,
+ * la dirección también. La edición y la dirección se guardan en el borrador y pasan al pedido cuando llega el pago.
+ */
+export async function prepareCheckout(store: GenStore, input: { bookId?: unknown; edition?: unknown; shipping?: unknown }): Promise<CheckoutPrep | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  let { book } = loaded;
+  const { d } = loaded;
+  if (await store.hasPaidOrder(book.id)) return fail(409, "already_paid");
+  const edition = paidEdition(input.edition) ?? "illustrated";
+  if (edition === "hardcover") {
+    const s = cleanShipping(input.shipping);
+    if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
+    d.shipping = s.shipping;
+  }
+  d.edition = edition;
+  book = await save(store, book, d, edition === "hardcover" ? "hardcover" : "illustrated");
+  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition, amountCents: PRICES[edition] };
+}
+
+/** Cambiar la dirección de la tapa dura ya pagada, mientras no haya salido hacia la imprenta. */
+export async function updateShipping(store: GenStore, input: { bookId?: unknown; shipping?: unknown }): Promise<{ ok: true; shipping: Shipping } | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  const { book, d } = loaded;
+  const order = await store.getOrder(book.id);
+  if (!order || order.edition !== "hardcover") return fail(409, "not_hardcover");
+  if (order.printStatus && LOCKED_PRINT_STATUSES.includes(order.printStatus)) return lockedFail();
+  const s = cleanShipping(input.shipping);
+  if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
+  await store.updateOrder(order.id, { shipping: s.shipping });
+  await save(store, book, { ...d, shipping: s.shipping }, "hardcover");
+  return { ok: true, shipping: s.shipping };
 }
 
 /* ------------------------------ pago con Stripe (webhook) ------------------------------ */
@@ -338,30 +414,25 @@ export async function recordStripePayment(store: GenStore, event: PaidEvent): Pr
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
   if (await store.hasPaidOrder(loaded.book.id)) return { action: "duplicate", bookId: loaded.book.public_id };
-  await store.addPaidOrder(loaded.book.id, { amountCents: typeof s.amount_total === "number" ? s.amount_total : PRICE_CENTS, edition: "illustrated", sessionId: s.id ?? null });
+  const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
+  const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
+  await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
   return { action: "paid", bookId: loaded.book.public_id };
 }
 
-/** Datos para el pago: el libro existe, tiene email y aún no está pagado. */
-export async function checkoutInfo(store: GenStore, bookId: unknown): Promise<{ ok: true; bookId: string; email: string | null; title: string } | Fail> {
-  const loaded = await loadBook(store, bookId);
-  if (isFail(loaded)) return loaded;
-  if (await store.hasPaidOrder(loaded.book.id)) return fail(409, "already_paid");
-  return { ok: true, bookId: loaded.book.public_id, email: loaded.book.email, title: loaded.d.plan.title };
-}
 
 /**
  * Cuando las 12 páginas están pintadas, manda una vez el email de «tu libro está listo» (el envío se inyecta: Resend en
  * la ruta, un doble en los tests). Devuelve si lo ha mandado.
  */
-export async function notifyBookReady(store: GenStore, bookId: string, link: (id: string) => string, send: (to: string, title: string, link: string) => Promise<{ sent: boolean }>): Promise<boolean> {
+export async function notifyBookReady(store: GenStore, bookId: string, link: (id: string) => string, send: (to: string, title: string, link: string, edition: PaidEdition) => Promise<{ sent: boolean }>): Promise<boolean> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return false;
   const { book, d } = loaded;
   if (d.readyMailedAt || !book.email) return false;
   const view = await bookView(store, bookId);
   if (!view.ok || !view.paid || !Object.values(view.chosen.pages).every(Boolean)) return false;
-  const r = await send(book.email, d.plan.title, link(book.public_id));
+  const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated");
   if (!r.sent) return false;
   const fresh = draftV2((await store.findBook({ publicId: bookId })) ?? book) ?? d;
   await save(store, book, { ...fresh, readyMailedAt: Date.now() });
@@ -414,6 +485,7 @@ export async function requestPages(
   let { book } = loaded;
   const { d } = loaded;
   if (!(await store.hasPaidOrder(book.id)) && !dryRunPayment) return fail(402, "not_paid");
+  if (await printLocked(store, book.id)) return lockedFail();
   if (!d.castArt) return fail(409, "no_sheet");
   let jobs = await store.listJobs(book.id);
   const sheets = sheetJobs(jobs).filter((j) => j.status === "done");
@@ -491,8 +563,14 @@ export interface BookView {
   jobs: BookJobView[];
   /** Lo que va al libro: portada de la hoja aprobada (o la última) y la versión elegida de cada página. */
   chosen: { sheet: string | null; cover: string | null; pages: Record<number, string | null> };
+  /** Edición pagada (null sin pagar). */
+  edition: PaidEdition | null;
+  /** Libro de tapa dura: dirección, estado en la imprenta y seguimiento (el modo lo pone la ruta). */
+  print: Omit<PrintView, "mode"> | null;
   /** Los pone la ruta /api/libro/view: cómo se paga aquí, si se mandan emails y si se pinta en segundo plano. */
   payment?: "stripe" | "dry-run" | "none";
+  /** Si la tapa dura se puede comprar aquí (imprenta real o simulada) y cómo. */
+  printMode?: PrintView["mode"];
   mail?: boolean;
   background?: boolean;
 }
@@ -529,12 +607,18 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     const pick = options.find((j) => j.id === d.pageChoice?.[n]) ?? options[options.length - 1] ?? null;
     pages[n] = pick?.id ?? null;
   }
+  const order = await store.getOrder(book.id);
   return {
     ok: true,
     bookId: book.public_id,
     ficha: d.ficha,
     plan: d.plan,
     paid: await store.hasPaidOrder(book.id),
+    edition: order?.edition ?? null,
+    print:
+      order?.edition === "hardcover" && order.printStatus
+        ? { status: order.printStatus, shipping: order.shipping ?? d.shipping ?? null, trackingUrl: order.trackingUrl, sentAt: order.sentAt }
+        : null,
     approvedSheetJobId: d.approvedSheetJobId ?? null,
     sheetsLeft: Math.max(0, MAX_SHEETS - sheets.length),
     jobs: out,

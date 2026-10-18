@@ -34,6 +34,10 @@ export default function Condiciones() {
         <li>Con tu email pintamos la hoja de personajes y la portada. Puedes pedir hasta dos cambios con palabras.</li>
         <li>Al pagar se pintan las doce páginas. Puedes pedir una versión más de cada página.</li>
         <li>Descargas el PDF.</li>
+        <li>
+          Si has comprado el libro de tapa dura, lo revisas y pulsas «Mandar a imprimir». No lo imprimimos hasta entonces, y después ya no se
+          puede cambiar.
+        </li>
       </ol>
 
       <h2>4. Contenido hecho con IA</h2>
@@ -52,7 +56,8 @@ export default function Condiciones() {
       <h2>6. Precio e impuestos</h2>
       <p>
         Los precios incluyen IVA. A los libros, también en formato electrónico, se les aplica el tipo superreducido del 4 %{" "}
-        <Pending>confirmar con gestoría</Pending>. Los gastos de envío de la tapa dura se indicarán antes del pago.
+        <Pending>confirmar con gestoría</Pending>. El precio del libro de tapa dura incluye el envío a la Península y Baleares; de momento no
+        enviamos a Canarias, Ceuta, Melilla ni fuera de España.
       </p>
 
       <h2>7. Sin derecho de desistimiento</h2>
@@ -64,19 +69,27 @@ export default function Condiciones() {
         no corresponde con lo pedido.
       </p>
 
-      <h2>8. Garantía y reclamaciones</h2>
+      <h2>8. Libro impreso: plazos y entrega</h2>
       <p>
-        Si el PDF no se abre o le falta alguna página, escríbenos a <ContactEmail value={t.email} /> y lo reponemos sin coste. Esto no limita la
+        El libro de tapa dura (20×20 cm) se imprime cuando pulsas «Mandar a imprimir». Suele llegar en una o dos semanas desde entonces; el plazo
+        es orientativo y te escribimos con el seguimiento cuando sale de la imprenta. Revisa bien la dirección: si el transportista no puede
+        entregarlo por un error en ella, el nuevo envío corre por tu cuenta.
+      </p>
+
+      <h2>9. Garantía y reclamaciones</h2>
+      <p>
+        Si el libro impreso llega dañado o con un fallo de impresión, escríbenos con una foto en los 14 días siguientes a recibirlo y lo
+        volvemos a imprimir sin coste. Si el PDF no se abre o le falta alguna página, escríbenos a <ContactEmail value={t.email} /> y lo reponemos sin coste. Esto no limita la
         garantía legal que te corresponde como consumidor. Hojas de reclamación disponibles a petición.
       </p>
 
-      <h2>9. Guarda tu PDF</h2>
+      <h2>10. Guarda tu PDF</h2>
       <p>
         El libro se borra a los 30 días de empezarlo, también si lo has comprado. Descarga el PDF antes. Detalle en la{" "}
         <Link href="/privacidad" className="link">política de privacidad</Link>.
       </p>
 
-      <h2>10. Ley aplicable</h2>
+      <h2>11. Ley aplicable</h2>
       <p>Ley española. Para consumidores, los juzgados de su domicilio.</p>
     </LegalPage>
   );

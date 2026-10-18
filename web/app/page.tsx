@@ -5,13 +5,14 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { BookCover, Blob, Hills, Icon, Moon, Sparkle } from "@/components/brand";
 import { SampleFlipper } from "@/components/landing/SampleFlipper";
 import { paymentMode } from "@/lib/stripe";
+import { printMode } from "@/lib/print/gelato";
 import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
 
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
   description:
-    "Un cuento personalizado con tu hijo, tu nieta o tu sobrino de protagonista y la historia que tú quieras: su cumpleaños, un viaje a la Luna o el primer día de cole. Lo escribimos y lo ilustramos; lo lees gratis y lo imprimes en casa.",
+    "Un cuento personalizado con tu hijo, tu nieta o tu sobrino de protagonista y la historia que tú quieras: su cumpleaños, un viaje a la Luna o el primer día de cole. Lo escribimos y lo ilustramos; lo lees gratis y te lo enviamos impreso en tapa dura.",
 };
 
 /**
@@ -39,7 +40,7 @@ const STARTS = [
 const STEPS = [
   { n: 1, title: "Nos cuentas la idea", body: "Con una frase basta. O eliges una para empezar: su cumpleaños, Navidad, un viaje a la Luna.", tint: "bg-peach" },
   { n: 2, title: "Ves cómo queda", body: "Te enseñamos cómo será en el libro y la portada. ¿Más rizos? ¿El perro más pequeño? Lo pides con palabras.", tint: "bg-sky" },
-  { n: 3, title: "Tienes su libro", body: "Doce páginas ilustradas en un PDF para imprimir en casa. Si una ilustración no te convence, la repetimos.", tint: "bg-butter" },
+  { n: 3, title: "Tienes su libro", body: "Un libro de tapa dura con sus doce ilustraciones, en tu casa, y el PDF para leerlo ya. Si una ilustración no te convence, la repetimos.", tint: "bg-butter" },
 ];
 
 const HOW = [
@@ -72,7 +73,7 @@ const FAQ = [
   },
   {
     q: "¿Llega a tiempo para Navidad o Reyes?",
-    a: "Sí, porque no hay envío: el PDF está listo en unos minutos. Puedes imprimirlo en casa o en una copistería el mismo día.",
+    a: "El libro impreso tarda una o dos semanas desde que lo mandas a imprimir. Si vas justo de tiempo, el PDF está listo en unos minutos y el libro llega después.",
   },
   {
     q: "¿Qué datos del niño pedís?",
@@ -84,7 +85,7 @@ const FAQ = [
   },
   {
     q: "¿Se puede devolver?",
-    a: "Lees el cuento y ves la portada antes de pagar. Como cada libro se hace a medida, no admite devolución (art. 103.c TRLGDCU). Si el PDF no se abre, lo reponemos.",
+    a: "Lees el cuento y ves la portada antes de pagar. Como cada libro se hace a medida, no admite devolución (art. 103.c TRLGDCU). Si el libro llega dañado o con un fallo de impresión, lo volvemos a imprimir; si el PDF no se abre, lo reponemos.",
   },
 ];
 
@@ -93,6 +94,10 @@ const CHECK = <Icon.check size={18} className="shrink-0 text-star" />;
 export default function Landing() {
   // se fija al construir la página (estática): Stripe configurado → disponible
   const illustratedStatus = { stripe: null, "dry-run": "Disponible en prueba", none: "Muy pronto" }[paymentMode()];
+  // tapa dura: hace falta el pago y la imprenta (o las dos simuladas en la preview)
+  const pm = paymentMode();
+  const pr = printMode();
+  const hardcoverStatus = pm === "none" || pr === "none" ? "Muy pronto" : pm === "dry-run" || pr === "dry-run" ? "Disponible en prueba" : null;
   return (
     <main className="flex-1">
       {/* Portada en noche */}
@@ -144,7 +149,7 @@ export default function Landing() {
             <ul className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[15px] text-[#b9c1da]">
               <li className="flex items-center gap-2">{CHECK}Sin subir fotos</li>
               <li className="flex items-center gap-2">{CHECK}El cuento y la portada, gratis</li>
-              <li className="flex items-center gap-2">{CHECK}PDF para imprimir en casa</li>
+              <li className="flex items-center gap-2">{CHECK}Tapa dura con envío a casa</li>
             </ul>
           </div>
 
@@ -261,7 +266,7 @@ export default function Landing() {
         <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
           <div className="grid justify-items-center gap-2 text-center">
             <span className="hand text-[22px] text-accent">ediciones</span>
-            <h2 className="display m-0 max-w-[22ch] text-[34px] sm:text-[48px]">Empiezas gratis. Pagas solo por el libro ilustrado.</h2>
+            <h2 className="display m-0 max-w-[22ch] text-[34px] sm:text-[48px]">Empiezas gratis. Pagas solo por el libro.</h2>
           </div>
           <div className="mt-12 grid items-stretch gap-6 md:grid-cols-3 md:gap-5">
             <div className="flex flex-col gap-5 rounded-[28px] bg-card px-7 py-8 shadow-[0_2px_0_#e6d8c1]">
@@ -285,21 +290,21 @@ export default function Landing() {
             <div className="relative flex flex-col gap-5 rounded-[28px] bg-night px-7 py-8 text-moon shadow-[0_40px_70px_-40px_rgba(29,39,71,0.9)]">
               <span className="absolute -top-3.5 right-6 inline-flex items-center gap-1.5 rounded-full bg-star px-3.5 py-1.5 text-[13px] font-bold text-ink">
                 <Sparkle size={12} color="var(--ink)" />
-                Doce ilustraciones
+                Para regalar
               </span>
               <div>
-                <p className="m-0 text-[15px] font-bold text-[#b9c1da]">Ilustrado · PDF</p>
-                <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_ILLUSTRATED}</p>
+                <p className="m-0 text-[15px] font-bold text-[#b9c1da]">Tapa dura · envío incluido</p>
+                <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_HARDCOVER}</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px] text-[#e4e8f2]">
-                {["Todo lo de la edición gratis", "Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"].map((x) => (
+                {["Todo lo de la edición gratis", "Libro de tapa dura de 20×20 cm con las doce ilustraciones", "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Te lo enviamos a casa (Península y Baleares) y tienes el PDF al momento"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-star" />
                     {x}
                   </li>
                 ))}
               </ul>
-              {illustratedStatus && <p className="m-0 text-sm text-moon-soft">{illustratedStatus}</p>}
+              {hardcoverStatus && <p className="m-0 text-sm text-moon-soft">{hardcoverStatus}</p>}
               <Link href="/crear" className="btn-primary mt-auto w-full">
                 Crear su cuento
               </Link>
@@ -307,20 +312,21 @@ export default function Landing() {
 
             <div className="flex flex-col gap-5 rounded-[28px] bg-card px-7 py-8 shadow-[0_2px_0_#e6d8c1]">
               <div>
-                <p className="m-0 text-[15px] font-bold text-ink-soft">Tapa dura</p>
-                <p className="display m-0 mt-1.5 text-[44px] leading-none">
-                  {PRICE_HARDCOVER.startsWith("desde ") ? (
-                    <>
-                      <span className="text-xl font-medium italic">desde </span>
-                      {PRICE_HARDCOVER.slice(6)}
-                    </>
-                  ) : (
-                    PRICE_HARDCOVER
-                  )}
-                </p>
+                <p className="m-0 text-[15px] font-bold text-ink-soft">Ilustrado · PDF</p>
+                <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_ILLUSTRATED}</p>
               </div>
-              <p className="m-0 text-[16px] text-ink-soft">El libro ilustrado, impreso y encuadernado, enviado a tu casa.</p>
-              <span className="mt-auto inline-flex min-h-12 w-full items-center justify-center rounded-full bg-[#efe4d0] font-bold text-ink-soft">Próximamente</span>
+              <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px]">
+                {["Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"].map((x) => (
+                  <li key={x} className="flex gap-2.5">
+                    <Icon.check size={20} className="mt-0.5 shrink-0 text-accent" />
+                    {x}
+                  </li>
+                ))}
+              </ul>
+              {illustratedStatus && <p className="m-0 text-sm text-ink-soft">{illustratedStatus}</p>}
+              <Link href="/crear" className="btn-ghost mt-auto w-full">
+                Crear su cuento
+              </Link>
             </div>
           </div>
           <p className="m-0 mt-5 text-center text-sm text-ink-soft">Precios con IVA incluido.</p>

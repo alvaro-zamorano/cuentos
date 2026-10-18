@@ -45,12 +45,13 @@ test("Landing: estructura editorial y SEO", async ({ page }) => {
     "Hojea el libro de Vera.",
     "Cada uno, su historia.",
     "Lo que lo hace suyo",
-    "Empiezas gratis. Pagas solo por el libro ilustrado.",
+    "Empiezas gratis. Pagas solo por el libro.",
     "Preguntas",
   ])
     await expect(page.getByRole("heading", { name: h, level: 2 })).toBeVisible();
   await expect(page.getByText("14,90 €").first()).toBeVisible();
-  await expect(page.getByText("desde 39,90 €").first()).toBeVisible();
+  await expect(page.getByText("34,90 €").first()).toBeVisible();
+  await expect(page.getByText("Tapa dura · envío incluido")).toBeVisible();
   // «peque(s)» como palabra suelta; \b no sirve porque en JS la «ñ» de «pequeño» cuenta como límite de palabra
   await expect(page.getByText(/(?<!\p{L})peques?(?!\p{L})/iu)).toHaveCount(0);
   // el cuento se escribe en el servidor: la landing no puede prometer que los datos se quedan en el navegador
