@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Política de privacidad" };
 export default function Privacidad() {
   const t = titular();
   return (
-    <LegalPage title="Política de privacidad" updated="16 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="18 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
         Responsable del tratamiento: <Dato value={t.name}>nombre y apellidos o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, domicilio{" "}
@@ -106,9 +106,9 @@ export default function Privacidad() {
         proveedor está certificado, en el Marco de Privacidad de Datos UE-EE. UU.:
       </p>
       <ul>
-        <li>Alojamiento web: Vercel Inc. (EE. UU.), con cláusulas tipo y Marco de Privacidad.</li>
+        <li>Alojamiento web: Vercel Inc. (EE. UU.), con los servidores de la web en Dublín (UE), cláusulas tipo y Marco de Privacidad.</li>
         <li>
-          Base de datos y archivos: Supabase Pte. Ltd. (Singapur), con los datos alojados en <Pending>región de la UE del proyecto</Pending> y
+          Base de datos y archivos: Supabase Pte. Ltd. (Singapur), con los datos alojados en Irlanda (UE) y
           cláusulas tipo.
         </li>
         <li>Texto del cuento y revisión de las imágenes: Anthropic Ireland, Limited, con la API de Claude, y cláusulas tipo.</li>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ContactEmail, Dato, LegalPage, Pending } from "@/components/LegalPage";
+import { ContactEmail, Dato, LegalPage } from "@/components/LegalPage";
 import { titular } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Condiciones" };
@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Condiciones" };
 export default function Condiciones() {
   const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="16 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="18 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
         <Dato value={t.name}>nombre o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, <Dato value={t.address}>dirección</Dato>, <ContactEmail value={t.email} />. Datos completos en el{" "}
@@ -55,8 +55,7 @@ export default function Condiciones() {
 
       <h2>6. Precio e impuestos</h2>
       <p>
-        Los precios incluyen IVA. A los libros, también en formato electrónico, se les aplica el tipo superreducido del 4 %{" "}
-        <Pending>confirmar con gestoría</Pending>. El precio del libro de tapa dura incluye el envío a la Península y Baleares; de momento no
+        Los precios incluyen IVA. A los libros, también en formato electrónico, se les aplica el tipo superreducido del 4 %. El precio del libro de tapa dura incluye el envío a la Península y Baleares; de momento no
         enviamos a Canarias, Ceuta, Melilla ni fuera de España.
       </p>
 
