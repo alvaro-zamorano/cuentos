@@ -1,14 +1,15 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-16 (PR #5: lo que faltaba en el código para abrir al público) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 en curso
+Actualizado: 2026-10-18 (D7: el libro impreso pasa a ser el producto principal) · Fase: B1–B5 hechos (a B5 le faltan las claves) · B6 en parte · B7 en curso
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
 - **Ahora (16 oct):** salir al público. El código que faltaba está en el PR #5 (desistimiento, tope, E18, legales, flujo antiguo, robots). Lo que queda es de Álvaro, en este orden: marca y dominio, cuatro bloqueos de §4 (Gemini y menores, plan de Vercel, región de Supabase, clave de Gemini de pago), Stripe y Resend, variables de producción, gestoría, y la prueba con tres personas.
+- **Producto (18 oct, D7):** el libro impreso de tapa dura, con el PDF incluido, pasa a ser el producto principal. Antes de construir B8: la muestra de la imprenta y las preguntas §4.21 a §4.26. Detalle en `IMPRESION.md`.
 - **Después:** unir el PR #1 a `main` (salida a producción).
-- **Fuera de foco ahora:** tapa dura, más estilos de ilustración, el Reel (B6). El flujo antiguo redirige a `/crear` desde el 16 oct.
+- **Fuera de foco ahora:** más estilos de ilustración, el Reel (B6). El flujo antiguo redirige a `/crear` desde el 16 oct.
 
 ## 2. Log de decisiones (append-only)
 
@@ -58,6 +59,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-16 | Proveedores de la política con lo verificado en sus páginas oficiales (entidad, contrato de encargo, cláusulas tipo, Marco de Privacidad). Stripe (fraude, blanqueo) y Microsoft Clarity son responsables independientes, no encargados. Clarity recibe la señal `consentv2` (medición sí, publicidad no) y no graba `/crear` | La política decía «encargados» para todos y no lo son | `/privacidad`, `CookieConsent.tsx`, `app/crear/page.tsx` |
 | 2026-10-16 | robots y sitemap: solo se indexa producción con `SITE_URL`; `/crear?…` (los libros de cada familia) nunca. La descripción del sitio deja de prometer tapa dura | Abrir al público con el dominio de la marca, sin indexar el alias de Vercel ni los libros | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts`, `layout.tsx` |
 | 2026-10-16 | Marca «Érase su vez» (Álvaro). Dominio principal `erasesuvez.es` y `erasesuvez.com` redirigido a él (propuesta; libres el 16 oct). En la web: nombre en cabecera, pie, títulos y emails; favicon (luna y estrella en noche), icono de iOS e imagen para compartir de 1200×630 con el libro de muestra (JPEG de 78 KB, para que WhatsApp la enseñe) | Distintiva, explica el producto y la búsqueda no dio marcas iguales; «Su cuento» chocaba con MiCuento | `SiteHeader.tsx`, `layout.tsx`, `app/{icon.svg,apple-icon.png,opengraph-image.jpg}`, `lib/mail.ts` (PR #5) |
+| 2026-10-18 | D7 (Álvaro): el libro impreso de tapa dura pasa a ser el producto principal, con el PDF incluido. El PDF solo se queda como opción más barata. Lo demás (precio, imprenta, qué es gratis, segundo ejemplar, tarjeta regalo, orden respecto a la salida) es propuesta de Claude, pendiente en §4.21 a §4.26 | Esta categoría se vende como objeto de regalo entre 25 y 36 €; un PDF no se envuelve, y quien compra suele ser quien regala. Con el PDF solo, el margen por venta (≈ 13 €) deja poco para captar clientes | PLAN (D7, §3.2, B8, §7), `IMPRESION.md`, INDICE |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -96,6 +98,14 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **«Su cuento» como marca choca con MiCuento** (micuento.com, Barcelona, libros personalizados). Descartado. Propuestas en §4.9.
 - Comprobado en local: tsc, eslint, 87 unitarios, build, 8 Playwright y capturas del paso 5 y de `/privacidad`. Proveedores, con fuentes: `PROVEEDORES.md`.
 
+### 18 oct (impresión y producto)
+
+- **Precios de la competencia:** MiCuento, unos 25 € en tapa dura 21×21; Librio, 24,48 £ en tapa blanda y 32,48 £ en tapa dura; Wonderbly lanzó a 29 $ y 36 $; Hooray Heroes, unos 24 € de media por libro (12 M€ con casi medio millón de libros en 2018). Detalle y fuentes en `IMPRESION.md`.
+- **Imprentas con API para un ejemplar:** Gelato (20×20, produce en la UE), Prodigi / Peecho (sin 20×20), Lulu (API gratis, sin confirmar dónde imprime para España) y Mixam (API con aprobación previa). Las españolas (Podiprint, Veprix, Realisaprint) no publican API: hay que pedir presupuesto.
+- **Mínimo de páginas:** las tapas duras piden 24 a 30 páginas y nuestro PDF tiene 15. La doble página (ilustración a un lado, texto al otro) da 24 y resuelve el blanco del E15.
+- **No hace falta 4K para imprimir** (cálculo de Claude): 2528 px en 20 cm son unos 320 ppp. Solo haría falta si la ilustración ocupa la doble página.
+- **El IVA es la incógnita grande:** el 4 % depende de que un ejemplar único personalizado cuente como «libro» y no como fotolibro. Con el 21 %, el margen cae unos 5 € por libro.
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
@@ -119,12 +129,19 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 18. **Región de Supabase:** se ve en Storage → S3 (endpoint y región). Si no es de la UE, la región no se puede cambiar: habría que mover las tablas `cuentos_*` a un proyecto en la UE. Álvaro.
 19. **Clave de Gemini de pago:** confirmar que sale de un proyecto de Google Cloud con facturación activa y que el registro de AI Studio está apagado. Álvaro.
 20. **Clarity:** si se activa, poner la ocultación en Strict en su panel. El código ya oculta `/crear`. Álvaro.
+21. **Precio del libro impreso (D7):** propuesta, 34,90 € con envío y el PDF incluido; probar 39,90 €. El PDF solo se queda en 14,90 €. Álvaro.
+22. **Qué es gratis (D3):** con D7, el PDF casero gratis compite con lo que se vende. Propuesta: mantener gratis el cuento, los personajes y la portada en la web, y pasar el PDF casero a pago o marcarlo con la marca. Álvaro.
+23. **Imprenta:** propuesta, Gelato para salir (pedir una muestra con el libro de Vera) y presupuesto a Podiprint y Realisaprint para comparar. Álvaro.
+24. **IVA del libro impreso:** ¿4 % como libro o 21 % como fotolibro, siendo un ejemplar único? Va con la pregunta 4, a la gestoría. Álvaro.
+25. **Segundo ejemplar y tarjeta regalo:** propuestas para subir el ticket medio (un segundo ejemplar a 24,90 € a la misma dirección) y para quien regala sin conocer al niño. Álvaro.
+26. **Orden de salida:** ¿se sale con el PDF y el impreso llega después, o se espera a B8? Para Navidad hay que fijar la fecha límite de envío con los plazos reales de la imprenta. Álvaro.
 
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. Si el PR #5 no está unido, preguntar a Álvaro y unirlo a la rama de trabajo (merge commit).
-3. Preguntar a Álvaro por los dominios de «Érase su vez» (PLAN §7.1) y por los bloqueos §4.16 a §4.19, en ese orden. Cuando el dominio apunte a Vercel: comprobar `https://erasesuvez.es/robots.txt` en producción y la vista previa del enlace en WhatsApp.
-4. `GET /api/health` en la preview: si `payment.mode` es `stripe`, un pago con la tarjeta 4242 4242 4242 4242; comprobar el webhook (200 en Stripe), el libro pintado con la pestaña cerrada y los dos emails si `mail.enabled` es `true`.
-5. `GET /api/cron/purge?dry=1` en la preview: comprobar que `leads` y `spend` salen sin error (consultas nuevas del PR #5 contra la base real).
-6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN), CI en verde, descripción del PR al día y la prueba con tres personas (B7).
+3. Con Álvaro: las preguntas del producto impreso §4.21 a §4.26 (D7), sobre todo el orden de salida (§4.26), y si ha pedido la muestra de la imprenta.
+4. Preguntar a Álvaro por los dominios de «Érase su vez» (PLAN §7.1) y por los bloqueos §4.16 a §4.19, en ese orden. Cuando el dominio apunte a Vercel: comprobar `https://erasesuvez.es/robots.txt` en producción y la vista previa del enlace en WhatsApp.
+5. `GET /api/health` en la preview: si `payment.mode` es `stripe`, un pago con la tarjeta 4242 4242 4242 4242; comprobar el webhook (200 en Stripe), el libro pintado con la pestaña cerrada y los dos emails si `mail.enabled` es `true`.
+6. `GET /api/cron/purge?dry=1` en la preview: comprobar que `leads` y `spend` salen sin error (consultas nuevas del PR #5 contra la base real).
+7. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN), CI en verde, descripción del PR al día y la prueba con tres personas (B7).

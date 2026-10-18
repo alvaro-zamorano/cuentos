@@ -1,12 +1,12 @@
 # ÍNDICE MAESTRO — cuentos
 
-Actualizado: 2026-10-14 · Owner: Álvaro · Fase: B1–B5 hechos (a B5 le faltan las claves), B6 en parte (estilo y copy unidos), B7 pendiente
+Actualizado: 2026-10-18 · Owner: Álvaro · Fase: B1–B5 hechos (a B5 le faltan las claves), B6 en parte (estilo y copy unidos), B7 en curso, B8 (libro impreso, D7) por empezar
 
 Mapa para empezar cualquier hilo. Lee esto y `ESTADO.md`; el resto, solo si la tarea lo pide. Los documentos que mandan están en el repo (`docs/`). El Project «Cuentos niños» guarda una copia (`claude/…`); quien cambie uno, actualiza el otro.
 
 ## 1. Resumen
 
-- **Qué es:** libros infantiles personalizados, escritos e ilustrados con IA. El padre cuenta la historia con una frase y elige cómo es el niño. Gratis: el cuento, la hoja de personajes, la portada y un PDF casero. De pago: el libro ilustrado (12 páginas, PDF A4) por 14,90 €. La tapa dura vendrá después.
+- **Qué es:** libros infantiles personalizados, escritos e ilustrados con IA. El padre cuenta la historia con una frase y elige cómo es el niño. Gratis: el cuento, la hoja de personajes, la portada y un PDF casero. De pago hoy: el libro ilustrado (12 páginas, PDF A4) por 14,90 €. Desde el 18 oct (D7), el producto principal pasa a ser el libro impreso de tapa dura con el PDF incluido (B8, por construir; precio e imprenta sin decidir).
 - **Coste:** ≈ 0,10 $ por lead (hoja + portada) y ≈ 1 $ por libro vendido.
 - **Repo:** `alvaro-zamorano/cuentos`. Rama de trabajo `feat/fase-1-journey-clasico`; PR #1 hacia `main`, sin unir. El código está en `web/` (Next.js 16).
 - **Preview (siempre la última de la rama):** https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app
@@ -29,6 +29,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `MUESTRA-LUNA.md` — el libro de muestra «Vera y Toby viajan a la Luna» · vigente
 - `ESTILO.md` — estilo «La hora del cuento»: referencias, colores, tipografía (Lora + Figtree + Patrick Hand), cambios por paso e implementación · **aprobado e implementado**; unido a la rama de trabajo el 14 oct (PR #2)
 - `PROVEEDORES.md` — contratos de encargo, transferencias y papel de cada proveedor, con fuentes (16 oct); respalda `/privacidad` · vigente
+- `IMPRESION.md`: libro impreso (D7): imprentas con API y españolas, precios de la competencia, formato, márgenes por libro y lo que cambia en B8 (18 oct) · vigente
 - `FASE0.md` — calibración inicial con Nano Banana, la base de D1–D6 · histórico
 - `ASSETS.md` — fondos y poses para el compositor de piezas · **superado por D1** (pendiente de retirar del Project)
 
@@ -55,6 +56,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 | Texto del libro de muestra | `web/lib/muestra.ts` | `MUESTRA-LUNA.md` |
 | Reglas de trabajo con Álvaro | `PLAN.md` §6 | `CLAUDE.md` |
 | Proveedores y sus contratos | `PROVEEDORES.md` | `/privacidad` §7 |
+| Libro impreso: imprentas, competencia, márgenes | `IMPRESION.md` | PLAN (D7, B8) |
 
 ## 4. Bloques
 
@@ -64,6 +66,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 - **B5:** código hecho y probado; faltan las claves de Stripe y Resend.
 - **B6:** landing hecha; falta el Reel.
 - **B7:** legales, dominio, prueba con tres personas y unir a `main`.
+- **B8:** libro impreso (D7): muestra de la imprenta, maqueta 20×20, dirección en el pago y pedido por API. Orden respecto a B7, pendiente.
 
 ## 5. Mapa del código (`web/`)
 
