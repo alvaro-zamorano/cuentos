@@ -9,6 +9,7 @@ import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
+import { WaitCard } from "./Waiting";
 import { ErrorNote, Status, Taped } from "./ui";
 
 /**
@@ -111,7 +112,12 @@ export function StepCast({
         <p className="text-ink-soft">Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras.</p>
       </div>
 
-      {painting && <Status testId="painting">{painting}</Status>}
+      {painting &&
+        (view ? (
+          <WaitCard name={name} sheet={current} cover={current ? view.jobs.find((j) => j.kind === "cover" && j.sheetJobId === current.id) : undefined} pages={record.plan.pages} background={view.background} mail={view.mail} testId="painting" />
+        ) : (
+          <Status testId="painting">{painting}</Status>
+        ))}
       {error && <ErrorNote>{error}</ErrorNote>}
 
       <figure className="m-0 grid gap-3">

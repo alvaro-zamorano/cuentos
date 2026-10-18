@@ -136,6 +136,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
   const byId = new Map(view.jobs.map((j) => [j.id, j]));
   const cover = view.chosen.cover ? byId.get(view.chosen.cover) : undefined;
   const allDone = Object.values(view.chosen.pages).every(Boolean);
+  const pagesDone = Object.values(view.chosen.pages).filter(Boolean).length;
   const name = view.ficha.hero.name.trim();
 
   const setText = (n: number, text: string) => {
@@ -186,7 +187,12 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       </div>
 
       {/* el aviso se va en cuanto el libro está completo (el navegador puede seguir unos segundos esperando a jobs que ya ha terminado el servidor) */}
-      {showBusy && <Status testId="pages-busy">{busy}</Status>}
+      {showBusy && (
+        <Status testId="pages-busy">
+          {busy}
+          {view.paid && pagesDone > 0 && !allDone && ` Van ${pagesDone} de ${plan.pages.length}: puedes ir revisándolas.`}
+        </Status>
+      )}
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {view.paid && view.print && (
@@ -440,7 +446,7 @@ function PageView({
   const canAnother = !locked && jobs.length < 3 && done.length > 0 && done.length < 2;
   return (
     <li className="overflow-hidden rounded-[22px] bg-card shadow-[0_2px_0_#e6d8c1,0_24px_40px_-32px_rgba(35,32,54,0.5)]" data-testid={`book-page-${page.n}`}>
-      <BookImage job={shown} alt={`Ilustración de la página ${page.n}`} box="relative aspect-[3/2] w-full overflow-hidden bg-paper-deep" />
+      <BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} box="relative aspect-[3/2] w-full overflow-hidden bg-paper-deep" />
       <div className="grid gap-3 px-5 pt-4 pb-4 sm:px-7">
         {done.length > 1 && (
           <div className="flex gap-2" role="group" aria-label={`Versiones de la página ${page.n}`}>
