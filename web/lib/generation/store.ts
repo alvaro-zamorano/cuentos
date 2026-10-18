@@ -13,6 +13,7 @@ import { newPublicId } from "../ids";
 import { normalizeDraft } from "../story";
 import type { Database, Json } from "../supabase/types";
 import type { Draft } from "../types";
+import type { PaidEdition, PaidOrder, PrintStatus, Shipping } from "../print/types";
 import type { JobKind } from "./keys";
 
 export const BUCKET = "cuentos";
@@ -84,8 +85,71 @@ export interface GenStore {
   markIllustrating(bookId: string): Promise<void>;
   /** Flujo nuevo: crea o actualiza el libro con su borrador v2. */
   saveBook(b: SaveBook): Promise<BookRecord>;
-  /** Pedido pagado (pago simulado o, más adelante, el webhook de Stripe). */
-  addPaidOrder(bookId: string, o: { amountCents: number; edition: string; sessionId?: string | null }): Promise<void>;
+  /** Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`. */
+  addPaidOrder(bookId: string, o: NewPaidOrder): Promise<void>;
+  /** El pedido pagado del libro (el más reciente), con su estado en la imprenta. */
+  getOrder(bookId: string): Promise<PaidOrder | null>;
+  getOrderById(id: string): Promise<PaidOrder | null>;
+  updateOrder(id: string, patch: OrderPatch): Promise<void>;
+  /** Cambia el estado de imprenta solo si sigue en uno de `from` (dos peticiones a la vez no mandan dos pedidos). */
+  claimPrint(id: string, from: PrintStatus[], to: PrintStatus): Promise<boolean>;
+  /** Pedidos de tapa dura en alguno de estos estados (para el cron), los más antiguos primero. */
+  listPrintOrders(statuses: PrintStatus[], limit: number): Promise<PaidOrder[]>;
+}
+
+export interface NewPaidOrder {
+  amountCents: number;
+  edition: PaidEdition | string;
+  sessionId?: string | null;
+  shipping?: Shipping | null;
+  printStatus?: PrintStatus | null;
+}
+
+export interface OrderPatch {
+  printStatus?: PrintStatus;
+  printOrderId?: string | null;
+  trackingUrl?: string | null;
+  printError?: string | null;
+  sentAt?: string | null;
+  remindedAt?: string | null;
+  shippedMailedAt?: string | null;
+  shipping?: Shipping | null;
+}
+
+const ORDER_COLUMNS =
+  "id, book_id, edition, amount_cents, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, created_at";
+
+function asOrder(r: Record<string, unknown>): PaidOrder {
+  return {
+    id: String(r.id),
+    bookId: String(r.book_id),
+    edition: r.edition === "hardcover" ? "hardcover" : "illustrated",
+    amountCents: Number(r.amount_cents ?? 0),
+    shipping: (r.shipping as Shipping | null) ?? null,
+    printStatus: (r.print_status as PrintStatus | null) ?? null,
+    printOrderId: (r.print_order_id as string | null) ?? null,
+    trackingUrl: (r.print_tracking_url as string | null) ?? null,
+    printError: (r.print_error as string | null) ?? null,
+    sentAt: (r.print_sent_at as string | null) ?? null,
+    remindedAt: (r.print_reminded_at as string | null) ?? null,
+    shippedMailedAt: (r.print_shipped_mailed_at as string | null) ?? null,
+    createdAt: String(r.created_at ?? new Date(0).toISOString()),
+    updatedAt: (r.print_updated_at as string | null) ?? null,
+  };
+}
+
+function orderRow(patch: OrderPatch): Database["public"]["Tables"]["cuentos_orders"]["Update"] {
+  const row: Database["public"]["Tables"]["cuentos_orders"]["Update"] = {};
+  if (patch.printStatus !== undefined) row.print_status = patch.printStatus;
+  if (patch.printOrderId !== undefined) row.print_order_id = patch.printOrderId;
+  if (patch.trackingUrl !== undefined) row.print_tracking_url = patch.trackingUrl;
+  if (patch.printError !== undefined) row.print_error = patch.printError;
+  if (patch.sentAt !== undefined) row.print_sent_at = patch.sentAt;
+  if (patch.remindedAt !== undefined) row.print_reminded_at = patch.remindedAt;
+  if (patch.shippedMailedAt !== undefined) row.print_shipped_mailed_at = patch.shippedMailedAt;
+  if (patch.shipping !== undefined) row.shipping = patch.shipping as unknown as Json;
+  row.print_updated_at = new Date().toISOString();
+  return row;
 }
 
 const JOB_COLUMNS =
@@ -204,10 +268,43 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       }
       throw new Error("books: id_collision");
     },
-    async addPaidOrder(bookId, { amountCents, edition, sessionId }) {
-      const { error } = await db.from("cuentos_orders").insert({ book_id: bookId, amount_cents: amountCents, edition, status: "paid", stripe_session_id: sessionId ?? null });
+    async addPaidOrder(bookId, { amountCents, edition, sessionId, shipping, printStatus }) {
+      const { error } = await db.from("cuentos_orders").insert({
+        book_id: bookId,
+        amount_cents: amountCents,
+        edition,
+        status: "paid",
+        stripe_session_id: sessionId ?? null,
+        ...(shipping ? { shipping: shipping as unknown as Json } : {}),
+        ...(printStatus ? { print_status: printStatus, print_updated_at: new Date().toISOString() } : {}),
+      });
       // la misma sesión de Stripe dos veces (reintento del webhook): ya está registrada
       if (error && error.code !== "23505") throw new Error(`orders: ${error.message}`);
+    },
+    async getOrder(bookId) {
+      const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("book_id", bookId).eq("status", "paid").order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(`orders: ${error.message}`);
+      return data ? asOrder(data as Record<string, unknown>) : null;
+    },
+    async getOrderById(id) {
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+      const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("id", id).maybeSingle();
+      if (error) throw new Error(`orders: ${error.message}`);
+      return data ? asOrder(data as Record<string, unknown>) : null;
+    },
+    async updateOrder(id, patch) {
+      const { error } = await db.from("cuentos_orders").update(orderRow(patch)).eq("id", id);
+      if (error) throw new Error(`orders: ${error.message}`);
+    },
+    async claimPrint(id, from, to) {
+      const { data, error } = await db.from("cuentos_orders").update(orderRow({ printStatus: to })).eq("id", id).in("print_status", from).select("id").maybeSingle();
+      if (error) throw new Error(`orders: ${error.message}`);
+      return !!data;
+    },
+    async listPrintOrders(statuses, limit) {
+      const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").eq("edition", "hardcover").in("print_status", statuses).order("created_at", { ascending: true }).limit(limit);
+      if (error) throw new Error(`orders: ${error.message}`);
+      return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
     },
   };
 }
@@ -219,6 +316,7 @@ interface MemoryState {
   jobs: Map<string, GenJob>;
   tick: number;
   paid?: Set<string>;
+  orders?: Map<string, PaidOrder>;
 }
 
 /** Estado en globalThis: las rutas de Next pueden cargar el módulo más de una vez en el mismo proceso. */
@@ -256,8 +354,51 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       state.books.set(id, book);
       return book;
     },
-    async addPaidOrder(bookId) {
+    async addPaidOrder(bookId, o) {
       (state.paid ??= new Set()).add(bookId);
+      const orders = (state.orders ??= new Map());
+      if ([...orders.values()].some((x) => x.bookId === bookId)) return;
+      const id = crypto.randomUUID();
+      orders.set(id, {
+        id,
+        bookId,
+        edition: o.edition === "hardcover" ? "hardcover" : "illustrated",
+        amountCents: o.amountCents,
+        shipping: o.shipping ?? null,
+        printStatus: o.printStatus ?? null,
+        printOrderId: null,
+        trackingUrl: null,
+        printError: null,
+        sentAt: null,
+        remindedAt: null,
+        shippedMailedAt: null,
+        createdAt: stamp(),
+        updatedAt: null,
+      });
+    },
+    async getOrder(bookId) {
+      const o = [...(state.orders?.values() ?? [])].reverse().find((x) => x.bookId === bookId);
+      return o ? { ...o } : null;
+    },
+    async getOrderById(id) {
+      const o = state.orders?.get(id);
+      return o ? { ...o } : null;
+    },
+    async updateOrder(id, patch) {
+      const o = state.orders?.get(id);
+      if (!o) return;
+      for (const [k, v] of Object.entries(patch)) if (v !== undefined) (o as unknown as Record<string, unknown>)[k] = v;
+      o.updatedAt = stamp();
+    },
+    async claimPrint(id, from, to) {
+      const o = state.orders?.get(id);
+      if (!o || !o.printStatus || !from.includes(o.printStatus)) return false;
+      o.printStatus = to;
+      o.updatedAt = stamp();
+      return true;
+    },
+    async listPrintOrders(statuses, limit) {
+      return [...(state.orders?.values() ?? [])].filter((o) => o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus)).slice(0, limit).map((o) => ({ ...o }));
     },
     async listJobs(bookId) {
       return [...state.jobs.values()].filter((j) => j.book_id === bookId).map(clone);

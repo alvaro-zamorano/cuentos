@@ -30,6 +30,10 @@ export default function Privacidad() {
           <strong>Datos de quien crea o compra el libro</strong>: el email, si quieres o no recibir novedades y, si compras, los datos del
           pedido. Los datos de la tarjeta los recoge Stripe; nosotros no los vemos.
         </li>
+        <li>
+          <strong>Si compras el libro impreso</strong>: el nombre y la dirección de quien lo recibe y, si lo das, un teléfono para el
+          transportista.
+        </li>
         <li>No pedimos fotos, apellidos ni fecha de nacimiento. No usamos reconocimiento facial.</li>
       </ul>
 
@@ -62,6 +66,7 @@ export default function Privacidad() {
         <li>Escribir el cuento, pintar las ilustraciones y entregarte el libro (ejecución del servicio que pides).</li>
         <li>Guardarte un enlace para volver a tu libro durante 30 días y mandártelo por email (ejecución del servicio que pides).</li>
         <li>Cobrar y conservar el pedido (ejecución del contrato y obligaciones contables y fiscales).</li>
+        <li>Imprimir el libro y enviártelo a la dirección que indiques (ejecución del contrato).</li>
         <li>
           Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla separada y opcional (consentimiento, art. 21 LSSI). Puedes retirarlo
           en cualquier momento desde el propio email o escribiéndonos.
@@ -85,6 +90,10 @@ export default function Privacidad() {
           fecha) el plazo que exige la normativa fiscal y mercantil.
         </li>
         <li>
+          Si compras el libro impreso, no lo borramos mientras no lo mandes a imprimir: sin las ilustraciones no se puede imprimir. La dirección
+          de envío se borra con el libro, salvo que el paquete siga de camino; entonces, cuando llega.
+        </li>
+        <li>
           El email que nos das para recibir el enlace del libro se borra a los 30 días, con el libro, si no has aceptado recibir novedades. Si
           compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
@@ -106,6 +115,11 @@ export default function Privacidad() {
         <li>Ilustraciones: Google Cloud EMEA Limited (Irlanda), con la API de pago de Gemini, cláusulas tipo y Marco de Privacidad.</li>
         <li>Envío de emails: Resend (Plus Five Five, Inc., EE. UU.), con cláusulas tipo y Marco de Privacidad.</li>
         <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
+        <li>
+          Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo) <Pending>entidad exacta del contrato</Pending>,
+          que encarga la impresión a una imprenta de su red, normalmente cerca de tu casa. Recibe el libro, el nombre, la dirección, el email y,
+          si lo das, el teléfono.
+        </li>
       </ul>
       <p>Y estos los tratan como responsables independientes, con su propia política de privacidad:</p>
       <ul>
@@ -115,6 +129,9 @@ export default function Privacidad() {
             Política de Stripe
           </a>
           .
+        </li>
+        <li>
+          El transportista que entrega el libro impreso: recibe tu nombre, la dirección y, si lo das, el teléfono para hacer la entrega.
         </li>
         <li>
           Microsoft (Clarity), solo si aceptas la medición: recoge cómo navegas por la web y puede usar esos datos para sus propios fines. No graba

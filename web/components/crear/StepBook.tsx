@@ -4,12 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
-import { PRICE_ILLUSTRATED } from "@/lib/pricing";
 import type { Plan, PlanPage } from "@/lib/plan/types";
+import { EDITION_LABEL, PRICE_CENTS, eur } from "@/lib/print/prices";
+import { LOCKED_PRINT_STATUSES, type PaidEdition } from "@/lib/print/types";
 import { BookCover, Icon, Moon, Sparkle } from "@/components/brand";
 import { AutoTextarea } from "./AutoTextarea";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
+import { PrintPanel } from "./PrintPanel";
+import { ShippingForm, type ShippingDraft } from "./ShippingForm";
 import { ErrorNote, Status } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -141,15 +144,35 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
     onPlan(next);
   };
   const showBusy = busy && !(view.paid && allDone && !busy.startsWith("Pintando otra versión"));
+  const locked = !!view.print && LOCKED_PRINT_STATUSES.includes(view.print.status);
+  const hardcover = view.edition === "hardcover";
+
+  /** «Mandar a imprimir»: guarda los textos tal como están, lo manda y espera a que la imprenta lo acepte. */
+  const sendToPrint = async (): Promise<string | null> => {
+    const saved = await postJson("/api/libro/plan", { bookId, plan });
+    if (saved.status !== 200) return errorMessage(saved.json);
+    const r = await postJson("/api/libro/print", { bookId });
+    if (r.status !== 200) return errorMessage(r.json);
+    let v = await refresh();
+    for (let i = 0; i < 80 && v?.print?.status === "sending" && !cancel.current.cancelled; i++) {
+      await sleep(3000);
+      v = (await refresh()) ?? v;
+    }
+    return null;
+  };
 
   return (
     <div className="grid gap-8">
       <div className="grid items-center gap-7 sm:grid-cols-[1fr_230px] sm:gap-10">
         <div className="grid gap-2">
-          <p className="hand text-[20px] text-accent">{view.paid ? (allDone ? "su libro, terminado" : "pintando su libro") : "así queda"}</p>
+          <p className="hand text-[20px] text-accent">{view.paid ? (locked ? "su libro, en marcha" : allDone ? "su libro, terminado" : "pintando su libro") : "así queda"}</p>
           <h2 className="display text-[32px] sm:text-[42px]">{plan.title}</h2>
           <p className="text-ink-soft">
-            {view.paid ? "Tu libro ilustrado. Revisa cada página: el texto se puede retocar y cada ilustración admite una versión más." : "Portada, dedicatoria y doce páginas, que se pintarán con la hoja que has aprobado."}
+            {view.paid
+              ? locked
+                ? "Así va impreso. Ya no se puede cambiar."
+                : `Tu libro${hardcover ? " de tapa dura" : " ilustrado"}. Revisa cada página: el texto se puede retocar y cada ilustración admite una versión más.`
+              : "Portada, dedicatoria y doce páginas, que se pintarán con la hoja que has aprobado."}
           </p>
         </div>
         <BookCover
@@ -166,6 +189,10 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       {showBusy && <Status testId="pages-busy">{busy}</Status>}
       {error && <ErrorNote>{error}</ErrorNote>}
 
+      {view.paid && view.print && (
+        <PrintPanel view={view} allDone={allDone} onSend={sendToPrint} onShipping={(shipping) => setView({ ...view, print: { ...view.print!, shipping } })} />
+      )}
+
       {view.paid ? (
         <ol className="grid gap-6">
           {plan.pages.map((p) => (
@@ -175,6 +202,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
               jobs={view.jobs.filter((j) => j.kind === "page" && j.page === p.n)}
               chosen={view.chosen.pages[p.n] ?? null}
               disabled={!!busy}
+              locked={locked}
               onText={(t) => setText(p.n, t)}
               onChoose={async (jobId) => {
                 const r = await postJson("/api/libro/page", { bookId, jobId });
@@ -187,7 +215,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       ) : (
         <>
           <LockedPages pages={plan.pages} onText={setText} />
-          {!busy && <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} onPaid={() => void paintPages()} />}
+          {!busy && <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />}
         </>
       )}
 
@@ -199,7 +227,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
             <Icon.download />
             Descargar el libro en PDF
           </a>
-          <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">A4, listo para imprimir en casa</p>
+          <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{hardcover ? "A4, para leerlo mientras llega el impreso" : "A4, listo para imprimir en casa"}</p>
         </div>
       ) : (
         <a className="link justify-self-center text-sm font-semibold" href={`/api/libro/pdf?b=${bookId}&kind=free`}>
@@ -262,46 +290,87 @@ function LockedPages({ pages, onText }: { pages: PlanPage[]; onText: (n: number,
   );
 }
 
-function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: string; payment: NonNullable<BookView["payment"]>; onPaid: () => void }) {
+function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; name: string; payment: NonNullable<BookView["payment"]>; print: NonNullable<BookView["printMode"]>; onPaid: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [field, setField] = useState<string | null>(null);
+  // la tapa dura solo si hay imprenta aquí (real o simulada en la preview)
+  const [edition, setEdition] = useState<PaidEdition>(print !== "none" ? "hardcover" : "illustrated");
+  const [shipping, setShipping] = useState<ShippingDraft>({});
   // renuncia al desistimiento (condiciones §7): sin marcarla no se abre el pago, ni el real ni el de prueba
   const [waiver, setWaiver] = useState(false);
+  const price = eur(PRICE_CENTS[edition]);
+  const body = () => ({ bookId, waiver, edition, ...(edition === "hardcover" ? { shipping } : {}) });
+  const failed = (json: { field?: string } & Parameters<typeof errorMessage>[0]) => {
+    setBusy(false);
+    setField(json?.field ?? null);
+    setErr(errorMessage(json));
+  };
   const checkout = async () => {
     setBusy(true);
     setErr(null);
-    const r = await postJson<{ url?: string }>("/api/libro/checkout", { bookId, waiver });
+    setField(null);
+    const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body());
     if (r.status === 200 && r.json.url) {
       window.location.assign(r.json.url);
       return;
     }
-    setBusy(false);
-    setErr(errorMessage(r.json));
+    failed(r.json);
   };
   const dryRun = async () => {
     setBusy(true);
     setErr(null);
-    const r = await postJson("/api/libro/pay", { bookId, waiver });
-    setBusy(false);
-    if (r.status === 200) onPaid();
-    else setErr(errorMessage(r.json));
+    setField(null);
+    const r = await postJson<{ field?: string }>("/api/libro/pay", body());
+    if (r.status === 200) {
+      setBusy(false);
+      onPaid();
+    } else failed(r.json);
+  };
+  const perks: Record<PaidEdition, string[]> = {
+    hardcover: [`Tapa dura de 20×20 cm con ${name || "tus personajes"} en las doce ilustraciones`, "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya"],
+    illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"],
   };
   return (
     <div className="relative overflow-hidden rounded-[28px] bg-night p-6 text-moon shadow-[0_40px_70px_-40px_rgba(29,39,71,0.9)] sm:p-9" data-testid="paywall">
       <Moon className="absolute top-6 right-7" size={42} />
       <Sparkle className="twinkle absolute top-16 right-24" size={10} />
-      <p className="text-sm font-semibold text-moon-soft">Libro ilustrado · PDF</p>
-      <p className="display mt-1 text-[50px] leading-none text-moon">{PRICE_ILLUSTRATED}</p>
+      {print !== "none" && (
+        <div className="relative mt-12 mb-6 grid gap-2 sm:mt-14 sm:grid-cols-2" role="radiogroup" aria-label="Edición">
+          {(["hardcover", "illustrated"] as PaidEdition[]).map((e) => (
+            <button
+              key={e}
+              type="button"
+              role="radio"
+              aria-checked={edition === e}
+              onClick={() => setEdition(e)}
+              className={`rounded-2xl border-2 px-4 py-3 text-left transition-colors ${edition === e ? "border-star bg-white/[0.1]" : "border-white/15 hover:border-white/35"}`}
+              data-testid={`edition-${e}`}
+            >
+              <span className="block text-[14px] font-semibold text-moon-soft">{EDITION_LABEL[e]}</span>
+              <span className="display block text-[26px] leading-tight text-moon">{eur(PRICE_CENTS[e])}</span>
+              <span className="block text-[12.5px] text-moon-soft">{e === "hardcover" ? "con envío y el PDF" : "para imprimir en casa"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="text-sm font-semibold text-moon-soft">{edition === "hardcover" ? "Libro de tapa dura · envío incluido" : "Libro ilustrado · PDF"}</p>
+      <p className="display mt-1 text-[50px] leading-none text-moon">{price}</p>
       <ul className="mt-5 grid gap-2.5 text-[15.5px]">
-        {[`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"].map((t) => (
+        {perks[edition].map((t) => (
           <li key={t} className="flex items-start gap-2.5">
             <Sparkle className="mt-1 shrink-0" size={14} />
             {t}
           </li>
         ))}
       </ul>
+      {edition === "hardcover" && payment !== "none" && (
+        <div className="mt-7 rounded-2xl bg-white/[0.07] p-4 text-ink">
+          <ShippingForm value={shipping} onChange={setShipping} field={field} tone="night" />
+        </div>
+      )}
       {payment !== "none" && (
-        <label className="mt-7 flex cursor-pointer items-start gap-3 rounded-2xl bg-white/[0.07] p-4 text-[14px] leading-snug text-moon">
+        <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl bg-white/[0.07] p-4 text-[14px] leading-snug text-moon">
           <input
             type="checkbox"
             checked={waiver}
@@ -310,7 +379,7 @@ function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: stri
             data-testid="waiver"
           />
           <span>
-            Quiero que empecéis a pintar el libro en cuanto pague. Sé que, al ser un libro personalizado y digital, no podré desistir de la compra (
+            Quiero que empecéis a pintar el libro en cuanto pague. Sé que, al ser un libro personalizado, no podré desistir de la compra (
             <Link href="/condiciones" target="_blank" className="underline underline-offset-2">
               condiciones
             </Link>
@@ -321,7 +390,7 @@ function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: stri
       {payment === "stripe" && (
         <>
           <button className="btn-primary btn-lg mt-4 w-full" disabled={busy || !waiver} data-testid="pay" onClick={() => void checkout()}>
-            {busy ? "Abriendo el pago…" : "Pagar y pintar el libro"}
+            {busy ? "Abriendo el pago…" : `Pagar ${price} y pintar el libro`}
           </button>
           <p className="mt-3 flex items-start gap-2 text-[13px] text-moon-soft">
             <Icon.lock size={14} className="mt-0.5 shrink-0" />
@@ -336,7 +405,7 @@ function Paywall({ bookId, name, payment, onPaid }: { bookId: string; name: stri
           data-testid="pay"
           onClick={() => void dryRun()}
         >
-          {busy ? "Procesando…" : `Pagar ${PRICE_ILLUSTRATED} (pago de prueba)`}
+          {busy ? "Procesando…" : `Pagar ${price} (pago de prueba)`}
         </button>
       )}
       {payment === "none" && <p className="mt-6 text-sm text-moon-soft">El pago estará disponible muy pronto. Tu libro queda guardado 30 días en tu enlace.</p>}
@@ -350,6 +419,7 @@ function PageView({
   jobs,
   chosen,
   disabled,
+  locked,
   onText,
   onChoose,
   onAnother,
@@ -358,6 +428,8 @@ function PageView({
   jobs: BookJobView[];
   chosen: string | null;
   disabled: boolean;
+  /** Ya en la imprenta: solo se ve. */
+  locked: boolean;
   onText: (t: string) => void;
   onChoose: (jobId: string) => void;
   onAnother: () => void;
@@ -365,7 +437,7 @@ function PageView({
   const current = jobs.filter((j) => j.current);
   const shown = current.find((j) => j.id === chosen) ?? current[current.length - 1];
   const done = current.filter((j) => j.status === "done");
-  const canAnother = jobs.length < 3 && done.length > 0 && done.length < 2;
+  const canAnother = !locked && jobs.length < 3 && done.length > 0 && done.length < 2;
   return (
     <li className="overflow-hidden rounded-[22px] bg-card shadow-[0_2px_0_#e6d8c1,0_24px_40px_-32px_rgba(35,32,54,0.5)]" data-testid={`book-page-${page.n}`}>
       <BookImage job={shown} alt={`Ilustración de la página ${page.n}`} box="relative aspect-[3/2] w-full overflow-hidden bg-paper-deep" />
@@ -373,7 +445,7 @@ function PageView({
         {done.length > 1 && (
           <div className="flex gap-2" role="group" aria-label={`Versiones de la página ${page.n}`}>
             {done.map((j) => (
-              <button key={j.id} aria-pressed={j.id === shown?.id} className={`chip btn-sm ${j.id === shown?.id ? "chip-on" : ""}`} onClick={() => onChoose(j.id)}>
+              <button key={j.id} aria-pressed={j.id === shown?.id} disabled={locked} className={`chip btn-sm ${j.id === shown?.id ? "chip-on" : ""}`} onClick={() => onChoose(j.id)}>
                 Versión {j.variant}
               </button>
             ))}
@@ -383,6 +455,7 @@ function PageView({
           className="story -mx-2 block w-[calc(100%+1rem)] resize-none rounded-xl border-2 border-transparent bg-transparent px-2 py-1 text-[18px] leading-[1.6] text-ink outline-none focus:border-[#e5d7c1] focus:bg-white focus-visible:outline-none"
           value={page.text}
           maxLength={1500}
+          readOnly={locked}
           onChange={(e) => onText(e.target.value)}
           aria-label={`Texto de la página ${page.n}`}
         />

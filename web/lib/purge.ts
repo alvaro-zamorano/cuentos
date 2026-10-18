@@ -9,6 +9,9 @@
  *   ya no tiene ningún libro vigente. Con consentimiento, se queda hasta la baja.
  * - Gasto (cuentos_spend) con más de 30 días: el email del lead se sustituye por «borrado»; se quedan importe y fecha.
  *   El tope por lead vuelve a empezar para ese email, lo que se acepta.
+ * - Libro impreso (B8) que todavía no ha salido hacia la imprenta (el padre no lo ha mandado a imprimir, o falló el envío):
+ *   no se toca hasta que salga, porque sin las imágenes no se puede imprimir. Al vaciar un libro pagado se borra también
+ *   la dirección de envío del pedido, salvo que el libro esté de camino.
  *
  * El acceso a la base se inyecta (PurgeDb) para probarlo sin Supabase.
  */
@@ -28,6 +31,8 @@ export interface PurgeDb {
   bookFiles(bookId: string): Promise<string[]>;
   removeFiles(paths: string[]): Promise<void>;
   hasPaidOrder(bookId: string): Promise<boolean>;
+  /** Tapa dura pagada que aún no ha salido hacia la imprenta: se conserva. */
+  printPending?(bookId: string): Promise<boolean>;
   deleteBook(bookId: string): Promise<void>;
   /** draft = {}, status = expired, sin jobs. */
   scrubPaidBook(bookId: string): Promise<void>;
@@ -43,6 +48,8 @@ export interface PurgeReport {
   dryRun: boolean;
   deleted: number;
   scrubbedPaid: number;
+  /** Caducados que se conservan porque su libro impreso aún no ha ido a la imprenta. */
+  keptForPrint: number;
   files: number;
   stories: number;
   leads: number;
@@ -56,7 +63,7 @@ export const RETENTION_DAYS = 30;
 export const ANON_LEAD = "borrado";
 
 export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date(), batch = 100, deadline = Date.now() + 50_000 }: { dryRun?: boolean; now?: Date; batch?: number; deadline?: number } = {}): Promise<PurgeReport> {
-  const report: PurgeReport = { dryRun, deleted: 0, scrubbedPaid: 0, files: 0, stories: 0, leads: 0, spend: 0, remaining: false };
+  const report: PurgeReport = { dryRun, deleted: 0, scrubbedPaid: 0, keptForPrint: 0, files: 0, stories: 0, leads: 0, spend: 0, remaining: false };
   const seen = new Set<string>();
   while (Date.now() < deadline) {
     const books = (await db.expiredBooks(batch)).filter((b) => !seen.has(b.id));
@@ -67,6 +74,10 @@ export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date
         break;
       }
       seen.add(b.id);
+      if (await db.printPending?.(b.id)) {
+        report.keptForPrint++;
+        continue;
+      }
       const files = await db.bookFiles(b.id);
       report.files += files.length;
       const paid = await db.hasPaidOrder(b.id);
@@ -122,6 +133,18 @@ export function supabasePurgeDb(db: SupabaseClient<Database>): PurgeDb {
       must(error, "orders");
       return !!data && data.length > 0;
     },
+    async printPending(bookId) {
+      const { data, error } = await db
+        .from("cuentos_orders")
+        .select("id")
+        .eq("book_id", bookId)
+        .eq("status", "paid")
+        .eq("edition", "hardcover")
+        .in("print_status", ["awaiting_approval", "sending", "failed"])
+        .limit(1);
+      must(error, "orders.print");
+      return !!data && data.length > 0;
+    },
     async deleteBook(bookId) {
       const { error } = await db.from("cuentos_books").delete().eq("id", bookId);
       must(error, "books.delete");
@@ -131,6 +154,9 @@ export function supabasePurgeDb(db: SupabaseClient<Database>): PurgeDb {
       must(jobs.error, "jobs.delete");
       const { error } = await db.from("cuentos_books").update({ draft: {}, status: "expired" }).eq("id", bookId);
       must(error, "books.scrub");
+      // la dirección de envío solo hace falta mientras el libro viaja
+      const ship = await db.from("cuentos_orders").update({ shipping: null }).eq("book_id", bookId).or("print_status.is.null,print_status.in.(delivered,canceled,returned)");
+      must(ship.error, "orders.shipping");
     },
     async scrubStories(before, dryRun) {
       const q = () => db.from("cuentos_stories").select("id", { count: "exact", head: true }).lt("created_at", before.toISOString()).neq("input", "{}");
