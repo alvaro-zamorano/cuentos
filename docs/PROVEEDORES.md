@@ -4,8 +4,8 @@ Verificado el 16 oct 2026 en las páginas oficiales de cada proveedor (Gelato, e
 
 | Proveedor | Contrato de encargo (DPA) | Transferencia | Papel | Notas |
 |---|---|---|---|---|
-| Vercel | Incluido en sus Términos (§10.1); no se firma aparte | DPF (Vercel Inc. activo) y cláusulas tipo de 2021 | Encargado | Funciones hoy en iad1 (EE. UU.). Se puede fijar fra1, cdg1, dub1 o arn1 en cualquier plan (Hobby, una región). **Hobby no permite uso comercial** |
-| Supabase | Forma parte de sus Términos; aceptarlos equivale a firmar las cláusulas tipo | Cláusulas tipo (importador: Supabase Pte. Ltd., Singapur). No está en el DPF | Encargado | La región se elige al crear el proyecto y no se cambia. UE: Fráncfort, Irlanda, París, Estocolmo. **Región del proyecto sin confirmar** |
+| Vercel | Incluido en sus Términos (§10.1); no se firma aparte | DPF (Vercel Inc. activo) y cláusulas tipo de 2021 | Encargado | Funciones en dub1 (Dublín) desde el 18 oct. Se puede fijar fra1, cdg1, dub1 o arn1 en cualquier plan (Hobby, una región). **Hobby no permite uso comercial** |
+| Supabase | Forma parte de sus Términos; aceptarlos equivale a firmar las cláusulas tipo | Cláusulas tipo (importador: Supabase Pte. Ltd., Singapur). No está en el DPF | Encargado | La región se elige al crear el proyecto y no se cambia. UE: Fráncfort, Irlanda, París, Estocolmo. **Proyecto en eu-west-1 (Irlanda), comprobado el 18 oct** |
 | Anthropic (API) | Incluido en las Commercial Terms | Cláusulas tipo. No está en el DPF | Encargado; en el EEE contrata Anthropic Ireland, Limited | No entrena con los datos. Borra entradas y salidas en 30 días (hasta 2 años si detecta un incumplimiento) |
 | Google (API de Gemini, de pago) | «Data Processing Addendum for Products Where Google is a Data Processor», que incluye Gemini API Paid Services | DPF (Google LLC activo) y cláusulas tipo | Encargado; con facturación en la EMEA contrata Google Cloud EMEA Limited | De pago: no mejora sus productos con los datos y los guarda 55 días para detectar abusos. Gratuito: sí los usa para entrenar. En el EEE solo se puede ofrecer el de pago. **Sus términos prohíben usarla en servicios dirigidos a menores de 18 años o a los que probablemente accedan** |
 | Resend | Prefirmado al crear la cuenta; copia en Settings → Documents | DPF (activo, recertificación en revisión) y cláusulas tipo | Encargado | Guarda los datos en EE. UU. |
@@ -15,8 +15,8 @@ Verificado el 16 oct 2026 en las páginas oficiales de cada proveedor (Gelato, e
 
 ## Lo que tiene que hacer el titular
 
-1. **Supabase:** mirar la región en Storage → S3. Si no es de la UE, mover las tablas `cuentos_*` a un proyecto en la UE.
-2. **Vercel:** plan Pro para vender, y región de funciones en la UE, la más cercana a Supabase.
+1. ~~**Supabase:** región~~ eu-west-1 (Irlanda), comprobado el 18 oct.
+2. **Vercel:** funciones en Dublín (hecho, 18 oct). Plan Pro antes de abrir al público (Hobby no permite uso comercial).
 3. **Gemini:** clave de un proyecto de Google Cloud con facturación activa; registro de AI Studio apagado; decidir sobre la cláusula de menores.
 4. **Clarity**, si se activa: ocultación en Strict.
 5. **Resend:** descargar el DPA firmado (Settings → Documents).

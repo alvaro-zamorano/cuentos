@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Aviso legal" };
 export default function AvisoLegal() {
   const t = titular();
   return (
-    <LegalPage title="Aviso legal" updated="16 de octubre de 2026">
+    <LegalPage title="Aviso legal" updated="18 de octubre de 2026">
       <h2>1. Titular (art. 10 LSSI)</h2>
       <ul>
         <li>Titular: <Dato value={t.name}>nombre y apellidos o razón social</Dato></li>
@@ -20,8 +20,9 @@ export default function AvisoLegal() {
 
       <h2>2. Uso de la web</h2>
       <p>
-        La web permite crear cuentos personalizados, escritos e ilustrados con inteligencia artificial, y descargarlos o comprarlos. Quien la usa
-        se compromete a no introducir datos de terceros sin autorización.
+        La web permite crear cuentos personalizados, escritos e ilustrados con inteligencia artificial, y descargarlos o comprarlos. Está pensada para
+        personas adultas (madres, padres y familiares) que crean un cuento para un niño o una niña, y no está dirigida a menores. Quien la usa se
+        compromete a no introducir datos de terceros sin autorización.
       </p>
 
       <h2>3. Propiedad intelectual</h2>
