@@ -84,6 +84,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Segundo plano | `lib/book/background.ts` + `paintLater` en `app/api/libro/_shared.ts` |
 | Stripe y Resend | `lib/stripe.ts` (también la renuncia al desistimiento: `waiverAccepted`, metadatos `withdrawal_waiver_*`), `lib/mail.ts`, `app/api/libro/checkout`, `app/api/stripe/webhook` |
 | Correo entrante (`hola@` → Gmail) | `lib/inbound.ts` (firma de Svix, reenvío), `app/api/mail/inbound` |
+| «Otra versión» con motivo y «Sigue sin estar bien» | `lib/book/feedback.ts` (motivos, topes), `lib/book/service.ts` (`requestPages`, `reportPage`), `lib/plan/art.ts` (`redoScene`), `app/api/libro/report`, tabla `cuentos_feedback` |
 | PDF | `lib/pdf/book2.ts` (maqueta), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf` |
 | Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra), migración `0005` |
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (dos crons: borrado e imprenta) |

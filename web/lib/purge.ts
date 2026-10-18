@@ -8,6 +8,8 @@
  * - Emails sin consentimiento de novedades (E18, 16 oct): la fila de cuentos_leads se borra a los 30 días si ese email
  *   ya no tiene ningún libro vigente. Con consentimiento, se queda hasta la baja.
  * - Gasto (cuentos_spend) con más de 30 días: el email del lead se sustituye por «borrado»; se quedan importe y fecha.
+ * - Motivos de «Otra versión» y avisos (cuentos_feedback) con más de 30 días: se vacía la nota del padre y la fila se
+ *   desliga del libro y del job; se quedan el motivo, la página, la versión, el estilo y la fecha.
  *   El tope por lead vuelve a empezar para ese email, lo que se acepta.
  * - Libro impreso (B8) que todavía no ha salido hacia la imprenta (el padre no lo ha mandado a imprimir, o falló el envío):
  *   no se toca hasta que salga, porque sin las imágenes no se puede imprimir. Al vaciar un libro pagado se borra también
@@ -42,6 +44,8 @@ export interface PurgeDb {
   scrubLeads(before: Date, dryRun: boolean): Promise<number>;
   /** Quita el email de las filas de gasto anteriores a `before`; devuelve cuántas. */
   scrubSpend(before: Date, dryRun: boolean): Promise<number>;
+  /** Vacía la nota y desliga del libro las filas de cuentos_feedback anteriores a `before`; devuelve cuántas. */
+  scrubFeedback?(before: Date, dryRun: boolean): Promise<number>;
 }
 
 export interface PurgeReport {
@@ -54,6 +58,7 @@ export interface PurgeReport {
   stories: number;
   leads: number;
   spend: number;
+  feedback: number;
   remaining: boolean;
 }
 
@@ -63,7 +68,7 @@ export const RETENTION_DAYS = 30;
 export const ANON_LEAD = "borrado";
 
 export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date(), batch = 100, deadline = Date.now() + 50_000 }: { dryRun?: boolean; now?: Date; batch?: number; deadline?: number } = {}): Promise<PurgeReport> {
-  const report: PurgeReport = { dryRun, deleted: 0, scrubbedPaid: 0, keptForPrint: 0, files: 0, stories: 0, leads: 0, spend: 0, remaining: false };
+  const report: PurgeReport = { dryRun, deleted: 0, scrubbedPaid: 0, keptForPrint: 0, files: 0, stories: 0, leads: 0, spend: 0, feedback: 0, remaining: false };
   const seen = new Set<string>();
   while (Date.now() < deadline) {
     const books = (await db.expiredBooks(batch)).filter((b) => !seen.has(b.id));
@@ -101,6 +106,7 @@ export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date
   // después de los libros: un email cuyo último libro acaba de caducar ya no tiene libro vigente
   report.leads = await db.scrubLeads(before, dryRun);
   report.spend = await db.scrubSpend(before, dryRun);
+  report.feedback = (await db.scrubFeedback?.(before, dryRun)) ?? 0;
   return report;
 }
 
@@ -192,6 +198,24 @@ export function supabasePurgeDb(db: SupabaseClient<Database>): PurgeDb {
       }
       const { data, error } = await db.from("cuentos_spend").update({ lead_id: ANON_LEAD }).like("lead_id", "%@%").lt("created_at", before.toISOString()).select("id");
       must(error, "spend.scrub");
+      return data?.length ?? 0;
+    },
+    async scrubFeedback(before, dryRun) {
+      // lo que aún lleva nota o está ligado a un libro o un job (si el libro se borró, la fila ya quedó sin libro)
+      const pending = "book_id.not.is.null,job_id.not.is.null,note.not.is.null";
+      const old = () => db.from("cuentos_feedback").select("id", { count: "exact", head: true }).lt("created_at", before.toISOString()).or(pending);
+      if (dryRun) {
+        const { count, error } = await old();
+        must(error, "feedback.count");
+        return count ?? 0;
+      }
+      const { data, error } = await db
+        .from("cuentos_feedback")
+        .update({ note: null, book_id: null, job_id: null })
+        .lt("created_at", before.toISOString())
+        .or(pending)
+        .select("id");
+      must(error, "feedback.scrub");
       return data?.length ?? 0;
     },
   };

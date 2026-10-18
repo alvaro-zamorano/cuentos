@@ -4,7 +4,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { runJob, v2Of } from "../../lib/generation/service";
-import { approveSheet, bookView, payDryRun, requestPages, reviseSheet, savePlan, startBook, MAX_SHEETS } from "../../lib/book/service";
+import { approveSheet, bookView, payDryRun, reportPage, requestPages, reviseSheet, savePlan, startBook, MAX_SHEETS } from "../../lib/book/service";
 import { coverPrompt, pagePrompt, sheetPrompt, castArt } from "../../lib/plan/art";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -79,12 +79,43 @@ test("flujo nuevo en memoria: hoja + portada tras el email, cambios con palabras
   const twice = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(twice.ok && twice.created === 0, "pedir el libro otra vez no repinta");
 
-  // otra versión de la página 3 y después ya no
-  const v2 = await requestPages(store, { bookId: start.bookId, page: 3 }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
+  // otra versión de la página 3: con motivo, dos como máximo, la segunda simplificada; queda apuntado
+  const noReason = await requestPages(store, { bookId: start.bookId, page: 3 }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
+  assert.equal(!noReason.ok && noReason.error, "reason", "sin motivo no hay versión nueva");
+  const v2 = await requestPages(store, { bookId: start.bookId, page: 3, reason: "cuerpo", note: "el perro atraviesa el sofá" }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(v2.ok && v2.created === 1);
-  await requestPages(store, { bookId: start.bookId, page: 3 }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
-  const v4 = await requestPages(store, { bookId: start.bookId, page: 3 }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
+  const p3 = () => store.listJobs(start.bookId).then((js) => js.filter((j) => j.kind === "page" && j.page_n === 3).sort((a, b) => a.variant - b.variant));
+  const [, second] = await p3();
+  assert.match(second.prompt, /Correction from the previous version: Use simple, natural poses with correct anatomy/);
+  assert.match(second.prompt, /The parent asked: el perro atraviesa el sofá/);
+  assert.doesNotMatch(second.prompt, /Keep the composition simple/, "la segunda aún no se simplifica");
+  const v3 = await requestPages(store, { bookId: start.bookId, page: 3, note: "que Topito esté sentado" }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
+  assert.ok(v3.ok, "con solo la nota vale (motivo «otra cosa»)");
+  assert.match((await p3())[2].prompt, /Keep the composition simple and clear/, "la última versión posible se simplifica");
+  const v4 = await requestPages(store, { bookId: start.bookId, page: 3, reason: "parecido" }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.equal(!v4.ok && v4.error, "max_versions");
+  const badNote = await requestPages(store, { bookId: start.bookId, page: 5, reason: "otro", note: "escribe a ana@example.com" }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
+  assert.equal(!badNote.ok && badNote.error, "moderation", "la nota pasa la moderación");
+  const fb = await store.listFeedback(start.bookId);
+  assert.deepEqual(
+    fb.map((f) => [f.kind, f.page_n, f.variant, f.reason, f.note]),
+    [
+      ["redo", 3, 2, "cuerpo", "el perro atraviesa el sofá"],
+      ["redo", 3, 3, "otro", "que Topito esté sentado"],
+    ],
+  );
+
+  // «Sigue sin estar bien»: un aviso por página, con lo que pidió antes
+  const mails: string[] = [];
+  const notify = async (subject: string, text: string) => (mails.push(`${subject}\n${text}`), { sent: true });
+  assert.ok((await reportPage(store, { bookId: start.bookId, page: 3, note: "sigue raro" }, notify, (id) => `https://x/crear?b=${id}`)).ok);
+  assert.match(mails[0], /^Sigue sin estar bien: página 3/);
+  assert.match(mails[0], /versión 2: Postura o cuerpo raro: «el perro atraviesa el sofá»/);
+  assert.match(mails[0], /https:\/\/x\/crear\?b=/);
+  const twiceReported = await reportPage(store, { bookId: start.bookId, page: 3 }, notify, (id) => id);
+  assert.equal(!twiceReported.ok && twiceReported.error, "already_reported");
+  const fv = await bookView(store, start.bookId);
+  assert.ok(fv.ok && fv.reported.includes(3) && fv.redosLeft === 6);
 
   // las páginas usan la hoja aprobada
   const pageJob = (await store.listJobs(start.bookId)).find((j) => j.kind === "page" && j.page_n === 1)!;

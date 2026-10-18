@@ -119,6 +119,23 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   expect(view.edition).toBe("illustrated");
   expect(view.print).toBeNull();
 
+  // «Otra versión» pide el motivo; dos como máximo; después, «Sigue sin estar bien»
+  const p3 = page.getByTestId("book-page-3");
+  await page.getByTestId("another-3").click();
+  await expect(page.getByTestId("redo-submit")).toBeDisabled();
+  await page.getByTestId("redo-form").getByRole("button", { name: "Postura o cuerpo raro" }).click();
+  await page.getByTestId("redo-submit").click();
+  await expect(p3.getByRole("button", { name: "Versión 2" })).toBeVisible({ timeout: 60_000 });
+  await page.getByTestId("another-3").click();
+  await page.getByTestId("redo-form").getByLabel("Qué cambiarías").fill("que el perro esté sentado");
+  await page.getByTestId("redo-submit").click();
+  await expect(p3.getByRole("button", { name: "Versión 3" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("another-3")).toHaveCount(0);
+  await page.getByTestId("report-3").click();
+  await page.getByTestId("report-form").getByLabel("Qué falla").fill("el perro sigue raro");
+  await page.getByTestId("report-submit").click();
+  await expect(p3.getByText("Nos has avisado")).toBeVisible();
+
   // sin claves de Stripe: ni checkout ni webhook
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
   expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);
