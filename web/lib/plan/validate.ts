@@ -159,6 +159,37 @@ export function detailPresent(detail: string, haystack: string): boolean {
   return ks.length === 0 || ks.some((k) => haystack.includes(stem(k)));
 }
 
+/**
+ * Familiares que el planificador no puede inventar (18 oct, libro de Olivia: añadió «la abuela»). No sabemos cómo es la
+ * familia de cada niño: solo valen los que el adulto nombra en el reparto, la idea, los detalles, la dedicatoria o quien
+ * lo regala. Se compara por parentesco (abuela y abuelo cuentan como lo mismo).
+ */
+const FAMILY: [RegExp, string][] = [
+  [/(?<![\p{L}])(abuel[oa]s?|abuelit[oa]s?|yay[oa]s?)(?![\p{L}])/giu, "abuelos"],
+  [/(?<![\p{L}])(mam[aá]s?|mami|madres?)(?![\p{L}])/giu, "madre"],
+  [/(?<![\p{L}])(pap[aá]s?|papi|padres?)(?![\p{L}])/giu, "padre"],
+  [/(?<![\p{L}])(herman[oa]s?|hermanit[oa]s?)(?![\p{L}])/giu, "hermanos"],
+  [/(?<![\p{L}])(t[ií][oa]s?)(?![\p{L}])/giu, "tíos"],
+  [/(?<![\p{L}])(prim[oa]s?|primit[oa]s?)(?![\p{L}])/giu, "primos"],
+];
+
+export function familyIn(text: string): Set<string> {
+  const out = new Set<string>();
+  // Papá Noel es de tradición, no de la familia
+  const t = text.replace(/pap[aá]\s+noel/giu, "");
+  for (const [re, kin] of FAMILY) if (t.match(re)) out.add(kin);
+  return out;
+}
+
+/** Parentescos que salen en el plan (reparto inventado, extras o texto) sin que el adulto los haya puesto. */
+export function inventedFamily(plan: Pick<Plan, "extraCast" | "pages">, f: Ficha): string[] {
+  const given = familyIn([f.idea, ...f.details, f.from ?? "", f.dedication ?? "", ...f.cast.map((c) => `${c.name} ${c.relation}`)].join(" \n "));
+  const used = familyIn(
+    [...plan.extraCast.map((c) => `${c.name} ${c.relation}`), ...plan.pages.flatMap((p) => [p.text, ...p.extras])].join(" \n "),
+  );
+  return [...used].filter((k) => !given.has(k));
+}
+
 export function validatePlan(plan: Plan, f: Ficha): PlanValidation {
   const issues: Issue[] = [];
   if (!plan.title) issues.push({ msg: "Falta el título.", hard: true });
@@ -172,6 +203,8 @@ export function validatePlan(plan: Plan, f: Ficha): PlanValidation {
     commonChecks("Dedicatoria", plan.dedication, issues);
   }
   if (f.cast.length + plan.extraCast.length > MAX_CAST) issues.push({ msg: `El reparto tiene más de ${MAX_CAST} recurrentes.`, hard: true });
+  const kin = inventedFamily(plan, f);
+  if (kin.length) issues.push({ msg: `Aparecen familiares que el adulto no ha puesto (${kin.join(", ")}): quítalos del texto, de extraCast y de extras; si hace falta un adulto, que sea alguien sin parentesco ni nombre en una sola página.`, hard: true });
   for (const c of plan.extraCast) {
     if (!c.look) issues.push({ msg: `extraCast ${c.id}: falta el aspecto.`, hard: true });
     commonChecks(`extraCast ${c.id}`, `${c.name} ${c.look}`, issues);

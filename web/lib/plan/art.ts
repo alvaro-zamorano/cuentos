@@ -47,6 +47,8 @@ export interface PagesArt {
 }
 
 const STYLE_REF_ONLY = "Use the style reference image only for its rendering style, palette and texture; never copy its characters, clothes or scene.";
+/** 18 oct (página 3 de Olivia): el perro «asomado tras el sofá» salió atravesándolo en las dos versiones. */
+const SOLID = "Characters are solid and anatomically complete: they never pass through or merge with furniture or objects, and their bodies continue naturally behind anything in front of them.";
 const NO_TEXT = "No text, letters, numbers, signs or labels anywhere in the image. No logos or recognisable branded products (toy building blocks are plain wooden cubes without studs).";
 const PROPORTIONS = "children's picture-book proportions: large round head, short rounded body, soft features, rosy cheeks";
 
@@ -108,14 +110,17 @@ export function castArtUser(f: Ficha, plan: Plan): string {
     plan.places.length ? "RECURRING PLACES:" : "",
     ...plan.places.map((p) => `- ${p.id}: ${p.name}: ${p.desc}`),
     plan.objects.length ? "RECURRING OBJECTS:" : "",
-    ...plan.objects.map((o) => `- ${o.id}: ${o.name}: ${o.desc}`),
+    ...plan.objects.map((o) => {
+      const first = plan.pages.find((p) => p.objects.includes(o.id))?.n;
+      return `- ${o.id}: ${o.name}: ${o.desc}${first && first > 1 ? ` (first appears on page ${first}: NOT part of the usual clothes)` : ""}`;
+    }),
     "",
     `COVER SCENE (Spanish): ${plan.cover}`,
     "",
     "Return JSON with ONE entry for EVERY id listed above (characters, places and objects), all in English:",
     `{"cast":[${["hero", ...cast.map((c) => c.id)].map((id) => `{"id":"${id}","identityEn":"...","outfitEn":"..."}`).join(",")}],"places":{${plan.places.map((p) => `"${p.id}":"..."`).join(",")}},"objects":{${plan.objects.map((o) => `"${o.id}":"..."`).join(",")}},"coverEn":"..."}`,
     "- identityEn: how they look WITHOUT clothes and without their name: apparent age, species/breed for animals, face, hair (shape and colour), skin tone, eyes, glasses, unique marks, build. For the hero, ONLY what is not in the fixed features (face shape, unique marks, build); can be empty.",
-    "- outfitEn: usual clothes with garments and colours, lowercase, no final full stop (empty string for animals without clothes). If a recurring object or a real detail is something the hero always wears (a cap worn backwards, a cape, a backpack), include it in the hero's outfitEn so it is on the sheet too.",
+    "- outfitEn: usual clothes with garments and colours, lowercase, no final full stop (empty string for animals without clothes). If a recurring object or a real detail is something the hero wears from the very first page (a cap worn backwards, a cape, a backpack), include it in the hero's outfitEn so it is on the sheet too. Never include an object marked as NOT part of the usual clothes: the story gives it to the hero later.",
     "- coverEn: the cover moment in one or two sentences, with the characters by name.",
   ]
     .filter((l) => l !== "")
@@ -242,13 +247,14 @@ export function pagesArtUser(f: Ficha, plan: Plan, art: CastArt): string {
     "",
     'Return JSON: {"pages":[{"n":1,"sceneEn":"...","outfitEn":null,"extrasEn":["..."]}]} with all 12 pages.',
     "- sceneEn: one to three sentences: action, pose and expression, setting, key objects. Concrete and drawable as a single moment.",
+    "- Every character fully visible: never partly hidden behind, under or inside furniture or objects. Rewrite peeking or hiding as standing next to or in front of the object (\"Topito stands beside the sofa\", not \"Topito peeks out from behind the sofa\"). Lying in bed under a blanket is fine.",
     "- outfitEn: English for `outfit` when it is not null (the hero's clothes for that page), otherwise null.",
     "- extrasEn: one short English description per extra character.",
   ].join("\n");
 }
 
 export function pagesArtKey(cast: CastArt, plan: Pick<Plan, "pages">): string {
-  return hashString(JSON.stringify(["pages-art-v1", cast.key, cast.revisions, plan.pages.map((p) => [p.n, p.scene, p.who, p.extras, p.outfit, p.shot, p.time])]));
+  return hashString(JSON.stringify(["pages-art-v2", cast.key, cast.revisions, plan.pages.map((p) => [p.n, p.scene, p.who, p.extras, p.outfit, p.shot, p.time])]));
 }
 
 export async function pagesArt(f: Ficha, plan: Plan, cast: CastArt, llm: Llm = selectLlm("art")): Promise<{ art: PagesArt; costCents: number | null }> {
@@ -297,10 +303,11 @@ export function sheetPrompt(art: CastArt, style: StyleDef): string {
 const LIGHT: Record<string, string> = { dia: "soft daylight", atardecer: "warm golden late-afternoon light", noche: "night, gentle warm lamplight and deep blue shadows" };
 const FRAMING: Record<string, string> = { general: "wide shot that shows the whole place", medio: "medium shot, characters full body or waist up", cerca: "close-up on faces and hands" };
 
-function sameAsSheet(names: string[]): string {
-  return names.length
-    ? `${names.join(" and ")} must look exactly like in the character reference sheet: same face, hair, skin tone, eyes, glasses and proportions.`
-    : "";
+function sameAsSheet(cast: ArtCast[]): string {
+  if (!cast.length) return "";
+  // «glasses» sin que nadie las lleve invita al modelo a pintarlas
+  const glasses = cast.some((c) => /glasses|spectacles/i.test(`${c.identityEn} ${c.outfitEn}`));
+  return `${cast.map((c) => c.name).join(" and ")} must look exactly like in the character reference sheet: same face, hair, skin tone, eyes, ${glasses ? "glasses, " : ""}proportions.`.replace(", proportions.", " and proportions.");
 }
 
 export function coverPrompt(art: CastArt, style: StyleDef): string {
@@ -309,8 +316,9 @@ export function coverPrompt(art: CastArt, style: StyleDef): string {
     `Children's picture book cover illustration, ${style.promptStyle}.`,
     `Scene: ${art.coverEn.replace(/\.?$/, ".")}`,
     `Characters: ${recurring.map((c) => castLine(c)).join("; ")}.`,
-    sameAsSheet(recurring.map((c) => c.name)),
+    sameAsSheet(recurring),
     `Landscape 3:2. Inviting, warm and bright; keep the upper third of the image calm and simple (sky, wall or soft background) so the title can sit over it.`,
+    SOLID,
     STYLE_REF_ONLY,
     NO_TEXT,
   ].join(" ");
@@ -329,11 +337,12 @@ export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style
     objects.length ? `Recurring objects, keep their colours and features: ${objects.join("; ")}.` : "",
     lines.length ? `Characters in this image: ${lines.join("; ")}.` : "No recurring characters in this image.",
     artPage.extrasEn.length ? `Also in the image, drawn from this description only: ${artPage.extrasEn.join("; ")}.` : "",
-    sameAsSheet(inImage.map((c) => c.name)),
+    sameAsSheet(inImage),
     // la hoja trae a todo el reparto y el modelo tiende a meterlo entero (página 1 de Mateo: apareció la gata)
     absent.length ? `${absent.map((c) => c.name).join(" and ")} ${absent.length > 1 ? "are" : "is"} on the reference sheet but must NOT appear in this image.` : "",
     `${FRAMING[page.shot] ?? FRAMING.medio}; ${LIGHT[page.time] ?? LIGHT.dia}.`,
     "Landscape 3:2 composition.",
+    SOLID,
     STYLE_REF_ONLY,
     NO_TEXT,
   ]

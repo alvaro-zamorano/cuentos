@@ -46,6 +46,16 @@ Por libro vendido a 14,90 €: ≈ 0,10 $ (plan) + 0,10 $ (hoja y portada) + 0,8
 - Haiku a veces devolvía dos objetos JSON: el extractor toma el primero equilibrado y la llamada se repite una vez.
 - `GENERATION_COST_CENTS_PER_IMAGE` (7 c en Vercel, del flujo antiguo) se imponía a la tabla por resolución: ahora manda la resolución.
 
+## Libro de Olivia (18 oct, prueba de Álvaro)
+
+Tres fallos, con la causa sacada de los prompts guardados en `cuentos_generation_jobs` (libro `t7vnxvjyin`):
+
+- **El perro atravesaba el sofá en las dos versiones de la página 3.** La escena pedía «Topito se asoma tras el sofá moviendo la cola, frente a Olivia»: un personaje tapado a medias por un mueble, que los modelos de imagen resuelven mal. «Otra versión» repetía el prompt idéntico (solo cambia el azar) y el control de calidad no miraba si un personaje atraviesa un mueble.
+- **La abuela salió sin que Álvaro la pusiera.** El planificador puede inventar recurrentes si sobran huecos en el reparto (y la regla ponía de ejemplo «mamá o papá»). Además el texto y la imagen no casaban: en las páginas 8 y 9 salía sin que el texto la nombrara, y en la 11 el texto la nombraba y no salía.
+- **La capa y la corona salían desde la página 1**, aunque Olivia las recibe en la 5 y la 11: la dirección de arte metía en la ropa habitual lo que el protagonista «lleva siempre».
+
+Arreglos (PR `fix/escenas-y-reparto`): planificador sin familiares inventados (rechazo duro si aparecen, salvo que los nombre el adulto) y con texto e imagen coherentes; escenas con cada personaje entero y a la vista; los objetos que llegan más tarde no van en la ropa habitual; línea fija en todos los prompts para que nadie atraviese un mueble; «glasses» solo si alguien lleva gafas; el control de calidad rechaza personajes que atraviesan objetos y animales con el cuerpo retorcido. La dirección de arte de las páginas pasa a `pages-art-v2`: los libros ya pintados no cambian, pero una página que se vuelva a pedir sale con las reglas nuevas.
+
 ## Pendiente
 
 - Activar las imágenes de verdad en la interfaz de la preview: `GENERATION_PROVIDER=gemini-images` en Vercel (Preview).
