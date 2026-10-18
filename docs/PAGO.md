@@ -53,7 +53,7 @@ En producción Gelato imprime de verdad. Con claves de prueba, un pago con la ta
 2. API Keys → crear una con permiso de envío → `RESEND_API_KEY`.
 3. `MAIL_FROM` con ese dominio, por ejemplo `Cuentos <hola@tudominio.es>`.
 
-**Correo entrante: `hola@erasesuvez.com` → tu Gmail** (18 oct, código en `lib/inbound.ts` y `/api/mail/inbound`)
+**Correo entrante: `hola@erasesuvez.com` → tu Gmail** (18 oct, código en `lib/inbound.ts` y `/api/mail/inbound`). **Hecho y probado el 18 oct (noche).** Al salir a producción, solo falta el cambio de URL del paso 2.
 
 Resend recibe lo que llega a cualquier dirección de `erasesuvez.com`, avisa con un webhook firmado y la web lo reenvía a `MAIL_FORWARD_TO`. El correo reenviado sale de `hola@` con el nombre de quien escribió («Ana (vía Érase su vez)»), lleva arriba el remitente y el destinatario originales y tiene «Responder a» el remitente: al contestar desde Gmail, la respuesta le llega a él, pero desde tu Gmail. Los adjuntos van por enlace (Resend los descarga); si alguno no se puede mandar, llega sin adjuntos y con una nota. No se reenvía lo que no pasa DMARC (casi siempre spam o suplantación): se queda en Resend → Emails → Receiving. No se guarda nada en nuestra base.
 
