@@ -23,6 +23,8 @@ function loadClarity(id: string) {
     function (...args: unknown[]) {
       (w.clarity!.q = w.clarity!.q || []).push(args);
     };
+  // señal de consentimiento que Clarity exige en el EEE desde el 31 oct 2025: medición sí (la ha aceptado), publicidad no
+  w.clarity("consentv2", { ad_Storage: "denied", analytics_Storage: "granted" });
   const s = document.createElement("script");
   s.id = "ms-clarity";
   s.async = true;

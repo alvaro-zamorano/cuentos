@@ -25,16 +25,31 @@ export function dryRunPaymentAllowed(env: Record<string, string | undefined> = p
   return env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1" && env.VERCEL_ENV !== "production";
 }
 
+/**
+ * Renuncia al desistimiento (art. 103 c) y m) TRLGDCU): libro personalizado y contenido digital. Quien paga marca la casilla
+ * del paso 5; el servidor no abre el pago sin ella y la deja apuntada en los metadatos de Stripe (sesión y cobro), que
+ * duran más que el libro. WAIVER_VERSION cambia si cambia el texto de la casilla.
+ */
+export const WAIVER_VERSION = "2026-10-16";
+
+export function waiverAccepted(body: Record<string, unknown> | null | undefined): boolean {
+  return body?.waiver === true;
+}
+
 export interface CheckoutInput {
   bookId: string;
   email: string | null;
   title: string;
   amountCents: number;
+  /** Tapa dura (con envío y el PDF) o solo el PDF. Va en los metadatos: el webhook crea el pedido de esa edición. */
+  edition?: "hardcover" | "illustrated";
   origin: string;
+  /** Momento (ISO) en que se aceptó la renuncia al desistimiento. */
+  waiverAt?: string;
 }
 
 /** Cuerpo form-encoded de /v1/checkout/sessions (exportado para los tests). */
-export function checkoutBody({ bookId, email, title, amountCents, origin }: CheckoutInput): URLSearchParams {
+export function checkoutBody({ bookId, email, title, amountCents, origin, waiverAt, edition = "illustrated" }: CheckoutInput): URLSearchParams {
   const p = new URLSearchParams();
   p.set("mode", "payment");
   p.set("success_url", `${origin}/crear?b=${bookId}&pagado=1`);
@@ -42,12 +57,24 @@ export function checkoutBody({ bookId, email, title, amountCents, origin }: Chec
   p.set("client_reference_id", bookId);
   p.set("metadata[bookId]", bookId);
   p.set("payment_intent_data[metadata][bookId]", bookId);
+  p.set("metadata[edition]", edition);
+  p.set("payment_intent_data[metadata][edition]", edition);
+  if (waiverAt) {
+    for (const k of ["metadata", "payment_intent_data[metadata]"]) {
+      p.set(`${k}[withdrawal_waiver_at]`, waiverAt);
+      p.set(`${k}[withdrawal_waiver_version]`, WAIVER_VERSION);
+    }
+  }
   if (email) p.set("customer_email", email);
   p.set("line_items[0][quantity]", "1");
   p.set("line_items[0][price_data][currency]", "eur");
   p.set("line_items[0][price_data][unit_amount]", String(amountCents));
-  p.set("line_items[0][price_data][product_data][name]", `Libro ilustrado · ${title}`.slice(0, 120));
-  p.set("line_items[0][price_data][product_data][description]", "12 ilustraciones, revisión página a página y PDF para imprimir en A4.");
+  const hard = edition === "hardcover";
+  p.set("line_items[0][price_data][product_data][name]", `${hard ? "Libro de tapa dura" : "Libro ilustrado"} · ${title}`.slice(0, 120));
+  p.set(
+    "line_items[0][price_data][product_data][description]",
+    hard ? "Tapa dura de 20×20 cm con 12 ilustraciones, envío a la Península y Baleares incluido, y el PDF." : "12 ilustraciones, revisión página a página y PDF para imprimir en A4.",
+  );
   p.set("locale", "es");
   return p;
 }

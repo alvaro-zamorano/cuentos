@@ -6,7 +6,8 @@
  * - Nada se genera dos veces: cada job lleva una huella (`job_key`, lib/generation/keys.ts) única por libro.
  * - Antes del pago: hoja + página 9 por lead (= email), con canSpend (tope por lead y diario). «Otra versión de la
  *   hoja» hasta MAX_SHEET_VERSIONS, cada una cuenta en el presupuesto del lead.
- * - Tras el pago: las páginas que faltan + portada, `paid: true` (salta el tope por lead; el diario sigue) y tope
+ * - Tras el pago: las páginas que faltan + portada, `paid: true` (salta el tope por lead; el diario solo si el pago es
+ *   de Stripe y no de prueba) y tope
  *   por libro (MAX_COST_CENTS_PER_BOOK).
  * - runJob procesa UN job: reclama con bloqueo optimista, llama al adaptador, sube el PNG, anota coste y gasto.
  */
@@ -42,7 +43,7 @@ export const MAX_ATTEMPTS = 2;
  */
 export const STALE_RUNNING_MS = 330_000;
 
-export type Fail = { ok: false; status: number; error: string; reason?: string };
+export type Fail = { ok: false; status: number; error: string; reason?: string; /** Campo del formulario que falla (la dirección). */ field?: string };
 
 function fail(status: number, error: string, reason?: string): Fail {
   return { ok: false, status, error, ...(reason ? { reason } : {}) };

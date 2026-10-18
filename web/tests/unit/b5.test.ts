@@ -9,8 +9,8 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll, publicOrigin } from "../../lib/book/background";
-import { bookView, checkoutInfo, notifyBookReady, payDryRun, pendingPageJobs, recordStripePayment, requestPages, startBook, PRICE_CENTS } from "../../lib/book/service";
-import { checkoutBody, dryRunPaymentAllowed, paymentMode, verifyWebhook } from "../../lib/stripe";
+import { bookView, prepareCheckout, notifyBookReady, payDryRun, pendingPageJobs, recordStripePayment, requestPages, startBook, PRICE_CENTS } from "../../lib/book/service";
+import { checkoutBody, dryRunPaymentAllowed, paymentMode, verifyWebhook, waiverAccepted, WAIVER_VERSION } from "../../lib/stripe";
 import { mailEnabled } from "../../lib/mail";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -61,6 +61,17 @@ test("checkoutBody: pago único en euros con el libro en metadata y la vuelta a 
   assert.equal(checkoutBody({ bookId: "abc12345", email: null, title: "x", amountCents: 1, origin: "o" }).has("customer_email"), false);
 });
 
+test("renuncia al desistimiento: solo con waiver === true, y queda en los metadatos de la sesión y del cobro", () => {
+  assert.equal(waiverAccepted({ bookId: "x", waiver: true }), true);
+  for (const b of [null, undefined, {}, { waiver: "true" }, { waiver: 1 }, { waiver: false }]) assert.equal(waiverAccepted(b as Record<string, unknown> | null), false);
+  const at = "2026-10-16T10:00:00.000Z";
+  const p = checkoutBody({ bookId: "abc12345", email: null, title: "x", amountCents: 1490, origin: "o", waiverAt: at });
+  assert.equal(p.get("metadata[withdrawal_waiver_at]"), at);
+  assert.equal(p.get("payment_intent_data[metadata][withdrawal_waiver_at]"), at);
+  assert.equal(p.get("metadata[withdrawal_waiver_version]"), WAIVER_VERSION);
+  assert.equal(checkoutBody({ bookId: "abc12345", email: null, title: "x", amountCents: 1490, origin: "o" }).has("metadata[withdrawal_waiver_at]"), false);
+});
+
 test("paymentMode: Stripe con sus dos claves; el pago de prueba nunca en producción", () => {
   assert.equal(paymentMode({}), "none");
   assert.equal(paymentMode({ NEXT_PUBLIC_DRY_RUN_PAYMENT: "1" }), "dry-run");
@@ -103,13 +114,13 @@ test("webhook: el pedido se registra una vez; lo que no es un cobro se ignora", 
   assert.deepEqual(await recordStripePayment(store, ev("payment_intent.created", paid)), { action: "ignored", reason: "payment_intent.created" });
   assert.equal((await recordStripePayment(store, ev("checkout.session.completed", { ...paid, payment_status: "unpaid" }))).action, "ignored");
   assert.equal((await recordStripePayment(store, ev("checkout.session.completed", { ...paid, metadata: { bookId: "noexiste1" } }))).action, "ignored");
-  assert.equal((await checkoutInfo(store, start.bookId)).ok, true, "antes del pago se puede abrir el checkout");
+  assert.equal((await prepareCheckout(store, { bookId: start.bookId })).ok, true, "antes del pago se puede abrir el checkout");
 
   assert.deepEqual(await recordStripePayment(store, ev("checkout.session.completed", paid)), { action: "paid", bookId: start.bookId });
   assert.deepEqual(await recordStripePayment(store, ev("checkout.session.completed", paid)), { action: "duplicate", bookId: start.bookId });
   const v = await bookView(store, start.bookId);
   assert.ok(v.ok && v.paid);
-  const again = await checkoutInfo(store, start.bookId);
+  const again = await prepareCheckout(store, { bookId: start.bookId });
   assert.ok(!again.ok && again.error === "already_paid");
 });
 

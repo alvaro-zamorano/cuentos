@@ -24,16 +24,14 @@ test.beforeEach(async ({ page, context }) => {
   });
 });
 
-test("Lead magnet /gratis abre el cuento demo", async ({ page, context }) => {
+test("Flujo antiguo: /clasico, /ilustrado, /libro y /gratis llevan a /crear", async ({ page }) => {
+  for (const path of ["/clasico", "/ilustrado", "/libro?print=1", "/gratis"]) {
+    const r = await page.request.get(path, { maxRedirects: 0 });
+    expect(r.status(), path).toBe(307);
+    expect(new URL(r.headers()["location"], "http://x").pathname, path).toBe("/crear");
+  }
   await page.goto("/gratis");
-  await page.getByPlaceholder("tu@email.com").fill("demo@example.com");
-  await page.getByRole("checkbox").first().check();
-  const [tab] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Descargar PDF" }).click()]);
-  await expect(page.getByTestId("gratis-ok")).toBeVisible();
-  await tab.waitForLoadState();
-  await expect(tab.locator("section.sheet")).toHaveCount(13);
-  await expect(tab.getByRole("heading", { level: 1 })).toContainText("Lucas");
-  await expect(tab.getByText("Toby").first()).toBeVisible();
+  await expect(page).toHaveURL(/\/crear$/);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -47,12 +45,13 @@ test("Landing: estructura editorial y SEO", async ({ page }) => {
     "Hojea el libro de Vera.",
     "Cada uno, su historia.",
     "Lo que lo hace suyo",
-    "Empiezas gratis. Pagas solo por el libro ilustrado.",
+    "Empiezas gratis. Pagas solo por el libro.",
     "Preguntas",
   ])
     await expect(page.getByRole("heading", { name: h, level: 2 })).toBeVisible();
   await expect(page.getByText("14,90 €").first()).toBeVisible();
-  await expect(page.getByText("desde 39,90 €").first()).toBeVisible();
+  await expect(page.getByText("34,90 €").first()).toBeVisible();
+  await expect(page.getByText("Tapa dura · envío incluido")).toBeVisible();
   // «peque(s)» como palabra suelta; \b no sirve porque en JS la «ñ» de «pequeño» cuenta como límite de palabra
   await expect(page.getByText(/(?<!\p{L})peques?(?!\p{L})/iu)).toHaveCount(0);
   // el cuento se escribe en el servidor: la landing no puede prometer que los datos se quedan en el navegador

@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, Pending } from "@/components/LegalPage";
+import { ContactEmail, Dato, LegalPage, Pending } from "@/components/LegalPage";
+import { titular } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Política de privacidad" };
 
 export default function Privacidad() {
+  const t = titular();
   return (
-    <LegalPage title="Política de privacidad" updated="14 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="16 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
-        Responsable del tratamiento: <Pending>nombre y apellidos o razón social</Pending>, NIF <Pending>NIF</Pending>, domicilio{" "}
-        <Pending>dirección</Pending>. Contacto para privacidad: <Pending>email de contacto</Pending>.
+        Responsable del tratamiento: <Dato value={t.name}>nombre y apellidos o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, domicilio{" "}
+        <Dato value={t.address}>dirección</Dato>. Contacto para privacidad: <ContactEmail value={t.email} />.
       </p>
 
       <h2>2. Qué datos tratamos</h2>
@@ -28,6 +30,10 @@ export default function Privacidad() {
           <strong>Datos de quien crea o compra el libro</strong>: el email, si quieres o no recibir novedades y, si compras, los datos del
           pedido. Los datos de la tarjeta los recoge Stripe; nosotros no los vemos.
         </li>
+        <li>
+          <strong>Si compras el libro impreso</strong>: el nombre y la dirección de quien lo recibe y, si lo das, un teléfono para el
+          transportista.
+        </li>
         <li>No pedimos fotos, apellidos ni fecha de nacimiento. No usamos reconocimiento facial.</li>
       </ul>
 
@@ -44,8 +50,8 @@ export default function Privacidad() {
           La hoja de personajes y la portada se pintan cuando nos das tu email, antes de pagar. Las doce páginas, solo después del pago.
         </li>
         <li>
-          Estos proveedores tratan los datos por encargo nuestro y no para sus propios fines <Pending>confirmar en los términos de la API de
-          Anthropic y de la API de pago de Gemini que no usan los datos para entrenar</Pending>.
+          Anthropic y Google tratan estos datos por encargo nuestro. Ninguno de los dos los usa para entrenar ni mejorar sus modelos. Anthropic los
+          borra en 30 días y Google los guarda 55 días solo para detectar abusos.
         </li>
       </ul>
 
@@ -60,6 +66,7 @@ export default function Privacidad() {
         <li>Escribir el cuento, pintar las ilustraciones y entregarte el libro (ejecución del servicio que pides).</li>
         <li>Guardarte un enlace para volver a tu libro durante 30 días y mandártelo por email (ejecución del servicio que pides).</li>
         <li>Cobrar y conservar el pedido (ejecución del contrato y obligaciones contables y fiscales).</li>
+        <li>Imprimir el libro y enviártelo a la dirección que indiques (ejecución del contrato).</li>
         <li>
           Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla separada y opcional (consentimiento, art. 21 LSSI). Puedes retirarlo
           en cualquier momento desde el propio email o escribiéndonos.
@@ -83,29 +90,62 @@ export default function Privacidad() {
           fecha) el plazo que exige la normativa fiscal y mercantil.
         </li>
         <li>
-          El email que nos das para recibir el enlace del libro se conserva <Pending>plazo (E18)</Pending>. Si marcas recibir novedades, hasta
-          que te des de baja.
+          Si compras el libro impreso, no lo borramos mientras no lo mandes a imprimir: sin las ilustraciones no se puede imprimir. La dirección
+          de envío se borra con el libro, salvo que el paquete siga de camino; entonces, cuando llega.
+        </li>
+        <li>
+          El email que nos das para recibir el enlace del libro se borra a los 30 días, con el libro, si no has aceptado recibir novedades. Si
+          compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
       </ul>
 
-      <h2>7. Proveedores (encargados del tratamiento)</h2>
+      <h2>7. Proveedores</h2>
       <p>
-        Trabajamos con proveedores que firman un contrato de encargo (DPA). Cuando hay transferencia fuera del Espacio Económico Europeo, se basa
-        en cláusulas contractuales tipo (SCC) o en el Marco de Privacidad de Datos UE-EE. UU. (DPF):
+        Estos proveedores tratan datos por encargo nuestro, con un contrato de encargo (DPA) que forma parte de sus condiciones. Cuando los datos
+        salen del Espacio Económico Europeo, la transferencia se ampara en cláusulas contractuales tipo de la Comisión Europea y, cuando el
+        proveedor está certificado, en el Marco de Privacidad de Datos UE-EE. UU.:
       </p>
       <ul>
-        <li>Alojamiento web: Vercel <Pending>DPA y mecanismo de transferencia</Pending>.</li>
-        <li>Base de datos y almacenamiento: Supabase <Pending>región y DPA</Pending>.</li>
-        <li>Texto del cuento y revisión de las imágenes: Anthropic <Pending>DPA y SCC/DPF</Pending>.</li>
-        <li>Ilustraciones: Google, API de Gemini <Pending>DPA y SCC/DPF</Pending>.</li>
-        <li>Envío de emails: Resend <Pending>DPA y SCC/DPF</Pending>.</li>
-        <li>Pagos: Stripe <Pending>DPA</Pending>.</li>
-        <li>Analítica, solo con tu consentimiento: Microsoft Clarity <Pending>DPA</Pending>.</li>
+        <li>Alojamiento web: Vercel Inc. (EE. UU.), con cláusulas tipo y Marco de Privacidad.</li>
+        <li>
+          Base de datos y archivos: Supabase Pte. Ltd. (Singapur), con los datos alojados en <Pending>región de la UE del proyecto</Pending> y
+          cláusulas tipo.
+        </li>
+        <li>Texto del cuento y revisión de las imágenes: Anthropic Ireland, Limited, con la API de Claude, y cláusulas tipo.</li>
+        <li>Ilustraciones: Google Cloud EMEA Limited (Irlanda), con la API de pago de Gemini, cláusulas tipo y Marco de Privacidad.</li>
+        <li>Envío de emails: Resend (Plus Five Five, Inc., EE. UU.), con cláusulas tipo y Marco de Privacidad.</li>
+        <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
+        <li>
+          Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo) <Pending>entidad exacta del contrato</Pending>,
+          que encarga la impresión a una imprenta de su red, normalmente cerca de tu casa. Recibe el libro, el nombre, la dirección, el email y,
+          si lo das, el teléfono.
+        </li>
+      </ul>
+      <p>Y estos los tratan como responsables independientes, con su propia política de privacidad:</p>
+      <ul>
+        <li>
+          Stripe, para prevenir el fraude y cumplir sus obligaciones legales (por ejemplo, contra el blanqueo de capitales).{" "}
+          <a href="https://stripe.com/es/privacy" className="link" target="_blank" rel="noopener noreferrer">
+            Política de Stripe
+          </a>
+          .
+        </li>
+        <li>
+          El transportista que entrega el libro impreso: recibe tu nombre, la dirección y, si lo das, el teléfono para hacer la entrega.
+        </li>
+        <li>
+          Microsoft (Clarity), solo si aceptas la medición: recoge cómo navegas por la web y puede usar esos datos para sus propios fines. No graba
+          lo que escribes sobre el niño ni el cuento.{" "}
+          <a href="https://privacy.microsoft.com/es-es/privacystatement" className="link" target="_blank" rel="noopener noreferrer">
+            Declaración de privacidad de Microsoft
+          </a>
+          .
+        </li>
       </ul>
 
       <h2>8. Tus derechos</h2>
       <p>
-        Puedes pedir acceso, rectificación, supresión, oposición, limitación y portabilidad escribiendo a <Pending>email de contacto</Pending>.
+        Puedes pedir acceso, rectificación, supresión, oposición, limitación y portabilidad escribiendo a <ContactEmail value={t.email} />.
         Si crees que no hemos atendido bien tu solicitud, puedes reclamar ante la Agencia Española de Protección de Datos (aepd.es).
       </p>
 

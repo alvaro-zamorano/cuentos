@@ -94,8 +94,19 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await page.getByTestId("approve").click();
   await expect(page.getByTestId("paywall")).toBeVisible();
   await expect(page.getByTestId("book-page-12")).toBeVisible();
+  // sin la renuncia al desistimiento no se puede pagar, y el servidor tampoco lo acepta
+  await expect(page.getByTestId("pay")).toBeDisabled();
+  const sinCasilla = await page.request.post("/api/libro/pay", { data: { bookId: await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string) } });
+  expect(sinCasilla.status()).toBe(400);
+  // la tapa dura viene marcada (imprenta simulada); este recorrido compra solo el PDF
+  await expect(page.getByTestId("edition-hardcover")).toHaveAttribute("aria-checked", "true");
+  await page.getByTestId("edition-illustrated").click();
+  await expect(page.getByTestId("shipping-form")).toHaveCount(0);
+  await page.getByTestId("waiver").check();
+  await expect(page.getByTestId("pay")).toHaveText(/14,90 €/);
   await page.getByTestId("pay").click();
   await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId("print-panel")).toHaveCount(0);
 
   // la hoja aprobada es la versión 2 y no hay jobs repetidos
   const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
@@ -105,6 +116,8 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   const sheet2 = (view.jobs as { id: string; kind: string; variant: number }[]).find((j) => j.kind === "sheet" && j.variant === 2)!;
   expect(view.approvedSheetJobId).toBe(sheet2.id);
   expect(view.payment).toBe("dry-run");
+  expect(view.edition).toBe("illustrated");
+  expect(view.print).toBeNull();
 
   // sin claves de Stripe: ni checkout ni webhook
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
@@ -121,6 +134,74 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
     const info = execFileSync("pdfinfo", [file]).toString();
     expect(info).toMatch(/Pages:\s+15/);
     expect(info).toMatch(/Page size:.*\(A4\)/);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulada) y el libro ya no cambia", async ({ page }) => {
+  test.setTimeout(300_000);
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("vera@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await page.getByTestId("approve").click();
+  await expect(page.getByTestId("paywall")).toBeVisible();
+  await expect(page.getByTestId("edition-hardcover")).toHaveAttribute("aria-checked", "true");
+
+  // dirección: a Canarias todavía no
+  await page.getByTestId("ship-name").fill("Ana García López");
+  await page.getByTestId("ship-line1").fill("Calle Mayor 12");
+  await page.getByTestId("ship-line2").fill("3º B");
+  await page.getByTestId("ship-postcode").fill("38001");
+  await page.getByTestId("ship-city").fill("Santa Cruz");
+  await page.getByTestId("waiver").check();
+  await expect(page.getByTestId("pay")).toHaveText(/34,90 €/);
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("paywall")).toContainText("Península y Baleares");
+  await expect(page.getByTestId("ship-postcode")).toHaveAttribute("aria-invalid", "true");
+  // ese 400 era el esperado (la dirección rechazada)
+  errors.splice(0, errors.length);
+  await page.getByTestId("ship-postcode").fill("28013");
+  await page.getByTestId("ship-city").fill("Madrid");
+  await page.getByTestId("pay").click();
+
+  // pagado: las 12 páginas y el panel de la imprenta, esperando a que lo mandemos
+  await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
+  const panel = page.getByTestId("print-panel");
+  await expect(panel).toHaveAttribute("data-status", "awaiting_approval");
+  await expect(page.getByTestId("print-address")).toContainText("Calle Mayor 12, 3º B, 28013 Madrid");
+
+  // cambiar la dirección antes de mandarlo
+  await panel.getByRole("button", { name: "Cambiar" }).click();
+  await page.getByTestId("ship-line2").fill("4º A");
+  await page.getByTestId("ship-save").click();
+  await expect(page.getByTestId("print-address")).toContainText("4º A");
+
+  // un texto retocado antes de mandarlo viaja con el libro
+  await page.getByLabel("Texto de la página 1", { exact: true }).fill("Aquella noche, Vera no tenía nada de sueño.");
+  await page.getByTestId("print-send").click();
+  await page.getByTestId("print-confirm").click();
+  await expect(panel).toHaveAttribute("data-status", /sent|failed/, { timeout: 180_000 });
+  const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
+  const view = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
+  if (view.print.status === "failed") test.info().annotations.push({ type: "imprenta", description: "sin Chromium local: PDF de imprenta no comprobado" });
+  else {
+    expect(view.print.status).toBe("sent");
+    await expect(panel).toContainText("En la imprenta");
+    await expect(panel).toContainText("Imprenta simulada");
+  }
+  expect(view.edition).toBe("hardcover");
+  expect(view.printMode).toBe("dry-run");
+  expect(view.plan.pages[0].text).toBe("Aquella noche, Vera no tenía nada de sueño.");
+
+  // ya en la imprenta: los textos solo se leen y el servidor no acepta cambios
+  if (view.print.status === "sent") {
+    await expect(page.getByLabel("Texto de la página 1", { exact: true })).toHaveAttribute("readonly", "");
+    const edited = { ...view.plan, pages: view.plan.pages.map((p: { n: number; text: string }) => (p.n === 2 ? { ...p, text: `${p.text} Y otra cosa.` } : p)) };
+    expect((await page.request.post("/api/libro/plan", { data: { bookId, plan: edited } })).status()).toBe(409);
+    expect((await page.request.post("/api/libro/print", { data: { bookId } })).status()).toBe(409);
   }
   expect(errors).toEqual([]);
 });

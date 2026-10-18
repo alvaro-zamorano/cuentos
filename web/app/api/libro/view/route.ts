@@ -1,5 +1,6 @@
 import { bookView } from "@/lib/book/service";
 import { mailEnabled } from "@/lib/mail";
+import { printMode } from "@/lib/print/gelato";
 import { paymentMode } from "@/lib/stripe";
 import { backgroundPaint, withContext } from "../_shared";
 
@@ -8,6 +9,6 @@ export async function GET(req: Request) {
   const b = new URL(req.url).searchParams.get("b");
   return withContext("view", async (store) => {
     const v = await bookView(store, b);
-    return v.ok ? { ...v, payment: paymentMode(), mail: mailEnabled(), background: backgroundPaint() } : v;
+    return v.ok ? { ...v, payment: paymentMode(), printMode: printMode(), mail: mailEnabled(), background: backgroundPaint() } : v;
   });
 }

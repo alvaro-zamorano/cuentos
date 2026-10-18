@@ -94,6 +94,8 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return "Falta marcar la declaración.";
     case "email":
       return "Revisa el email.";
+    case "waiver_required":
+      return "Falta marcar la casilla de encima del botón.";
     case "payment_unavailable":
       return "El pago todavía no está disponible.";
     case "already_paid":
@@ -104,6 +106,11 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return "El pago aún no nos ha llegado. Recarga la página en un momento.";
     case "storage_unavailable":
       return "Ahora mismo no podemos guardar el libro. Inténtalo más tarde.";
+    case "print_unavailable":
+      return "El libro impreso todavía no está disponible.";
+    case "printed":
+    case "already_sent":
+      return "El libro ya está en la imprenta y no se puede cambiar.";
     default:
       return json.reason ?? fallback;
   }

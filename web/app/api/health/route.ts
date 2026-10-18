@@ -6,6 +6,7 @@ import { selectProvider } from "@/lib/story/provider";
 import { geminiModel, providerName } from "@/lib/generation/adapter";
 import { mailEnabled } from "@/lib/mail";
 import { paymentMode } from "@/lib/stripe";
+import { gelatoOrderType, gelatoPageCount, printMode } from "@/lib/print/gelato";
 
 /**
  * GET /api/health — qué configuración tiene este despliegue. Nunca devuelve valores, solo si existen.
@@ -61,6 +62,8 @@ export async function GET(req: Request) {
     mail: { enabled: mailEnabled(), resendKey: has("RESEND_API_KEY"), from: has("MAIL_FROM"), siteUrl: has("SITE_URL") },
     background: process.env.BACKGROUND_PAINT !== "0",
     cron: { secret: has("CRON_SECRET") },
+    // libro impreso (B8): "gelato" con clave; fuera de producción los pedidos son borradores salvo GELATO_ORDER_TYPE=order
+    print: { mode: printMode(), orderType: gelatoOrderType(), pageCount: gelatoPageCount(), apiKey: has("GELATO_API_KEY"), productUid: has("GELATO_PRODUCT_UID"), webhookSecret: has("GELATO_WEBHOOK_SECRET") },
   };
 
   if (deep) {

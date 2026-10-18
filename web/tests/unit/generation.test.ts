@@ -218,12 +218,32 @@ test("dry-run: la página redeclara el bible y no cuesta nada", async () => {
 
 type Row = { lead_id: string; cost_cents: number; created_at: string; kind?: string; provider?: string; model?: string };
 
-/** Cliente Supabase falso: solo lo que usa budget.ts (from → select → eq|gte, insert). */
-function fakeDb(rows: Row[], opts: { failRead?: boolean } = {}) {
+type Order = { book_id: string; stripe_session_id: string | null; status?: string };
+
+/** Cliente Supabase falso: solo lo que usa budget.ts (from → select → eq|gte, insert; pedidos con eq → eq). */
+function fakeDb(rows: Row[], opts: { failRead?: boolean; orders?: Order[] } = {}) {
   const inserted: Row[] = [];
-  const result = (data: Row[]) => Promise.resolve(opts.failRead ? { data: null, error: { message: "x" } } : { data, error: null });
+  const result = <T,>(data: T[]) => Promise.resolve(opts.failRead ? { data: null, error: { message: "x" } } : { data, error: null });
   const client = {
     from(table: string) {
+      if (table === "cuentos_orders") {
+        return {
+          select: (cols: string) => (
+            assert.equal(cols, "stripe_session_id"),
+            {
+              eq: (c1: string, book: string) => (
+                assert.equal(c1, "book_id"),
+                {
+                  eq: (c2: string, st: string) => (
+                    assert.equal(c2, "status"),
+                    result((opts.orders ?? []).filter((o) => o.book_id === book && (o.status ?? "paid") === st))
+                  ),
+                }
+              ),
+            }
+          ),
+        };
+      }
       assert.equal(table, "cuentos_spend");
       return {
         select(cols: string) {
@@ -267,7 +287,7 @@ test("canSpend: respeta el tope por lead (30 c por defecto, D2; aquí 20 c)", as
   });
 });
 
-test("canSpend: respeta el tope diario UTC (500 c por defecto) también para libros pagados", async () => {
+test("canSpend: respeta el tope diario UTC (500 c por defecto), salvo libros cobrados con Stripe", async () => {
   await withEnv({ LEAD_CAP_CENTS: undefined, DAILY_CAP_CENTS: undefined }, async () => {
     const rows: Row[] = [
       { lead_id: "x", cost_cents: 300, created_at: TODAY },
@@ -280,6 +300,20 @@ test("canSpend: respeta el tope diario UTC (500 c por defecto) también para lib
     assert.equal(over.ok, false);
     assert.match(over.reason!, /tope diario \(500 c\)/);
     assert.equal((await canSpend(db, { leadId: "libro", cents: 5, paid: true, now: NOW })).ok, false);
+  });
+  // un libro cobrado con Stripe pasa el tope diario; uno con pago de prueba, no (16 oct)
+  await withEnv({ LEAD_CAP_CENTS: undefined, DAILY_CAP_CENTS: undefined }, async () => {
+    const orders: Order[] = [
+      { book_id: "cobrado", stripe_session_id: "cs_test_a1" },
+      { book_id: "prueba", stripe_session_id: "dry-run:abc12345" },
+      { book_id: "pendiente", stripe_session_id: "cs_test_b2", status: "pending" },
+    ];
+    const { db } = fakeDb([{ lead_id: "x", cost_cents: 500, created_at: TODAY }], { orders });
+    assert.equal((await canSpend(db, { leadId: "cobrado", cents: 12, paid: true, now: NOW })).ok, true);
+    assert.equal((await canSpend(db, { leadId: "prueba", cents: 12, paid: true, now: NOW })).ok, false);
+    assert.equal((await canSpend(db, { leadId: "pendiente", cents: 12, paid: true, now: NOW })).ok, false);
+    // sin `paid` no se mira el pedido: el tope diario manda
+    assert.equal((await canSpend(db, { leadId: "cobrado", cents: 12, now: NOW })).ok, false);
   });
   await withEnv({ DAILY_CAP_CENTS: "1000", LEAD_CAP_CENTS: "20" }, async () => {
     const { db } = fakeDb([{ lead_id: "x", cost_cents: 900, created_at: TODAY }]);
