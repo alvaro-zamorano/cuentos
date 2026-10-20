@@ -1,0 +1,194 @@
+export type HairShape =
+  | "corto"
+  | "flequillo"
+  | "melena"
+  | "coleta"
+  | "rizos"
+  | "rizos-media"
+  | "rizos-largos"
+  | "afro"
+  | "trenzas"
+  | "rapado"
+  | "ondulado"
+  | "mono";
+export type HairColor = "negro" | "castano" | "rubio" | "pelirrojo" | "caoba";
+export type Skin = "muy-clara" | "clara" | "melocoton" | "media" | "tostada" | "morena" | "morena-oscura" | "oscura";
+/** Color de ojos (ids originales). */
+export type Eyes = "marron" | "verde" | "azul" | "gris";
+/** Forma de ojos (catálogo E01–E06). */
+export type EyeShape = "puntos" | "redondos" | "ovalados" | "dormilones" | "cerrados" | "risuenos";
+export type Glasses = "no" | "redondas" | "redondas-gruesas" | "ovaladas" | "cuadradas" | "pasta" | "transparentes";
+/** Color de la ropa (ids originales). */
+export type Outfit = "amarillo" | "rojo" | "verde" | "azul" | "lila" | "naranja";
+/** Prenda (catálogo O01–O08). */
+export type Garment = "chubasquero" | "peto" | "jersey" | "marinera" | "vestido" | "plumifero" | "pijama" | "verano";
+export type Accessory = "no" | "gorro" | "diadema" | "mochila" | "sombrero" | "bufanda" | "lazo" | "casco" | "bolso";
+export type PetId = "corgi" | "golden" | "manchado" | "atigrado" | "blanquinegro" | "conejo" | "cobaya" | "periquito";
+export type GrandparentId =
+  | "abuela-mono"
+  | "abuela-rizos"
+  | "abuela-ondas"
+  | "abuela-gafas"
+  | "abuelo-calvo"
+  | "abuelo-barba"
+  | "abuelo-gafas"
+  | "abuelo-gris";
+export type StyleId = "3d" | "flat" | "gouache" | "papercraft" | "lapiz" | "acuarela";
+
+export type Expression = "feliz" | "risa" | "sorpresa" | "curioso" | "sueno" | "orgullo";
+
+export interface Traits {
+  hair: { shape: HairShape; color: HairColor };
+  skin: Skin;
+  eyes: Eyes;
+  /** Opcional para no romper borradores guardados antes de la Fase 1.5; por defecto "puntos". */
+  eyeShape?: EyeShape;
+  glasses: Glasses;
+  outfit: Outfit;
+  /** Opcional; por defecto "jersey" (la prenda que dibujaba el avatar original). */
+  garment?: Garment;
+  accessory?: Accessory;
+}
+
+export type CompanionKind = "perro" | "gato" | "abuela" | "abuelo" | "hermano" | "hermana";
+
+export interface Companion {
+  kind: CompanionKind;
+  name?: string;
+  traits?: Traits; // solo hermano/hermana
+  /** Mascota (perro/gato) o abuelo/a concreto del catálogo. */
+  variant?: PetId | GrandparentId;
+}
+
+export type AgeBand = "2-4" | "5-8";
+export type OccasionId = "cumpleanos";
+export type SpecialId = "peluche" | "dinosaurios" | "chocolate" | "estrellas" | "coches" | "mariposas";
+export type Edition = "classic" | "illustrated" | "hardcover";
+
+export interface Hero {
+  name: string;
+  age: number;
+  traits: Traits;
+}
+
+/** Página de la edición ilustrada. En dry-run, `variant` elige una composición determinista. */
+export interface IllustratedPage {
+  variant: number;
+}
+
+/** Estado de la edición ilustrada (Fase 2). Persiste en localStorage y en cuentos_books.draft. */
+export interface Illustration {
+  /** Pago simulado hecho (solo existe con NEXT_PUBLIC_DRY_RUN_PAYMENT=1). */
+  paid: boolean;
+  /** Declaración del tutor aceptada (en el paso 4, con el email). */
+  buyerDeclaration: boolean;
+  sheetApproved: boolean;
+  /** Huella de los rasgos con los que se aprobó la hoja; si cambian, la hoja y las páginas se invalidan. */
+  sheetKey?: string;
+  /** Job `sheet` elegido (la versión de la hoja que sirve de referencia al libro). */
+  sheetJobId?: string;
+  /** Huella (hoja + acompañante) con la que se ilustraron las páginas. */
+  pagesKey?: string;
+  pages: Record<number, IllustratedPage>;
+  /** Id del libro con el que se generan las imágenes (public_id de cuentos_books, o el que asigna el servidor sin Supabase). */
+  bookId?: string;
+  /** Job `sample` (página 9) de la muestra gratuita. */
+  sampleJobId?: string;
+  /** Huella (rasgos + estilo + historia) con la que se pidió la muestra; si cambia, la muestra se invalida (lib/generation/keys.ts). */
+  sampleKey?: string;
+  /** Versiones de la hoja pedidas (1 = la de la muestra; máximo 3: la original y dos más). */
+  sheetVersions: number;
+  /** Versiones pedidas por página tras el pago (1 = la incluida; máximo 2). */
+  pageVersions: Record<number, number>;
+}
+
+export interface Draft {
+  hero: Hero;
+  occasionId: OccasionId;
+  companion?: Companion;
+  special: SpecialId;
+  /** «Lo que solo tú sabes»: hasta 5 detalles reales en texto libre (≤ 140 caracteres). Puede tener huecos vacíos. */
+  details: string[];
+  /** Semilla de «Escribirlo de otra manera»; entra en el hash de entradas de la historia. */
+  storySeed?: number;
+  /** Historia escrita por el motor (LLM o mock) para las entradas cuyo hash es `inputHash`. */
+  story?: Story;
+  edition: Edition;
+  textOverrides: Record<number, string>;
+  email?: string;
+  /** Estilo de la edición ilustrada (se elige después del pago, PRD §6). */
+  styleId?: StyleId;
+  illustration?: Illustration;
+  updatedAt: number;
+}
+
+export type SceneId =
+  | "cama-manana"
+  | "ventana"
+  | "desayuno"
+  | "puerta-regalo"
+  | "salon-globos"
+  | "nube-deseo"
+  | "parque"
+  | "jardin-juego"
+  | "mesa-tarta"
+  | "velas"
+  | "abrir-regalo"
+  | "cama-noche";
+
+/** Página de una historia generada (motor de historia, brief 5). */
+export interface StoryPage {
+  n: number;
+  scene: SceneId;
+  expression: Expression;
+  withCompanion: boolean;
+  text: string;
+  /** Escena en inglés para la edición ilustrada (rasgos redeclarados, sin texto en la imagen). */
+  scenePrompt: string;
+  /** Escena en castellano tal como la describió el motor; con ella se recalcula `scenePrompt` si cambian los rasgos. */
+  sceneBrief?: string;
+}
+
+export interface Story {
+  id: string;
+  provider: string;
+  model: string;
+  pages: StoryPage[];
+  title: string;
+  dedication: string;
+  inputHash: string;
+  createdAt: number;
+  /** true si el proveedor no consiguió una versión válida y se devolvió el arco base. */
+  fallback?: boolean;
+}
+
+export interface ArcPage {
+  n: number;
+  scene: SceneId;
+  expression: Expression;
+  withCompanion: boolean;
+  text: Record<AgeBand, string>;
+  textPet?: Record<AgeBand, string>; // variante cuando el acompañante es una mascota (no habla)
+  scenePrompt: string; // para la edición ilustrada
+}
+
+export interface Arc {
+  id: OccasionId;
+  title: string;
+  pages: ArcPage[];
+}
+
+export interface BookPage {
+  n: number;
+  scene: SceneId;
+  expression: Expression;
+  withCompanion: boolean;
+  text: string;
+  scenePrompt: string;
+}
+
+export interface Book {
+  title: string;
+  dedication: string;
+  pages: BookPage[];
+}

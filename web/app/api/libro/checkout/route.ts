@@ -1,0 +1,35 @@
+import { NextResponse } from "next/server";
+import { publicOrigin } from "@/lib/book/background";
+import { prepareCheckout } from "@/lib/book/service";
+import type { Fail } from "@/lib/generation/service";
+import { printMode } from "@/lib/print/gelato";
+import { clientIp, envInt, rateLimit } from "@/lib/rateLimit";
+import { createCheckout, stripeEnabled, waiverAccepted } from "@/lib/stripe";
+import { bad, readJson, withContext } from "../_shared";
+
+/**
+ * POST /api/libro/checkout { bookId, waiver: true, edition: "hardcover" | "illustrated", shipping? } → { url } de Stripe
+ * Checkout. La tapa dura pide la dirección (Península y Baleares) y solo se ofrece si hay imprenta aquí. Sin la renuncia
+ * al desistimiento marcada, 400. El pedido lo crea el webhook (/api/stripe/webhook) cuando Stripe confirma el cobro.
+ */
+export async function POST(req: Request) {
+  if (!stripeEnabled()) return NextResponse.json({ ok: false, error: "payment_unavailable" }, { status: 501 });
+  const body = await readJson(req, 4_000);
+  if (!body) return bad();
+  if (!waiverAccepted(body)) return bad("waiver_required");
+  if (body.edition === "hardcover" && printMode() === "none") return NextResponse.json({ ok: false, error: "print_unavailable" }, { status: 501 });
+  const waiverAt = new Date().toISOString();
+  const limit = rateLimit(`checkout:${clientIp(req)}`, envInt("CHECKOUT_RATE_PER_HOUR", 20));
+  if (!limit.ok) return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
+  const origin = publicOrigin(req);
+  return withContext("checkout", async (store) => {
+    const info = await prepareCheckout(store, body);
+    if (!info.ok) return info;
+    const r = await createCheckout({ bookId: info.bookId, email: info.email, title: info.title, amountCents: info.amountCents, edition: info.edition, origin, waiverAt });
+    if ("error" in r) {
+      console.error("[libro/checkout]", r.error);
+      return { ok: false, status: 502, error: "stripe" } satisfies Fail;
+    }
+    return { ok: true as const, url: r.url };
+  });
+}
