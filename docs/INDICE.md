@@ -6,7 +6,7 @@ Mapa para empezar cualquier hilo. Lee esto y `ESTADO.md`; el resto, solo si la t
 
 ## 1. Resumen
 
-- **Qué es:** libros infantiles personalizados, escritos e ilustrados con IA. El padre cuenta la historia con una frase y elige cómo es el niño. Gratis: el cuento, la hoja de personajes, la portada y un PDF casero. De pago hoy: el libro ilustrado (12 páginas, PDF A4) por 14,90 €. Desde el 18 oct (D7), el producto principal pasa a ser el libro impreso de tapa dura con el PDF incluido (B8, por construir; precio e imprenta sin decidir).
+- **Qué es:** libros infantiles personalizados, escritos e ilustrados con IA. El padre cuenta la historia con una frase y elige cómo es el niño. Gratis: el cuento, la hoja de personajes, la portada y un PDF casero. De pago: el libro de tapa dura con el PDF incluido (34,90 €, Gelato; D7) o solo el PDF ilustrado (14,90 €). Todo apaisado, como un libro normal (D5 bis, 18 oct): ilustración a la izquierda y texto a la derecha.
 - **Coste:** ≈ 0,10 $ por lead (hoja + portada) y ≈ 1 $ por libro vendido.
 - **Repo:** `alvaro-zamorano/cuentos`. Rama de trabajo `feat/fase-1-journey-clasico`; PR #1 hacia `main`, sin unir. El código está en `web/` (Next.js 16).
 - **Preview (siempre la última de la rama):** https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app
@@ -84,8 +84,8 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Segundo plano | `lib/book/background.ts` + `paintLater` en `app/api/libro/_shared.ts` |
 | Stripe y Resend | `lib/stripe.ts` (también la renuncia al desistimiento: `waiverAccepted`, metadatos `withdrawal_waiver_*`), `lib/mail.ts`, `app/api/libro/checkout`, `app/api/stripe/webhook` |
 | Correo entrante (`hola@` → Gmail) | `lib/inbound.ts` (firma de Svix, reenvío), `app/api/mail/inbound` |
-| PDF | `lib/pdf/book2.ts` (maqueta), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf` |
-| Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra), migración `0005` |
+| PDF y maqueta del libro | `lib/pdf/printHtml.ts` (maqueta única del libro apaisado: impreso y PDF), `lib/pdf/book2.ts` (PDF en A4 apaisado), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf`; en la web, `BookCover` y `BookSpread` en `components/brand.tsx` |
+| Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra y los dos PDF que se descargan), migración `0005` |
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (dos crons: borrado e imprenta) |
 | Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`); proveedores en `docs/PROVEEDORES.md` |
 | Buscadores | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts` (solo producción con `SITE_URL`) |

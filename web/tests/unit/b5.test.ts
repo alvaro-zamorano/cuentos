@@ -80,7 +80,7 @@ test("paymentMode: Stripe con sus dos claves; el pago de prueba nunca en producc
   assert.equal(paymentMode({ STRIPE_SECRET_KEY: "sk_test_x" }), "none", "sin el secreto del webhook no se cobra");
   assert.equal(paymentMode({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x", NEXT_PUBLIC_DRY_RUN_PAYMENT: "1" }), "stripe");
   assert.equal(mailEnabled({ RESEND_API_KEY: "re_x" }), false, "sin remitente no se manda");
-  assert.equal(mailEnabled({ RESEND_API_KEY: "re_x", MAIL_FROM: "Cuentos <hola@x.es>" }), true);
+  assert.equal(mailEnabled({ RESEND_API_KEY: "re_x", MAIL_FROM: "Érase su vez <hola@x.es>" }), true);
 });
 
 test("publicOrigin: SITE_URL manda; si no, las cabeceras de la petición", () => {

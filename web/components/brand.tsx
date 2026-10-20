@@ -85,8 +85,9 @@ export const Icon = {
 };
 
 /**
- * El libro como objeto: A4 vertical, ilustración 3:2 arriba con el título encima (como la portada del PDF) y la banda
- * con «para …». Las letras escalan con el ancho (unidades de contenedor), así sirve en pequeño y en grande.
+ * El libro como objeto (D5 bis, 18 oct): un libro apaisado, como el de tapa dura. La portada es la ilustración entera
+ * con el título y «para …» arriba a la izquierda (la portada se pinta con el tercio de arriba despejado), igual que la
+ * cubierta impresa y la del PDF. Las letras escalan con el ancho (unidades de contenedor), así sirve en pequeño y en grande.
  * `image`: lo que va en la ilustración (una <img>, un BookImage o nada: noche con estrellas).
  */
 export function BookCover({
@@ -113,26 +114,45 @@ export function BookCover({
   return (
     <div className={`[container-type:inline-size] ${className}`}>
       <div
-        className="relative flex aspect-[210/297] flex-col overflow-hidden rounded-[3px_12px_12px_3px] bg-[#fbf6ec] shadow-[4px_5px_0_#ede2ce,8px_10px_0_var(--edge),0_36px_60px_-28px_rgba(5,10,30,0.75)]"
+        className="relative aspect-[4/3] overflow-hidden rounded-[3px_10px_10px_3px] bg-night shadow-[3px_4px_0_#ede2ce,6px_8px_0_var(--edge),0_36px_60px_-28px_rgba(5,10,30,0.75)]"
         style={{ transform: tilt ? `rotate(${tilt}deg)` : undefined }}
       >
-        <div className="relative aspect-[3/2] w-full overflow-hidden bg-night">
-          {image ?? (src ? <img src={src} alt={alt} className="absolute inset-0 block h-full w-full object-cover" /> : <NightPlaceholder label={placeholder} />)}
-          {title && (
-            <>
-              <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[62%] bg-gradient-to-b from-[rgba(15,20,40,0.62)] to-transparent" />
-              <p className="display absolute top-[4%] right-[30%] left-[6%] m-0 text-[7.6cqw] leading-[1.04] text-moon [text-shadow:0_2px_12px_rgba(10,20,50,0.6)]">{title}</p>
-            </>
-          )}
+        {image ?? (src ? <img src={src} alt={alt} className="absolute inset-0 block h-full w-full object-cover" /> : <NightPlaceholder label={placeholder} />)}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[60%] bg-gradient-to-b from-[rgba(15,20,40,0.6)] to-transparent" />
+        <div className="pointer-events-none absolute top-[6%] right-[30%] left-[7%] text-moon [text-shadow:0_2px_12px_rgba(10,20,50,0.6)]">
+          {title && <p className="display m-0 text-[6.4cqw] leading-[1.04]">{title}</p>}
+          <p className={`m-0 leading-none ${title ? "mt-[2.2cqw]" : ""}`}>
+            <span className="font-display text-[3.6cqw] italic opacity-85">para </span>
+            <span className="display text-[5.4cqw]">{name || "…"}</span>
+          </p>
+          {from && <p className="m-0 mt-[1.6cqw] text-[2cqw] font-semibold tracking-[0.16em] uppercase opacity-85">De parte de {from}</p>}
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center px-[6%] text-center">
-          <span className="font-display text-[5cqw] text-mute italic">para</span>
-          <span className="display text-[14.5cqw] leading-none text-ink">{name || "…"}</span>
-          {from && <span className="mt-[3.5cqw] text-[2.9cqw] font-semibold tracking-[0.16em] text-mute uppercase">De parte de {from}</span>}
-        </div>
-        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-[4%] bg-gradient-to-r from-black/25 to-transparent" />
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-[3.5%] bg-gradient-to-r from-black/30 to-transparent" />
       </div>
     </div>
+  );
+}
+
+/**
+ * Doble página de un libro abierto: la ilustración a página completa a la izquierda y el texto a la derecha. En móvil,
+ * una página debajo de la otra. La página izquierda mide al menos 4:3 y crece con la derecha si el texto es largo.
+ */
+export function BookSpread({ left, right, className = "", testId, as: Tag = "div" }: { left: React.ReactNode; right: React.ReactNode; className?: string; testId?: string; as?: "div" | "li" | "figure" }) {
+  return (
+    <Tag
+      className={`m-0 grid overflow-hidden rounded-[6px] bg-[#fbf6ec] shadow-[0_2px_0_#e6d8c1,0_1px_0_6px_#f3e9d8,0_40px_80px_-40px_rgba(35,32,54,0.5)] md:grid-cols-2 ${className}`}
+      data-testid={testId}
+    >
+      <div className="relative bg-night">
+        <div aria-hidden className="aspect-[4/3]" />
+        <div className="absolute inset-0">{left}</div>
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 hidden w-[9%] bg-gradient-to-l from-black/25 to-transparent md:block" />
+      </div>
+      <div className="relative flex flex-col">
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 hidden w-[9%] bg-gradient-to-r from-ink/12 to-transparent md:block" />
+        {right}
+      </div>
+    </Tag>
   );
 }
 

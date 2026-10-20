@@ -1,12 +1,15 @@
 /**
- * PDF de imprenta del libro de muestra (B8), en local y sin coste: sirve public/muestra y maqueta la tapa dura de 20×20
- * con la cubierta estimada. Uso: node --conditions=react-server --import tsx scripts/print-sample.mts <salida.pdf>
+ * PDF del libro de muestra, en local y sin coste: sirve public/muestra y maqueta la tapa dura apaisada (280×210) con la
+ * cubierta estimada y, al lado, los dos PDF que se descargan (A4 apaisado).
+ * Uso: node --conditions=react-server --import tsx scripts/print-sample.mts <salida.pdf>
+ *   → <salida>.pdf (imprenta), <salida>-full.pdf y <salida>-free.pdf
  */
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { renderPrintPdf } from "../lib/pdf/print";
-import { estimatedCover } from "../lib/print/gelato";
+import { DEFAULT_PRINT_SIZE, estimatedCover } from "../lib/print/gelato";
+import { renderBook2Pdf } from "../lib/pdf/book2";
 import { MUESTRA } from "../lib/muestra";
 import { mockPlan } from "../lib/plan/mock";
 import { normalizeFicha } from "../lib/plan/ficha";
@@ -27,12 +30,15 @@ const img = (n: number) => `http://127.0.0.1:${port}/muestra/luna-${String(n).pa
 const base = mockPlan(normalizeFicha(EVAL_CASES[0]));
 const plan = { ...base, title: MUESTRA.title, dedication: MUESTRA.dedication, pages: base.pages.map((p, i) => ({ ...p, text: MUESTRA.pages[i] })) };
 const pageUrls = Object.fromEntries(plan.pages.map((p) => [p.n, img(p.n)]));
-const size = { trimWidth: 200, trimHeight: 200, bleed: 4 };
-const { pdf, pages } = await renderPrintPdf(
-  { plan, heroName: "Vera", from: "los abuelos", coverUrl: img(0), sheetUrl: `http://127.0.0.1:${port}/muestra/hoja-vera.webp`, pageUrls, date: new Date() },
-  size,
-  estimatedCover(size),
-);
+const size = DEFAULT_PRINT_SIZE;
+const input = { plan, heroName: "Vera", from: "los abuelos", coverUrl: img(0), sheetUrl: `http://127.0.0.1:${port}/muestra/hoja-vera.webp`, pageUrls, date: new Date() };
+const { pdf, pages } = await renderPrintPdf(input, size, estimatedCover(size));
 fs.writeFileSync(out, pdf);
 console.log(`${out}: ${pages} páginas, ${(pdf.length / 1e6).toFixed(2)} MB`);
+for (const kind of ["full", "free"] as const) {
+  const file = out.replace(/\.pdf$/, "") + `-${kind}.pdf`;
+  const b = await renderBook2Pdf({ ...input, kind });
+  fs.writeFileSync(file, b);
+  console.log(`${file}: ${(b.length / 1e6).toFixed(2)} MB`);
+}
 server.close();
