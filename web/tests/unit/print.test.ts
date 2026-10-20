@@ -47,7 +47,7 @@ function fakeDeps(over: Partial<PrintDeps> = {}) {
   const deps: PrintDeps = {
     mode: "dry-run",
     orderType: "draft",
-    pageCount: 34,
+    pageCount: 30,
     resolveProductUid: async () => "photobooks-hardcover_pf_210x280-mm-8x11-inch_pt_170-gsm_hor",
     productSize: async () => ({ trimWidth: 280, trimHeight: 210, bleed: 4 }),
     coverGeometry: async () => estimatedCover(),
@@ -90,10 +90,10 @@ test("dirección: Península y Baleares, nombre con apellidos y los límites de 
 test("Gelato: el pedido lleva el producto, las páginas, el PDF y la dirección partida en nombre y apellidos", () => {
   const s = cleanShipping(ADDRESS);
   assert.ok(s.ok);
-  const body = gelatoOrderBody({ orderReferenceId: "ord-1", customerReferenceId: "abc12345", productUid: "photobooks-hardcover_x", pageCount: 34, fileUrl: "https://files/x.pdf", shipping: s.shipping, email, orderType: "draft" });
+  const body = gelatoOrderBody({ orderReferenceId: "ord-1", customerReferenceId: "abc12345", productUid: "photobooks-hardcover_x", pageCount: 30, fileUrl: "https://files/x.pdf", shipping: s.shipping, email, orderType: "draft" });
   assert.equal(body.orderType, "draft");
   assert.equal(body.currency, "EUR");
-  assert.deepEqual(body.items, [{ itemReferenceId: "ord-1-1", productUid: "photobooks-hardcover_x", pageCount: 34, files: [{ type: "default", url: "https://files/x.pdf" }], quantity: 1 }]);
+  assert.deepEqual(body.items, [{ itemReferenceId: "ord-1-1", productUid: "photobooks-hardcover_x", pageCount: 30, files: [{ type: "default", url: "https://files/x.pdf" }], quantity: 1 }]);
   assert.deepEqual(body.shippingAddress, { firstName: "Ana", lastName: "García López", addressLine1: "Calle Mayor 12", addressLine2: "3º B", city: "Madrid", postCode: "28013", country: "ES", email, phone: "600111222" });
 });
 
@@ -104,7 +104,7 @@ test("Gelato: modo, tipo de pedido y estados", () => {
   assert.equal(gelatoOrderType({}), "draft", "fuera de producción, borradores");
   assert.equal(gelatoOrderType({ GELATO_ORDER_TYPE: "order" }), "order");
   assert.equal(gelatoOrderType({ VERCEL_ENV: "production" }), "order");
-  assert.equal(gelatoPageCount({}), 34);
+  assert.equal(gelatoPageCount({}), 30, "las interiores: Gelato suma las tapas");
   assert.equal(gelatoPageCount({ GELATO_PAGE_COUNT: "32" }), 32);
   // productUid reales del catálogo de Gelato (20 oct): la medida corta primero y la orientación al final
   const tail = "_pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_130-gsm-65-lb-cover-coated-silk";
@@ -287,7 +287,7 @@ test("imprenta real (doble): pedido con el PDF, aviso, seguimiento y un solo ema
   assert.ok(done.ok && done.printOrderId === "gel-0001-abcd");
   assert.equal(orders.length, 1);
   assert.equal(orders[0].orderReferenceId, s.orderId);
-  assert.equal(orders[0].pageCount, 34);
+  assert.equal(orders[0].pageCount, 30);
   assert.equal(orders[0].orderType, "draft");
   assert.equal(orders[0].shipping.postcode, "28013");
 
