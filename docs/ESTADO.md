@@ -220,7 +220,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 ## 5. Próxima sesión: empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
-2. **La web ya está publicada** (20 oct). Cambios nuevos: PR a la rama de trabajo y, para producción, PR de la rama de trabajo a `main`. Falta que Álvaro escriba a `hola@erasesuvez.com` desde otra cuenta para comprobar el correo entrante con el webhook nuevo.
+2. **La web ya está publicada** (20 oct). Cambios nuevos: PR a la rama de trabajo y, para producción, PR de la rama de trabajo a `main`. Falta que Álvaro escriba a `hola@erasesuvez.com` desde otra cuenta para comprobar el correo entrante con el webhook nuevo. También: dar de alta `www.erasesuvez.com` en Search Console con el sitemap y mirar la vista previa del enlace en WhatsApp.
 3. **Compra de prueba en la preview** (Álvaro paga con la tarjeta 4242 4242 4242 4242: Claude no mete números de tarjeta): un libro de tapa dura, la dirección y «Mandar a imprimir». Claude comprueba el webhook de Stripe, el pedido en `cuentos_orders` (`print_status`, `print_order_id`, `print_error`), las 12 páginas, los dos emails y que Gelato acepte el borrador y su coste de envío. Coste ≈ 1 $ de imágenes.
 4. **Muestra impresa:** antes, método de pago en Gelato. `GELATO_ORDER_TYPE=order` en Preview, otro libro a la dirección de Álvaro y, después, quitar la variable. Sus plazos fijan la fecha límite de Navidad.
 5. Stripe real en Production y `STRIPE_WEBHOOK_SECRET` separado del de Preview (§4.29, `PAGO.md`); el DPA de Gelato desde la cuenta (§4.23). Álvaro.
