@@ -75,25 +75,48 @@ export async function resolveProductUid(env: Env = process.env, f: Fetch = fetch
   return found;
 }
 
-/** Ancho y alto en mm que lleva el productUid de Gelato («…_pf_280x210-mm-11x8-inch_…»), o null. */
+/**
+ * Medidas en mm que lleva el productUid de Gelato, tal cual («…_pf_210x280-mm-8x11-inch_…» o «…_pf_8x11-inch-210x280-mm_…»).
+ * Gelato escribe siempre la medida corta primero y marca la orientación al final: «_hor» apaisado, «_ver» vertical
+ * (catálogo real, consultado el 20 oct con /api/health?deep=1).
+ */
 export function uidSizeMm(uid: string): { w: number; h: number } | null {
-  const m = /_pf_(\d+)x(\d+)-mm/.exec(uid);
+  const pf = uid.split("_pf_")[1];
+  const m = pf ? /(\d+)x(\d+)-mm/.exec(pf) : null;
   return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
 }
 
-/** Tapa dura apaisada (más ancha que alta), sin «layflat». */
-export function isLandscapeHardcover(uid: string): boolean {
+/** Orientación del producto: «_hor» o «_ver» al final (o antes de «_custom»); sin marca, por las medidas. */
+export function uidLandscape(uid: string): boolean {
+  if (/_hor(_|$)/.test(uid)) return true;
+  if (/_ver(_|$)/.test(uid)) return false;
   const s = uidSizeMm(uid);
-  return /hardcover/.test(uid) && !/layflat/.test(uid) && !!s && s.w > s.h;
+  return !!s && s.w > s.h;
 }
 
-/** De una lista de productUid, la tapa dura apaisada más cercana a 280×210 mm (D5 bis, 18 oct). */
+/** Ancho y alto de la página apaisada (el lado largo es el ancho), o null si no es apaisado. */
+export function landscapeSizeMm(uid: string): { w: number; h: number } | null {
+  const s = uidSizeMm(uid);
+  if (!s || s.w === s.h || !uidLandscape(uid)) return null;
+  return { w: Math.max(s.w, s.h), h: Math.min(s.w, s.h) };
+}
+
+/** Tapa dura apaisada, sin «layflat» ni formatos «custom». */
+export function isLandscapeHardcover(uid: string): boolean {
+  return /^photobooks-hardcover_/.test(uid) && !/layflat|_custom/.test(uid) && !!landscapeSizeMm(uid);
+}
+
+/**
+ * De una lista de productUid, la tapa dura apaisada más cercana a 280×210 mm (D5 bis, 18 oct). A igual medida, la que
+ * Gelato nombra en milímetros primero (la variante europea; la otra empieza por pulgadas).
+ */
 export function pickLandscapeHardcover(uids: string[]): string | null {
   const dist = (u: string) => {
-    const s = uidSizeMm(u)!;
+    const s = landscapeSizeMm(u)!;
     return Math.abs(s.w - DEFAULT_PRINT_SIZE.trimWidth) + Math.abs(s.h - DEFAULT_PRINT_SIZE.trimHeight);
   };
-  return uids.filter(isLandscapeHardcover).sort((a, b) => dist(a) - dist(b))[0] ?? null;
+  const mmFirst = (u: string) => (/_pf_\d+x\d+-mm/.test(u) ? 0 : 1);
+  return uids.filter(isLandscapeHardcover).sort((a, b) => dist(a) - dist(b) || mmFirst(a) - mmFirst(b))[0] ?? null;
 }
 
 /** productUid de los fotolibros del catálogo (para elegir el libro apaisado; también lo usa /api/dev). */
@@ -196,7 +219,9 @@ export async function productSize(productUid: string, env: Env = process.env, f:
   const w = d.Width ?? d.width;
   const h = d.Height ?? d.height;
   if (!w?.value || !h?.value || (w.measureUnit && w.measureUnit !== "mm")) return null;
-  return { trimWidth: w.value, trimHeight: h.value, bleed: BLEED_MM };
+  // Gelato puede dar las medidas del apaisado con el lado corto primero, como en el productUid: el ancho es el largo
+  const [tw, th] = uidLandscape(productUid) ? [Math.max(w.value, h.value), Math.min(w.value, h.value)] : [w.value, h.value];
+  return { trimWidth: tw, trimHeight: th, bleed: BLEED_MM };
 }
 
 /* ------------------------------ pedidos ------------------------------ */
