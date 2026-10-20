@@ -75,3 +75,15 @@ export function sendShipped(to: string, bookTitle: string, trackingUrl: string):
   const body = "Tu libro ha salido de la imprenta y va de camino. Con el enlace de abajo ves dónde está.";
   return send(to, `«${bookTitle}» va de camino`, layout(bookTitle, body, trackingUrl, "Seguir el envío"), `${bookTitle}\n\nTu libro va de camino. Seguimiento: ${trackingUrl}`);
 }
+
+/**
+ * Aviso interno (no va al cliente): «Sigue sin estar bien» en una página. Va a MAIL_FORWARD_TO, el buzón de Álvaro;
+ * no a hola@, porque el reenvío del correo entrante descarta lo que sale de nuestra propia dirección.
+ */
+export async function sendSupportNotice(subject: string, text: string, env: Record<string, string | undefined> = process.env): Promise<MailResult> {
+  const to = (env.MAIL_FORWARD_TO ?? "").split(",").map((s) => s.trim()).filter((s) => s.includes("@"));
+  if (!to.length) return { sent: false, reason: "sin_destino" };
+  const html = `<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;white-space:pre-wrap">${esc(text)}</pre>`;
+  const results = await Promise.all(to.map((t) => send(t, subject, html, text)));
+  return results.every((r) => r.sent) ? { sent: true } : (results.find((r) => !r.sent) ?? { sent: false });
+}

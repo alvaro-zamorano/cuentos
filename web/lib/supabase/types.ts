@@ -81,6 +81,45 @@ export type Database = {
         Relationships: []
       }
       // job_key, variant, paid y storage_path añadidas a mano (brief 7, docs/sql/cuentos_generation_jobs_b3.sql).
+      cuentos_feedback: {
+        Row: {
+          book_id: string | null
+          created_at: string
+          id: string
+          job_id: string | null
+          kind: string
+          note: string | null
+          page_n: number
+          reason: string
+          style_id: string | null
+          variant: number | null
+        }
+        Insert: {
+          book_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          kind: string
+          note?: string | null
+          page_n: number
+          reason: string
+          style_id?: string | null
+          variant?: number | null
+        }
+        Update: {
+          book_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          kind?: string
+          note?: string | null
+          page_n?: number
+          reason?: string
+          style_id?: string | null
+          variant?: number | null
+        }
+        Relationships: []
+      }
       cuentos_generation_jobs: {
         Row: {
           attempts: number

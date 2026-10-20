@@ -69,6 +69,10 @@ export default function Privacidad() {
         <li>Imprimir el libro y enviártelo a la dirección que indiques (ejecución del contrato).</li>
         <li>Contestar lo que nos escribes (ejecución del contrato si es sobre un pedido; si no, tu consentimiento al escribirnos).</li>
         <li>
+          Cuando pides otra versión de una ilustración, guardamos el motivo y lo que escribas para pintarla mejor y para saber qué falla
+          (ejecución del servicio y, después, interés legítimo en mejorarlo).
+        </li>
+        <li>
           Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla separada y opcional (consentimiento, art. 21 LSSI). Puedes retirarlo
           en cualquier momento desde el propio email o escribiéndonos.
         </li>
@@ -99,6 +103,10 @@ export default function Privacidad() {
           compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
         <li>Si nos escribes, guardamos tu mensaje el tiempo necesario para atenderte y, si es sobre un pedido, con el pedido.</li>
+        <li>
+          El motivo de «otra versión» y lo que escribas se guardan con el libro. A los 30 días se borra lo que escribiste y el motivo se
+          queda sin relación con el libro ni contigo.
+        </li>
       </ul>
 
       <h2>7. Proveedores</h2>
