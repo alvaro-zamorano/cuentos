@@ -90,6 +90,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (dos crons: borrado e imprenta) |
 | Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`; sin ellos, el nombre comercial); proveedores en `docs/PROVEEDORES.md` |
 | Buscadores | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts` (solo producción con `SITE_URL`) |
+| Páginas de ocasión (SEO y GEO) | `lib/ocasiones.ts` (contenido), `app/cuento-personalizado/` (índice y `[ocasion]`), `components/ocasiones/parts.tsx`, `components/JsonLd.tsx`; 404 de las que no existen en `proxy.ts` |
 | App abierta o cerrada («Muy pronto») | `lib/appOpen.ts` (`APP_OPEN`; sin valor, cerrada en producción), `proxy.ts` (`/crear` a la landing, API a 404 salvo salud, crons, correo y webhooks), `app/page.tsx` |
 | Salud y pruebas | `app/api/health`; `app/api/dev` (fuera de producción; en Vercel solo con `DEV_TOKEN`, `lib/devAccess.ts`; fuerza Gemini y cuesta dinero) |
 | Tests | `tests/unit/*.test.ts` (116), `tests/crear.spec.ts` + `tests/journey.spec.ts` (11 Playwright), `.github/workflows/ci.yml` |

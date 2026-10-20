@@ -10,6 +10,7 @@ import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
 import { appOpen } from "@/lib/appOpen";
 import { titular } from "@/lib/legal";
+import { ocasionForStarter, ocasionPath } from "@/lib/ocasiones";
 
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
@@ -256,6 +257,12 @@ export default function Landing() {
             {STARTS.map((s) =>
               open ? (
                 <Link key={s.id} href={`/crear?idea=${s.id}`} className="chip transition-transform hover:-translate-y-0.5">
+                  <s.icon size={18} className="text-accent" />
+                  {s.label}
+                </Link>
+              ) : ocasionForStarter(s.id) ? (
+                // con la app cerrada, la idea lleva a su página de ocasión
+                <Link key={s.id} href={ocasionPath(ocasionForStarter(s.id)!.slug)} className="chip transition-transform hover:-translate-y-0.5">
                   <s.icon size={18} className="text-accent" />
                   {s.label}
                 </Link>
