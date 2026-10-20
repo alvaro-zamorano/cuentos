@@ -18,6 +18,8 @@ export interface CrearState {
   /** public_id del libro en el servidor (tras el email). */
   bookId?: string;
   email?: string;
+  /** Ya pasó por las tres preguntas rápidas (contestó o las saltó): no se repiten en este libro. */
+  quickAsked?: boolean;
 }
 
 const KEY = "cuentos:crear:v2";
@@ -35,7 +37,7 @@ function read(): CrearState {
     const s = JSON.parse(raw) as Partial<CrearState>;
     if (s?.v !== 2) return fresh();
     const step = [1, 2, 3, 4, 5].includes(Number(s.step)) ? (Number(s.step) as Step) : 1;
-    return { v: 2, step, ficha: normalizeFicha(s.ficha), record: s.record?.plan?.pages?.length === 12 ? s.record : undefined, bookId: s.bookId, email: s.email };
+    return { v: 2, step, ficha: normalizeFicha(s.ficha), record: s.record?.plan?.pages?.length === 12 ? s.record : undefined, bookId: s.bookId, email: s.email, quickAsked: s.quickAsked === true || undefined };
   } catch {
     return fresh();
   }

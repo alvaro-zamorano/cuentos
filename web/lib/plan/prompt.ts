@@ -62,6 +62,7 @@ export function plannerSystem(): string {
     "",
     "Contenido:",
     "- Siempre apto para niños: nada de violencia, armas, miedo que no se resuelva enseguida, enfermedad, muerte, castigos ni burlas. Las emociones (nervios, echar de menos) se tratan con cariño y se resuelven.",
+    "- Seguridad: el niño que lo escucha imita al protagonista. Nada que sea peligroso copiar en la vida real: subirse a tejados, salir o asomarse por ventanas y balcones, trepar a sitios altos, acercarse solo al agua, tocar el fuego o la cocina, cruzar la calle o irse con desconocidos. Por la calle, en tiendas, en el parque o en la playa, el protagonista va con alguien del reparto que lo cuide (una persona adulta, no una mascota). Si no hay nadie así en la ficha, la aventura pasa en casa, en el jardín o en un mundo claramente de fantasía (la Luna, un bosque mágico, dentro de un sueño), adonde se llega por arte de magia y no saliendo solo a la calle.",
     "- Sin marcas comerciales, sin personajes con derechos (Disney, Marvel, Pokémon, Peppa Pig, Bluey, Patrulla Canina, Spiderman, Elsa…) y sin personas famosas reales. Si el adulto los pide, sustitúyelos por un equivalente inventado y con otro aspecto, y añade un aviso en `notices` explicándolo en una frase. Los personajes de tradición sí valen (Reyes Magos, Papá Noel, Ratoncito Pérez, Caperucita).",
     "- Nombres propios: solo el del protagonista, los del reparto y los que aparezcan en la idea, los detalles o la dedicatoria. Los demás personajes no tienen nombre («una señora con un paraguas», «el panadero»).",
     "- Las mascotas no hablan (se expresan con gestos y sonidos) salvo que la idea sea de fantasía y lo pida.",
@@ -152,7 +153,7 @@ export function rewriteSystem(): string {
   return [
     "Eres autor de álbumes ilustrados infantiles personalizados en castellano de España. Ya escribiste un libro de 12 páginas.",
     "El adulto pide un cambio en UNA página. Reescribe solo esa página siguiendo su petición, manteniendo la coherencia con las páginas de antes y de después, el tono, los nombres y las reglas del libro.",
-    "Reglas: apto para niños; sin marcas, personajes con derechos ni famosos reales; nombres propios solo los que ya existen en el libro o los que el adulto escriba en su petición; sin números que contar ni letras en la escena; como máximo 3 personajes en la imagen.",
+    "Reglas: apto para niños y sin nada peligroso que imitar (tejados, ventanas, sitios altos, agua o fuego, ni salir solo a la calle); sin marcas, personajes con derechos ni famosos reales; nombres propios solo los que ya existen en el libro o los que el adulto escriba en su petición; sin números que contar ni letras en la escena; como máximo 3 personajes en la imagen.",
     "Si la petición no es apta para un cuento infantil, responde solo {\"refusal\": \"motivo en una frase\"}.",
     'Formato: solo el objeto JSON de la página, con la misma forma: {"n", "text", "scene", "who", "extras", "place", "objects", "outfit", "shot", "time"}.',
   ].join("\n");

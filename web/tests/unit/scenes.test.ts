@@ -69,6 +69,8 @@ test("escenas: nadie medio tapado por un mueble, personajes sólidos y gafas sol
   assert.match(pagesArtUser(olivia, plan, (await castArt(olivia, plan, MOCK_LLM)).art), /never partly hidden behind, under or inside furniture/);
   assert.match(plannerSystem(), /nada de asomarse tras un mueble/);
   assert.match(plannerSystem(), /no inventes familiares/);
+  assert.match(plannerSystem(), /Seguridad: el niño que lo escucha imita al protagonista/);
+  assert.match(plannerSystem(), /no saliendo solo a la calle/);
   assert.doesNotMatch(plannerSystem(), /también mamá o papá/);
 
   const { art } = await castArt(olivia, plan, MOCK_LLM);
