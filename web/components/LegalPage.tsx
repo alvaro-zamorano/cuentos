@@ -1,14 +1,19 @@
 import { SiteHeader } from "./SiteHeader";
 
-/** Plantilla común de las páginas legales. Todas son borradores hasta la revisión por abogado (PRD §9, §15.5). */
+/**
+ * Plantilla común de las páginas legales. Sin revisión de abogado todavía (PRD §9, §15.5): el aviso de borrador sale
+ * en la preview y no en producción, donde se publican tal cual (decisión de Álvaro, 20 oct).
+ */
 export function LegalPage({ title, updated, children }: { title: string; updated: string; children: React.ReactNode }) {
   return (
     <main className="flex-1">
       <SiteHeader />
       <article className="legal mx-auto max-w-3xl px-4 pb-16 pt-6 sm:px-6">
-        <p className="notice mb-8" role="note" data-testid="legal-draft">
-          Borrador pendiente de revisión legal
-        </p>
+        {process.env.VERCEL_ENV !== "production" && (
+          <p className="notice mb-8" role="note" data-testid="legal-draft">
+            Borrador pendiente de revisión legal
+          </p>
+        )}
         <h1 className="display text-[34px] md:text-[44px]">{title}</h1>
         <p className="mt-2 text-sm text-ink-soft">Última actualización: {updated}</p>
         <div className="mt-8 grid max-w-[68ch] gap-4 leading-relaxed">{children}</div>
@@ -20,11 +25,6 @@ export function LegalPage({ title, updated, children }: { title: string; updated
 /** Hueco que hay que rellenar antes de publicar (titular, NIF, dirección…). */
 export function Pending({ children }: { children: React.ReactNode }) {
   return <span className="rounded-[3px] bg-paper-deep px-1 text-ink-soft">[{children}]</span>;
-}
-
-/** Un dato del titular (lib/legal.ts): el valor si está en las variables de entorno; si no, el hueco marcado. */
-export function Dato({ value, children }: { value?: string; children: React.ReactNode }) {
-  return value ? <>{value}</> : <Pending>{children}</Pending>;
 }
 
 /** El email de contacto como enlace, o el hueco. */

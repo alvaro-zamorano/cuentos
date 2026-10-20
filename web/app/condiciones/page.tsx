@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ContactEmail, Dato, LegalPage } from "@/components/LegalPage";
-import { titular } from "@/lib/legal";
+import { ContactEmail, LegalPage } from "@/components/LegalPage";
+import { holderLine, titular } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Condiciones" };
 
 export default function Condiciones() {
   const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="18 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="20 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
-        <Dato value={t.name}>nombre o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, <Dato value={t.address}>dirección</Dato>, <ContactEmail value={t.email} />. Datos completos en el{" "}
+        {holderLine(t)}, <ContactEmail value={t.email} />. Datos completos en el{" "}
         <Link href="/aviso-legal" className="link">aviso legal</Link>.
       </p>
 
@@ -24,7 +24,10 @@ export default function Condiciones() {
         <li>
           <strong>Libro ilustrado</strong>: las doce páginas ilustradas en un PDF A4 apaisado. De pago; el precio final, con IVA, se indica antes de pagar.
         </li>
-        <li><strong>Tapa dura</strong>: más adelante.</li>
+        <li>
+          <strong>Tapa dura</strong>: el libro apaisado de tapa dura con las doce ilustraciones, enviado a casa (Península y Baleares), y el PDF
+          ilustrado. De pago; el precio final, con IVA y envío, se indica antes de pagar. Plazos y entrega en el punto 8.
+        </li>
       </ul>
 
       <h2>3. Cómo se hace el libro</h2>

@@ -8,6 +8,8 @@ import { paymentMode } from "@/lib/stripe";
 import { printMode } from "@/lib/print/gelato";
 import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
+import { appOpen } from "@/lib/appOpen";
+import { titular } from "@/lib/legal";
 
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
@@ -98,6 +100,9 @@ export default function Landing() {
   const pm = paymentMode();
   const pr = printMode();
   const hardcoverStatus = pm === "none" || pr === "none" ? "Muy pronto" : pm === "dry-run" || pr === "dry-run" ? "Disponible en prueba" : null;
+  // con la app cerrada (lib/appOpen.ts, producción hasta que se abra): «Muy pronto» en vez de los botones a /crear
+  const open = appOpen();
+  const contact = titular().email ?? "hola@erasesuvez.com";
   return (
     <main className="flex-1">
       {/* Portada en noche */}
@@ -118,9 +123,15 @@ export default function Landing() {
                 Preguntas
               </a>
             </div>
-            <Link href="/crear" className="btn-primary btn-sm">
-              Crear su cuento
-            </Link>
+            {open ? (
+              <Link href="/crear" className="btn-primary btn-sm">
+                Crear su cuento
+              </Link>
+            ) : (
+              <a href="#pronto" className="btn-primary btn-sm">
+                Muy pronto
+              </a>
+            )}
           </nav>
         </SiteHeader>
         <Sparkle className="twinkle absolute top-[14%] left-[5%]" size={22} />
@@ -132,19 +143,27 @@ export default function Landing() {
           <div className="grid gap-6">
             <span className="inline-flex items-center gap-2 justify-self-start rounded-full border border-star/40 bg-star/15 px-3.5 py-1.5 text-sm font-semibold text-star">
               <Sparkle size={12} />
-              Su cuento, esta misma noche
+              {open ? "Su cuento, esta misma noche" : "Muy pronto"}
             </span>
             <h1 className="display m-0 text-[44px] leading-[1.04] text-moon sm:text-[58px] lg:text-[74px]">
               Una frase tuya. <span className="text-star">Un libro suyo.</span>
             </h1>
             <p className="m-0 max-w-[36ch] text-lg leading-relaxed text-moon-soft sm:text-xl">Cuéntanos la idea en una frase. La convertimos en un cuento ilustrado de doce páginas, con tu hijo, tu nieta o tu sobrino de protagonista.</p>
             <div className="mt-1 flex flex-wrap items-center gap-3">
-              <Link href="/crear" className="btn-primary btn-lg">
-                Crear su cuento <Icon.arrow size={20} />
-              </Link>
-              <a href="#muestra" className="btn-moon btn-lg">
-                Ver un libro de ejemplo
-              </a>
+              {open ? (
+                <>
+                  <Link href="/crear" className="btn-primary btn-lg">
+                    Crear su cuento <Icon.arrow size={20} />
+                  </Link>
+                  <a href="#muestra" className="btn-moon btn-lg">
+                    Ver un libro de ejemplo
+                  </a>
+                </>
+              ) : (
+                <a href="#muestra" className="btn-primary btn-lg">
+                  Ver un libro de ejemplo
+                </a>
+              )}
             </div>
             <ul className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[15px] text-[#b9c1da]">
               <li className="flex items-center gap-2">{CHECK}Sin subir fotos</li>
@@ -192,9 +211,11 @@ export default function Landing() {
           ))}
         </ol>
         <div className="mt-12 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-center">
-          <Link href="/crear" className="btn-primary btn-lg">
-            Empezar su cuento
-          </Link>
+          {open && (
+            <Link href="/crear" className="btn-primary btn-lg">
+              Empezar su cuento
+            </Link>
+          )}
           <span className="text-[15px] text-ink-soft">Lees el cuento entero y ves su portada gratis. Pagas solo por las doce ilustraciones.</span>
         </div>
       </section>
@@ -230,18 +251,27 @@ export default function Landing() {
           ))}
         </ul>
         <div className="mt-16 grid justify-items-center gap-4">
-          <p className="display m-0 text-[22px] sm:text-[24px]">¿Por dónde empezamos?</p>
+          <p className="display m-0 text-[22px] sm:text-[24px]">{open ? "¿Por dónde empezamos?" : "Algunas ideas para empezar"}</p>
           <div className="flex max-w-[860px] flex-wrap justify-center gap-2.5">
-            {STARTS.map((s) => (
-              <Link key={s.id} href={`/crear?idea=${s.id}`} className="chip transition-transform hover:-translate-y-0.5">
-                <s.icon size={18} className="text-accent" />
-                {s.label}
+            {STARTS.map((s) =>
+              open ? (
+                <Link key={s.id} href={`/crear?idea=${s.id}`} className="chip transition-transform hover:-translate-y-0.5">
+                  <s.icon size={18} className="text-accent" />
+                  {s.label}
+                </Link>
+              ) : (
+                <span key={s.id} className="chip cursor-default">
+                  <s.icon size={18} className="text-accent" />
+                  {s.label}
+                </span>
+              ),
+            )}
+            {open && (
+              <Link href="/crear" className="chip chip-on transition-transform hover:-translate-y-0.5">
+                <Sparkle size={15} />
+                Sorpréndeme
               </Link>
-            ))}
-            <Link href="/crear" className="chip chip-on transition-transform hover:-translate-y-0.5">
-              <Sparkle size={15} />
-              Sorpréndeme
-            </Link>
+            )}
           </div>
         </div>
       </section>
@@ -283,9 +313,9 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <Link href="/crear" className="btn-ghost mt-auto w-full">
+              <Cta open={open} className="btn-ghost mt-auto w-full">
                 Empezar gratis
-              </Link>
+              </Cta>
             </div>
 
             <div className="relative flex flex-col gap-5 rounded-[28px] bg-night px-7 py-8 text-moon shadow-[0_40px_70px_-40px_rgba(29,39,71,0.9)]">
@@ -305,10 +335,10 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              {hardcoverStatus && <p className="m-0 text-sm text-moon-soft">{hardcoverStatus}</p>}
-              <Link href="/crear" className="btn-primary mt-auto w-full">
+              {open && hardcoverStatus && <p className="m-0 text-sm text-moon-soft">{hardcoverStatus}</p>}
+              <Cta open={open} className="btn-primary mt-auto w-full">
                 Crear su cuento
-              </Link>
+              </Cta>
             </div>
 
             <div className="flex flex-col gap-5 rounded-[28px] bg-card px-7 py-8 shadow-[0_2px_0_#e6d8c1]">
@@ -324,10 +354,10 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              {illustratedStatus && <p className="m-0 text-sm text-ink-soft">{illustratedStatus}</p>}
-              <Link href="/crear" className="btn-ghost mt-auto w-full">
+              {open && illustratedStatus && <p className="m-0 text-sm text-ink-soft">{illustratedStatus}</p>}
+              <Cta open={open} className="btn-ghost mt-auto w-full">
                 Crear su cuento
-              </Link>
+              </Cta>
             </div>
           </div>
           <p className="m-0 mt-5 text-center text-sm text-ink-soft">Precios con IVA incluido.</p>
@@ -364,22 +394,49 @@ export default function Landing() {
       </section>
 
       {/* Cierre */}
-      <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
+      <section id="pronto" className="mx-auto max-w-6xl scroll-mt-6 px-4 pb-20 sm:px-6">
         <div className="relative grid justify-items-center gap-4 overflow-hidden rounded-[32px] bg-night px-6 py-14 text-center text-moon sm:rounded-[36px] sm:py-18">
           <Moon className="absolute top-6 right-6 sm:top-9 sm:right-auto sm:left-[8%]" size={52} />
           <Sparkle className="twinkle absolute top-[30%] right-[12%]" size={18} />
           <Sparkle className="twinkle-slow absolute bottom-[22%] left-[16%]" size={12} color="var(--moon)" />
-          <h2 className="display m-0 max-w-[18ch] text-[34px] sm:text-[58px]">
-            ¿Qué historia le vas a contar <span className="text-star">esta noche?</span>
-          </h2>
-          <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Una frase, su nombre y unos rasgos. Lo demás lo hacemos nosotros.</p>
-          <Link href="/crear" className="btn-primary btn-lg mt-2">
-            Crear su cuento
-          </Link>
-          <span className="hand text-[19px] text-star">el cuento escrito, gratis</span>
+          {open ? (
+            <>
+              <h2 className="display m-0 max-w-[18ch] text-[34px] sm:text-[58px]">
+                ¿Qué historia le vas a contar <span className="text-star">esta noche?</span>
+              </h2>
+              <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Una frase, su nombre y unos rasgos. Lo demás lo hacemos nosotros.</p>
+              <Link href="/crear" className="btn-primary btn-lg mt-2">
+                Crear su cuento
+              </Link>
+              <span className="hand text-[19px] text-star">el cuento escrito, gratis</span>
+            </>
+          ) : (
+            <>
+              <h2 className="display m-0 max-w-[18ch] text-[34px] sm:text-[58px]">
+                Abrimos <span className="text-star">muy pronto.</span>
+              </h2>
+              <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Estamos preparando los primeros libros. Si tienes alguna pregunta, escríbenos.</p>
+              <a href={`mailto:${contact}`} className="btn-primary btn-lg mt-2" data-testid="pronto-contact">
+                {contact}
+              </a>
+            </>
+          )}
         </div>
       </section>
     </main>
+  );
+}
+
+/** Botón de una edición: a /crear con la app abierta; con ella cerrada, «Muy pronto» sin enlace. */
+function Cta({ open, className, children }: { open: boolean; className: string; children: React.ReactNode }) {
+  return open ? (
+    <Link href="/crear" className={className}>
+      {children}
+    </Link>
+  ) : (
+    <span className={`${className} cursor-default opacity-60`} aria-disabled="true">
+      Muy pronto
+    </span>
   );
 }
 
