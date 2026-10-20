@@ -27,8 +27,8 @@ interface GelatoCatalog {
   chosen: string | null;
   size: { trimWidth: number; trimHeight: number } | null;
   cover: { source: string; width: number; height: number; spine: number } | null;
-  /** precio a España y medidas de la cubierta según el pageCount: para ver qué cuenta Gelato (¿30 interiores o 34 con tapas?) */
-  byPageCount: Record<string, { price: unknown; cover: unknown }>;
+  /** precio del libro a España, sin envío, para el pageCount configurado */
+  priceES: { price: number; currency: string; shipping: string } | { status: number } | null;
 }
 
 async function gelatoGet(path: string): Promise<{ status: number; json: unknown }> {
@@ -48,18 +48,9 @@ async function gelatoCatalog(pageCount: number): Promise<GelatoCatalog | "error"
     const chosen = await resolveProductUid();
     const size = chosen ? await productSize(chosen) : null;
     const cover = chosen ? await coverGeometry(chosen, pageCount) : null;
-    const byPageCount: GelatoCatalog["byPageCount"] = {};
-    if (chosen) {
-      for (const n of [28, 30, 32, 34]) {
-        const uid = encodeURIComponent(chosen);
-        const [price, cov] = await Promise.all([gelatoGet(`/products/${uid}/prices?country=ES&currency=EUR&pageCount=${n}`), gelatoGet(`/products/${uid}/cover-dimensions?pageCount=${n}`)]);
-        const c = cov.json as Record<string, unknown> | null;
-        byPageCount[n] = {
-          price: price.status === 200 ? price.json : { status: price.status, body: JSON.stringify(price.json).slice(0, 200) },
-          cover: cov.status === 200 && c ? { pagesCount: c.pagesCount, spine: (c.spineSize as { width?: number } | undefined)?.width } : { status: cov.status, body: JSON.stringify(cov.json).slice(0, 200) },
-        };
-      }
-    }
+    // precio a España del libro (sin envío) para el pageCount configurado; cubierta: Gelato suma las 4 caras de las tapas
+    const price = chosen ? await gelatoGet(`/products/${encodeURIComponent(chosen)}/prices?country=ES&currency=EUR&pageCount=${pageCount}`) : null;
+    const row = Array.isArray(price?.json) ? (price.json as { price?: number; currency?: string }[])[0] : undefined;
     return {
       photobooks: all.length,
       uids: all.slice(0, 60),
@@ -67,7 +58,7 @@ async function gelatoCatalog(pageCount: number): Promise<GelatoCatalog | "error"
       chosen,
       size: size ? { trimWidth: size.trimWidth, trimHeight: size.trimHeight } : null,
       cover: cover ? { source: cover.source, width: cover.width, height: cover.height, spine: cover.spine.width } : null,
-      byPageCount,
+      priceES: row?.price != null ? { price: Math.round(row.price * 100) / 100, currency: row.currency ?? "EUR", shipping: "aparte" } : price ? { status: price.status } : null,
     };
   } catch {
     return "error";

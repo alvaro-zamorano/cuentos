@@ -176,6 +176,8 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **CI:** desde el 19 oct `ubuntu-latest` es Ubuntu 26 y `playwright install --with-deps` fallaba (PR #19, Ubuntu 24.04 fijo).
 - **El PR #12 (apaisado) se unió a una rama ya cerrada** y no llegó a la rama de trabajo; recuperado en el PR #20.
 - **Dos sesiones hicieron la salida a la vez** (#18 y #21). Se queda #21 («Muy pronto») con las páginas de ocasión de #18 (PR #22).
+- **Gelato cuenta solo las páginas interiores** (20 oct, con su API): para cualquier `pageCount`, la API de cubiertas devuelve 4 páginas más (30 da 34, 34 da 38), y su ayuda dice que la cifra incluye solo las interiores, entre 30 y 200. El código mandaba 34 (hipótesis del 18 oct): Gelato habría esperado 34 interiores con un PDF de 30. Ahora manda 30. Menos de 30 no se puede: el libro ya va en el mínimo.
+- **Precio real del libro en Gelato a España:** 11,86 € la tapa dura apaisada de 280×210 con 30 páginas, sin envío (API de precios, 20 oct). IMPRESION suponía unos 16,5 € para el 20×20 sin plan: el margen es mejor de lo calculado. Falta el envío, que no da esta API.
 - **El límite de `/api/plan` (12 por hora e IP) está cerca del total de la suite de Playwright:** un servidor local que se queda vivo entre dos pasadas da 429. En la CI no pasa (servidor nuevo en cada pasada).
 
 ## 4. Preguntas abiertas (priorizadas)

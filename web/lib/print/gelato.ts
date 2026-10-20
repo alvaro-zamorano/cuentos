@@ -32,13 +32,14 @@ export function gelatoOrderType(env: Env = process.env): "order" | "draft" {
 export const PRINT_INNER_PAGES = 30;
 
 /**
- * pageCount que pide Gelato: «todas las páginas, también la cubierta delantera y la trasera». Cada tapa cuenta como dos
- * (exterior e interior), como en el ejemplo de su API de cubiertas (30 interiores → 34). GELATO_PAGE_COUNT lo cambia si
- * la muestra dice otra cosa.
+ * pageCount que pide Gelato: las páginas interiores (entre 30 y 200 en sus fotolibros); las 4 caras de las tapas las
+ * suma Gelato. Comprobado el 20 oct con su API: la de cubiertas devuelve pagesCount = pageCount + 4 para cualquier valor
+ * (30 → 34, 34 → 38), y su ayuda dice que la cifra «solo incluye las páginas interiores». Su documentación de la API
+ * dice lo contrario, pero su propio ejemplo (piden 34, responden 38) va en este sentido. GELATO_PAGE_COUNT lo cambia.
  */
 export function gelatoPageCount(env: Env = process.env): number {
   const v = Number(env.GELATO_PAGE_COUNT);
-  return Number.isInteger(v) && v > 0 ? v : PRINT_INNER_PAGES + 4;
+  return Number.isInteger(v) && v > 0 ? v : PRINT_INNER_PAGES;
 }
 
 const ORDER_API = "https://order.gelatoapis.com/v4";
