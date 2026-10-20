@@ -49,6 +49,8 @@ export interface PagesArt {
 const STYLE_REF_ONLY = "Use the style reference image only for its rendering style, palette and texture; never copy its characters, clothes or scene.";
 /** 18 oct (página 3 de Olivia): el perro «asomado tras el sofá» salió atravesándolo en las dos versiones. */
 const SOLID = "Characters are solid and anatomically complete: they never pass through or merge with furniture or objects, and their bodies continue naturally behind anything in front of them.";
+/** En la última versión posible de una página la escena se simplifica (lib/book/feedback.ts). */
+export const SIMPLE_EN = "Keep the composition simple and clear: characters side by side in the foreground, with space around them, nothing overlapping them.";
 const NO_TEXT = "No text, letters, numbers, signs or labels anywhere in the image. No logos or recognisable branded products (toy building blocks are plain wooden cubes without studs).";
 const PROPORTIONS = "children's picture-book proportions: large round head, short rounded body, soft features, rosy cheeks";
 
@@ -276,6 +278,39 @@ export async function pagesArt(f: Ficha, plan: Plan, cast: CastArt, llm: Llm = s
   return { art: { key, pages }, costCents: llmCostCents(res.model, res.usage) };
 }
 
+/* ------------------------------ LLM: otra versión con motivo ------------------------------ */
+
+export function redoSceneUser(art: CastArt, page: Pick<PlanPage, "who">, artPage: ArtPage, reasonEs: string, note: string | null): string {
+  const names = art.cast.filter((c) => page.who.includes(c.id)).map((c) => c.name);
+  return [
+    "A parent asked for another version of one illustration of their child's picture book.",
+    `Current scene (English): ${artPage.sceneEn}`,
+    names.length ? `Characters that must appear: ${names.join(", ")}.` : "No recurring characters in this image.",
+    artPage.extrasEn.length ? `Also in the image: ${artPage.extrasEn.join("; ")}.` : "",
+    `What the parent did not like (Spanish): «${reasonEs}»`,
+    note ? `The parent's own words (Spanish): «${note}»` : "",
+    "",
+    "Rewrite the scene so the problem cannot happen again. Keep the same moment of the story and the same characters. Make it easier to draw: every character fully visible, simple natural poses, nothing overlapping a character. If the parent asks for something concrete (a pose, an expression, an object), include it unless it adds new characters, text or letters.",
+    'Return JSON: {"sceneEn":"one to three sentences","fixEn":"one sentence telling the illustrator what to avoid this time"}',
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
+}
+
+/** Escena reescrita para «Otra versión» con motivo. Con el modelo de prueba devuelve la misma escena y la nota tal cual. */
+export async function redoScene(
+  art: CastArt,
+  page: Pick<PlanPage, "who">,
+  artPage: ArtPage,
+  reasonEs: string,
+  note: string | null,
+  llm: Llm = selectLlm("art"),
+): Promise<{ sceneEn: string; fixEn: string; costCents: number | null }> {
+  if (llm.name === "mock") return { sceneEn: artPage.sceneEn, fixEn: note ? `The parent asked: ${note}` : "", costCents: 0 };
+  const { res, raw } = await completeJson<{ sceneEn?: string; fixEn?: string }>(llm, redoSceneUser(art, page, artPage, reasonEs, note), 600);
+  return { sceneEn: s(raw.sceneEn) || artPage.sceneEn, fixEn: s(raw.fixEn), costCents: llmCostCents(res.model, res.usage) };
+}
+
 /* ------------------------------ prompts de imagen ------------------------------ */
 
 function castLine(c: ArtCast, outfit?: string | null): string {
@@ -317,14 +352,21 @@ export function coverPrompt(art: CastArt, style: StyleDef): string {
     `Scene: ${art.coverEn.replace(/\.?$/, ".")}`,
     `Characters: ${recurring.map((c) => castLine(c)).join("; ")}.`,
     sameAsSheet(recurring),
-    `Landscape 3:2. Inviting, warm and bright; keep the upper third of the image calm and simple (sky, wall or soft background) so the title can sit over it.`,
+    // el libro es apaisado (4:3 o A4): la ilustración 3:2 se recorta un poco por los lados
+    `Landscape 3:2. Inviting, warm and bright; keep the upper third of the image calm and simple (sky, wall or soft background) so the title can sit over it. Keep the characters away from the left and right edges.`,
     SOLID,
     STYLE_REF_ONLY,
     NO_TEXT,
   ].join(" ");
 }
 
-export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style: StyleDef): string {
+/** Corrección de «Otra versión» con motivo: lo que hay que evitar esta vez y, en la última, simplificar. */
+export interface PageFix {
+  fixEn?: string | null;
+  simple?: boolean;
+}
+
+export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style: StyleDef, fix: PageFix = {}): string {
   const inImage = art.cast.filter((c) => page.who.includes(c.id));
   const absent = art.cast.filter((c) => !page.who.includes(c.id));
   const lines = inImage.map((c) => castLine(c, c.id === "hero" ? artPage.outfitEn : null));
@@ -341,7 +383,10 @@ export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style
     // la hoja trae a todo el reparto y el modelo tiende a meterlo entero (página 1 de Mateo: apareció la gata)
     absent.length ? `${absent.map((c) => c.name).join(" and ")} ${absent.length > 1 ? "are" : "is"} on the reference sheet but must NOT appear in this image.` : "",
     `${FRAMING[page.shot] ?? FRAMING.medio}; ${LIGHT[page.time] ?? LIGHT.dia}.`,
-    "Landscape 3:2 composition.",
+    // la página del libro es apaisada (4:3 o A4) y la ilustración va a sangre: se recorta un poco por los lados
+    "Landscape 3:2 composition; keep the characters and key objects away from the far left and right edges.",
+    fix.fixEn ? `Correction from the previous version: ${fix.fixEn.replace(/\.?$/, ".")}` : "",
+    fix.simple ? SIMPLE_EN : "",
     SOLID,
     STYLE_REF_ONLY,
     NO_TEXT,

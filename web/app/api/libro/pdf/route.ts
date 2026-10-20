@@ -5,7 +5,7 @@ import { renderBook2Pdf } from "@/lib/pdf/book2";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 /**
- * GET /api/libro/pdf?b=<bookId>&kind=free|full → application/pdf (A4 vertical, D5).
+ * GET /api/libro/pdf?b=<bookId>&kind=free|full → application/pdf (A4 apaisado, como el libro impreso).
  * free (D3): portada ilustrada + texto, disponible tras el email. full: con las 12 ilustraciones, tras el pago y con
  * todas las páginas pintadas. Límite: 6 por hora y IP.
  */
@@ -31,7 +31,8 @@ export async function GET(req: Request) {
     if (missing.length) return NextResponse.json({ ok: false, error: "pages_missing", pages: missing }, { status: 409 });
   }
   try {
-    const pdf = await renderBook2Pdf({ plan: view.plan, heroName: view.ficha.hero.name, from: view.ficha.from, coverUrl, pageUrls, kind });
+    const sheetUrl = view.chosen.sheet ? byId.get(view.chosen.sheet)?.url ?? null : null;
+    const pdf = await renderBook2Pdf({ plan: view.plan, heroName: view.ficha.hero.name.trim(), from: view.ficha.from?.trim() || undefined, coverUrl, sheetUrl, pageUrls, date: new Date(), kind });
     const slug = view.ficha.hero.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "libro";
     return new Response(Buffer.from(pdf), {
       headers: {

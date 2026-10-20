@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
+import { MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
 import type { Plan, PlanPage } from "@/lib/plan/types";
 import { EDITION_LABEL, PRICE_CENTS, eur } from "@/lib/print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition } from "@/lib/print/types";
-import { BookCover, Icon, Moon, Sparkle } from "@/components/brand";
+import { BookCover, BookSpread, Icon, Moon, Sparkle } from "@/components/brand";
 import { AutoTextarea } from "./AutoTextarea";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
@@ -32,7 +33,7 @@ function paintingCopy(v: BookView | null): string {
 /**
  * Paso 5: el libro. Antes del pago, la portada y las 12 páginas veladas con el precio. Tras el pago, las 12
  * ilustraciones (el servidor las pinta en segundo plano y el navegador, si sigue abierto, también tira de ellas),
- * revisión página a página con una versión más incluida, y el PDF.
+ * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
  * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
 export function StepBook({ bookId, confirming = false, onPlan }: { bookId: string; confirming?: boolean; onPlan: (p: Plan) => void }) {
@@ -73,7 +74,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
   );
 
   const paintPages = useCallback(
-    async (body: { page?: number } = {}) => {
+    async (body: { page?: number; reason?: RedoReason; note?: string } = {}) => {
       setError(null);
       setBusy(body.page ? `Pintando otra versión de la página ${body.page}…` : "Preparando las ilustraciones…");
       const r = await postJson<{ jobs?: string[] }>("/api/libro/pages", { bookId, ...body });
@@ -129,7 +130,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
     return (
       <div className="grid gap-6" aria-busy="true">
         <div className="shimmer h-10 w-3/4 rounded-2xl" />
-        <div className="shimmer mx-auto aspect-[210/297] w-[220px] rounded-[12px]" />
+        <div className="shimmer mx-auto aspect-[4/3] w-[280px] rounded-[10px]" />
       </div>
     );
   const { plan } = view;
@@ -164,7 +165,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
 
   return (
     <div className="grid gap-8">
-      <div className="grid items-center gap-7 sm:grid-cols-[1fr_230px] sm:gap-10">
+      <div className="grid items-center gap-7 sm:grid-cols-[1fr_300px] sm:gap-10">
         <div className="grid gap-2">
           <p className="hand text-[20px] text-accent">{view.paid ? (locked ? "su libro, en marcha" : allDone ? "su libro, terminado" : "pintando su libro") : "así queda"}</p>
           <h2 className="display text-[32px] sm:text-[42px]">{plan.title}</h2>
@@ -172,7 +173,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
             {view.paid
               ? locked
                 ? "Así va impreso. Ya no se puede cambiar."
-                : `Tu libro${hardcover ? " de tapa dura" : " ilustrado"}. Revisa cada página: el texto se puede retocar y cada ilustración admite una versión más.`
+                : `Tu libro${hardcover ? " de tapa dura" : " ilustrado"}. Revisa cada página: el texto se puede retocar y, si una ilustración no te convence, dinos qué cambiar y pintamos otra.`
               : "Portada, dedicatoria y doce páginas, que se pintarán con la hoja que has aprobado."}
           </p>
         </div>
@@ -181,7 +182,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
           title={plan.title}
           from={view.ficha.from?.trim()}
           tilt={2}
-          className="w-[210px] justify-self-center sm:w-full"
+          className="w-[280px] justify-self-center sm:w-full"
           image={<BookImage job={cover} alt="Portada" testId="book-cover" box="absolute inset-0 overflow-hidden" />}
         />
       </div>
@@ -200,7 +201,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       )}
 
       {view.paid ? (
-        <ol className="grid gap-6">
+        <ol className="m-0 grid list-none gap-8 p-0">
           {plan.pages.map((p) => (
             <PageView
               key={p.n}
@@ -214,7 +215,15 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
                 const r = await postJson("/api/libro/page", { bookId, jobId });
                 if (r.status === 200) await refresh();
               }}
-              onAnother={() => void paintPages({ page: p.n })}
+              redosLeft={view.redosLeft}
+              reported={view.reported.includes(p.n)}
+              onAnother={(reason, note) => void paintPages({ page: p.n, reason, note })}
+              onReport={async (note) => {
+                const r = await postJson("/api/libro/report", { bookId, page: p.n, note });
+                if (r.status !== 200) return errorMessage(r.json);
+                await refresh();
+                return null;
+              }}
             />
           ))}
         </ol>
@@ -233,7 +242,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
             <Icon.download />
             Descargar el libro en PDF
           </a>
-          <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{hardcover ? "A4, para leerlo mientras llega el impreso" : "A4, listo para imprimir en casa"}</p>
+          <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{hardcover ? "A4 apaisado, para leerlo mientras llega el impreso" : "A4 apaisado, listo para imprimir en casa"}</p>
         </div>
       ) : (
         <a className="link justify-self-center text-sm font-semibold" href={`/api/libro/pdf?b=${bookId}&kind=free`}>
@@ -269,7 +278,7 @@ function LockedPages({ pages, onText }: { pages: PlanPage[]; onText: (n: number,
       <ol ref={rail} className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pt-1 pb-4 [scrollbar-width:none] sm:-mx-6 sm:scroll-px-6 sm:px-6 sm:[mask-image:linear-gradient(to_right,transparent,#000_24px,#000_calc(100%-48px),transparent)]">
         {pages.map((p) => (
           <li key={p.n} className="flex w-[84%] max-w-[340px] shrink-0 snap-start flex-col overflow-hidden rounded-[22px] bg-card shadow-[0_2px_0_#e6d8c1,0_24px_40px_-32px_rgba(35,32,54,0.5)]" data-testid={`book-page-${p.n}`}>
-            <div className="locked-paper relative grid aspect-[3/2] place-items-center px-7 text-center">
+            <div className="locked-paper relative grid aspect-[4/3] place-items-center px-7 text-center">
               <span className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[12px] font-semibold text-ink">
                 <Icon.lock size={13} />
                 Al pagar
@@ -334,8 +343,8 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
     } else failed(r.json);
   };
   const perks: Record<PaidEdition, string[]> = {
-    hardcover: [`Tapa dura de 20×20 cm con ${name || "tus personajes"} en las doce ilustraciones`, "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya"],
-    illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"],
+    hardcover: [`Libro apaisado de tapa dura, con ${name || "tus personajes"} en las doce ilustraciones`, "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya"],
+    illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4 apaisado: imprímelo en casa o en una copistería"],
   };
   return (
     <div className="relative overflow-hidden rounded-[28px] bg-night p-6 text-moon shadow-[0_40px_70px_-40px_rgba(29,39,71,0.9)] sm:p-9" data-testid="paywall">
@@ -426,9 +435,12 @@ function PageView({
   chosen,
   disabled,
   locked,
+  redosLeft,
+  reported,
   onText,
   onChoose,
   onAnother,
+  onReport,
 }: {
   page: PlanPage;
   jobs: BookJobView[];
@@ -436,45 +448,159 @@ function PageView({
   disabled: boolean;
   /** Ya en la imprenta: solo se ve. */
   locked: boolean;
+  /** Versiones con motivo que quedan en el libro. */
+  redosLeft: number;
+  /** Ya avisó de esta página con «Sigue sin estar bien». */
+  reported: boolean;
   onText: (t: string) => void;
   onChoose: (jobId: string) => void;
-  onAnother: () => void;
+  onAnother: (reason: RedoReason, note: string) => void;
+  onReport: (note: string) => Promise<string | null>;
 }) {
+  const [panel, setPanel] = useState<"redo" | "report" | null>(null);
   const current = jobs.filter((j) => j.current);
   const shown = current.find((j) => j.id === chosen) ?? current[current.length - 1];
   const done = current.filter((j) => j.status === "done");
-  const canAnother = !locked && jobs.length < 3 && done.length > 0 && done.length < 2;
+  const busyHere = current.some(inFlight);
+  const canAnother = !locked && jobs.length < 2 + MAX_PAGE_REDOS && done.length > 0 && current.filter((j) => j.status !== "failed").length < 1 + MAX_PAGE_REDOS && redosLeft > 0;
+  // sin versiones (de la página o del libro) y con alguna hecha: nos avisa y la arreglamos a mano
+  const canReport = !locked && !reported && done.length > 0 && !canAnother && !busyHere;
+  const left = Math.min(1 + MAX_PAGE_REDOS - current.filter((j) => j.status !== "failed").length, redosLeft);
   return (
-    <li className="overflow-hidden rounded-[22px] bg-card shadow-[0_2px_0_#e6d8c1,0_24px_40px_-32px_rgba(35,32,54,0.5)]" data-testid={`book-page-${page.n}`}>
-      <BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} box="relative aspect-[3/2] w-full overflow-hidden bg-paper-deep" />
-      <div className="grid gap-3 px-5 pt-4 pb-4 sm:px-7">
-        {done.length > 1 && (
-          <div className="flex gap-2" role="group" aria-label={`Versiones de la página ${page.n}`}>
-            {done.map((j) => (
-              <button key={j.id} aria-pressed={j.id === shown?.id} disabled={locked} className={`chip btn-sm ${j.id === shown?.id ? "chip-on" : ""}`} onClick={() => onChoose(j.id)}>
-                Versión {j.variant}
-              </button>
-            ))}
+    <BookSpread
+      as="li"
+      testId={`book-page-${page.n}`}
+      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} box="absolute inset-0 overflow-hidden bg-paper-deep" />}
+      right={
+        <div className="grid flex-1 content-between gap-3 px-5 pt-5 pb-4 sm:px-8 sm:pt-7">
+          <div className="grid gap-3">
+            {done.length > 1 && (
+              <div className="flex flex-wrap gap-2" role="group" aria-label={`Versiones de la página ${page.n}`}>
+                {done.map((j) => (
+                  <button key={j.id} aria-pressed={j.id === shown?.id} disabled={locked} className={`chip btn-sm ${j.id === shown?.id ? "chip-on" : ""}`} onClick={() => onChoose(j.id)}>
+                    Versión {j.variant}
+                  </button>
+                ))}
+              </div>
+            )}
+            <AutoTextarea
+              className="story -mx-2 block w-[calc(100%+1rem)] resize-none rounded-xl border-2 border-transparent bg-transparent px-2 py-1 text-[18px] leading-[1.6] text-ink outline-none focus:border-[#e5d7c1] focus:bg-white focus-visible:outline-none"
+              value={page.text}
+              maxLength={1500}
+              readOnly={locked}
+              onChange={(e) => onText(e.target.value)}
+              aria-label={`Texto de la página ${page.n}`}
+            />
           </div>
-        )}
-        <AutoTextarea
-          className="story -mx-2 block w-[calc(100%+1rem)] resize-none rounded-xl border-2 border-transparent bg-transparent px-2 py-1 text-[18px] leading-[1.6] text-ink outline-none focus:border-[#e5d7c1] focus:bg-white focus-visible:outline-none"
-          value={page.text}
-          maxLength={1500}
-          readOnly={locked}
-          onChange={(e) => onText(e.target.value)}
-          aria-label={`Texto de la página ${page.n}`}
-        />
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[12px] tracking-[0.14em] text-mute">{page.n}</span>
-          {canAnother && (
-            <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-deep hover:underline disabled:opacity-40" disabled={disabled} onClick={onAnother}>
-              <Icon.brush size={15} />
-              Otra versión de esta ilustración
-            </button>
-          )}
+          <div className="grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-[12px] tracking-[0.14em] text-mute">{page.n}</span>
+              {canAnother && panel !== "redo" && (
+                <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-deep hover:underline disabled:opacity-40" disabled={disabled} onClick={() => setPanel("redo")} data-testid={`another-${page.n}`}>
+                  <Icon.brush size={15} />
+                  Otra versión de esta ilustración
+                </button>
+              )}
+              {canReport && panel !== "report" && (
+                <button className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={() => setPanel("report")} data-testid={`report-${page.n}`}>
+                  ¿Sigue sin estar bien? Avísanos
+                </button>
+              )}
+              {reported && !locked && <span className="text-[13px] text-mute">Nos has avisado: la estamos mirando.</span>}
+            </div>
+            {panel === "redo" && canAnother && (
+              <RedoForm
+                left={left}
+                disabled={disabled}
+                onCancel={() => setPanel(null)}
+                onSubmit={(reason, note) => {
+                  setPanel(null);
+                  onAnother(reason, note);
+                }}
+              />
+            )}
+            {panel === "report" && canReport && <ReportForm onCancel={() => setPanel(null)} onSubmit={onReport} />}
+          </div>
         </div>
+      }
+    />
+  );
+}
+
+/** «Otra versión»: qué no le gusta (obligatorio) y, si quiere, qué cambiaría. Con eso se corrige la versión nueva. */
+function RedoForm({ left, disabled, onCancel, onSubmit }: { left: number; disabled: boolean; onCancel: () => void; onSubmit: (reason: RedoReason, note: string) => void }) {
+  const [reason, setReason] = useState<RedoReason | null>(null);
+  const [note, setNote] = useState("");
+  const ready = !!reason || !!note.trim();
+  return (
+    <form
+      className="grid gap-3 rounded-2xl bg-paper-deep/60 p-4"
+      data-testid="redo-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready) onSubmit(reason ?? "otro", note.trim());
+      }}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="display text-[18px]">¿Qué no te gusta?</p>
+        <span className="text-[13px] text-mute">{left === 1 ? "te queda 1 versión" : `te quedan ${left} versiones`}</span>
       </div>
-    </li>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Motivo">
+        {(Object.keys(REDO_REASONS) as RedoReason[]).map((k) => (
+          <button type="button" key={k} aria-pressed={reason === k} className={`chip btn-sm ${reason === k ? "chip-on" : ""}`} onClick={() => setReason(reason === k ? null : k)}>
+            {REDO_REASONS[k]}
+          </button>
+        ))}
+      </div>
+      <input
+        className="input"
+        value={note}
+        maxLength={REDO_NOTE_MAX}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Cuéntanos qué cambiarías (opcional)"
+        aria-label="Qué cambiarías"
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary btn-sm" disabled={disabled || !ready} data-testid="redo-submit">
+          <Icon.brush size={15} />
+          Pintar otra versión
+        </button>
+        <button type="button" className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** «Sigue sin estar bien»: nos llega un aviso con la página y lo arreglamos a mano. */
+function ReportForm({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (note: string) => Promise<string | null> }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-3 rounded-2xl bg-paper-deep/60 p-4"
+      data-testid="report-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(await onSubmit(note.trim()));
+        setBusy(false);
+      }}
+    >
+      <p className="display text-[18px]">Lo arreglamos nosotros</p>
+      <p className="text-sm text-ink-soft">Cuéntanos qué falla y te escribimos cuando esté. Mientras, puedes elegir la versión que menos te disguste.</p>
+      <input className="input" value={note} maxLength={REDO_NOTE_MAX} onChange={(e) => setNote(e.target.value)} placeholder="Qué falla en esta ilustración" aria-label="Qué falla" />
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary btn-sm" disabled={busy} data-testid="report-submit">
+          Enviar aviso
+        </button>
+        <button type="button" className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+      {err && <p className="text-sm text-danger">{err}</p>}
+    </form>
   );
 }

@@ -56,6 +56,8 @@ Tres fallos, con la causa sacada de los prompts guardados en `cuentos_generation
 
 Arreglos (PR `fix/escenas-y-reparto`): planificador sin familiares inventados (rechazo duro si aparecen, salvo que los nombre el adulto) y con texto e imagen coherentes; escenas con cada personaje entero y a la vista; los objetos que llegan más tarde no van en la ropa habitual; línea fija en todos los prompts para que nadie atraviese un mueble; «glasses» solo si alguien lleva gafas; el control de calidad rechaza personajes que atraviesan objetos y animales con el cuerpo retorcido. La dirección de arte de las páginas pasa a `pages-art-v2`: los libros ya pintados no cambian, pero una página que se vuelva a pedir sale con las reglas nuevas.
 
+**«Otra versión» con motivo (PR B, 18 oct):** el padre elige qué no le gusta (no se parece, postura o cuerpo raro, sobra o falta alguien, no es la escena, otra cosa) y puede escribir una línea. Con eso el modelo de arte reescribe la escena para que el fallo no se repita y el prompt lleva una corrección; en la última versión posible se pide además una composición simple. Si aun así no queda bien, «Sigue sin estar bien» nos avisa por email y se arregla a mano.
+
 ## Pendiente
 
 - Activar las imágenes de verdad en la interfaz de la preview: `GENERATION_PROVIDER=gemini-images` en Vercel (Preview).

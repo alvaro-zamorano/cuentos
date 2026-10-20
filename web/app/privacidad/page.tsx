@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ContactEmail, Dato, LegalPage, Pending } from "@/components/LegalPage";
-import { titular } from "@/lib/legal";
+import { ContactEmail, LegalPage } from "@/components/LegalPage";
+import { holderLine, titular } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Política de privacidad" };
 
 export default function Privacidad() {
   const t = titular();
   return (
-    <LegalPage title="Política de privacidad" updated="18 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="20 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
-        Responsable del tratamiento: <Dato value={t.name}>nombre y apellidos o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, domicilio{" "}
-        <Dato value={t.address}>dirección</Dato>. Contacto para privacidad: <ContactEmail value={t.email} />.
+        Responsable del tratamiento: {holderLine(t)}. Contacto para privacidad: <ContactEmail value={t.email} />.
       </p>
 
       <h2>2. Qué datos tratamos</h2>
@@ -69,6 +68,10 @@ export default function Privacidad() {
         <li>Imprimir el libro y enviártelo a la dirección que indiques (ejecución del contrato).</li>
         <li>Contestar lo que nos escribes (ejecución del contrato si es sobre un pedido; si no, tu consentimiento al escribirnos).</li>
         <li>
+          Cuando pides otra versión de una ilustración, guardamos el motivo y lo que escribas para pintarla mejor y para saber qué falla
+          (ejecución del servicio y, después, interés legítimo en mejorarlo).
+        </li>
+        <li>
           Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla separada y opcional (consentimiento, art. 21 LSSI). Puedes retirarlo
           en cualquier momento desde el propio email o escribiéndonos.
         </li>
@@ -99,6 +102,10 @@ export default function Privacidad() {
           compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
         <li>Si nos escribes, guardamos tu mensaje el tiempo necesario para atenderte y, si es sobre un pedido, con el pedido.</li>
+        <li>
+          El motivo de «otra versión» y lo que escribas se guardan con el libro. A los 30 días se borra lo que escribiste y el motivo se
+          queda sin relación con el libro ni contigo.
+        </li>
       </ul>
 
       <h2>7. Proveedores</h2>
@@ -121,7 +128,7 @@ export default function Privacidad() {
         </li>
         <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
         <li>
-          Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo) <Pending>entidad exacta del contrato</Pending>,
+          Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo),
           que encarga la impresión a una imprenta de su red, normalmente cerca de tu casa. Recibe el libro, el nombre, la dirección, el email y,
           si lo das, el teléfono.
         </li>

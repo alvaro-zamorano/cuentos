@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MOCK_LLM } from "../../lib/llm";
-import { castArt, castArtUser, pagePrompt, pagesArtUser } from "../../lib/plan/art";
+import { castArt, castArtUser, pagePrompt, pagesArtUser, redoSceneUser } from "../../lib/plan/art";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { plannerSystem } from "../../lib/plan/prompt";
@@ -85,4 +85,16 @@ test("escenas: nadie medio tapado por un mueble, personajes sólidos y gafas sol
   const veraArt = (await castArt(vera, veraPlan, MOCK_LLM)).art;
   const vp = pagePrompt(veraArt, veraPlan.pages[0], { n: 1, sceneEn: "Vera jumps out of bed", outfitEn: null, extrasEn: [] }, style);
   assert.match(vp, /eyes, glasses and proportions\./);
+});
+
+test("otra versión con motivo: el modelo recibe la escena, quién sale, el motivo y las palabras del padre", async () => {
+  const plan = mockPlan(olivia);
+  const { art } = await castArt(olivia, plan, MOCK_LLM);
+  const u = redoSceneUser(art, { who: ["hero", "c1"] }, { n: 3, sceneEn: "Topito peeks out from behind the sofa", outfitEn: null, extrasEn: [] }, "Postura o cuerpo raro", "el perro atraviesa el sofá");
+  assert.match(u, /Current scene \(English\): Topito peeks out from behind the sofa/);
+  assert.match(u, /Characters that must appear: Olivia, Topito\./);
+  assert.match(u, /«Postura o cuerpo raro»/);
+  assert.match(u, /«el perro atraviesa el sofá»/);
+  assert.match(u, /every character fully visible/);
+  assert.doesNotMatch(redoSceneUser(art, { who: ["hero"] }, { n: 3, sceneEn: "x", outfitEn: null, extrasEn: [] }, "Otra cosa", null), /own words/);
 });

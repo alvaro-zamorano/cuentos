@@ -13,7 +13,8 @@ concurrency:
 
 jobs:
   web:
-    runs-on: ubuntu-latest
+    # fijo: ubuntu-latest pasa a Ubuntu 26 desde el 19 oct y «playwright install --with-deps» falla ahí
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
       run:

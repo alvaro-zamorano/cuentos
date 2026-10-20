@@ -8,6 +8,8 @@ import { paymentMode } from "@/lib/stripe";
 import { printMode } from "@/lib/print/gelato";
 import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
+import { appOpen } from "@/lib/appOpen";
+import { titular } from "@/lib/legal";
 
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
@@ -98,6 +100,9 @@ export default function Landing() {
   const pm = paymentMode();
   const pr = printMode();
   const hardcoverStatus = pm === "none" || pr === "none" ? "Muy pronto" : pm === "dry-run" || pr === "dry-run" ? "Disponible en prueba" : null;
+  // con la app cerrada (lib/appOpen.ts, producción hasta que se abra): «Muy pronto» en vez de los botones a /crear
+  const open = appOpen();
+  const contact = titular().email ?? "hola@erasesuvez.com";
   return (
     <main className="flex-1">
       {/* Portada en noche */}
@@ -118,9 +123,15 @@ export default function Landing() {
                 Preguntas
               </a>
             </div>
-            <Link href="/crear" className="btn-primary btn-sm">
-              Crear su cuento
-            </Link>
+            {open ? (
+              <Link href="/crear" className="btn-primary btn-sm">
+                Crear su cuento
+              </Link>
+            ) : (
+              <a href="#pronto" className="btn-primary btn-sm">
+                Muy pronto
+              </a>
+            )}
           </nav>
         </SiteHeader>
         <Sparkle className="twinkle absolute top-[14%] left-[5%]" size={22} />
@@ -132,19 +143,27 @@ export default function Landing() {
           <div className="grid gap-6">
             <span className="inline-flex items-center gap-2 justify-self-start rounded-full border border-star/40 bg-star/15 px-3.5 py-1.5 text-sm font-semibold text-star">
               <Sparkle size={12} />
-              Su cuento, esta misma noche
+              {open ? "Su cuento, esta misma noche" : "Muy pronto"}
             </span>
             <h1 className="display m-0 text-[44px] leading-[1.04] text-moon sm:text-[58px] lg:text-[74px]">
               Una frase tuya. <span className="text-star">Un libro suyo.</span>
             </h1>
             <p className="m-0 max-w-[36ch] text-lg leading-relaxed text-moon-soft sm:text-xl">Cuéntanos la idea en una frase. La convertimos en un cuento ilustrado de doce páginas, con tu hijo, tu nieta o tu sobrino de protagonista.</p>
             <div className="mt-1 flex flex-wrap items-center gap-3">
-              <Link href="/crear" className="btn-primary btn-lg">
-                Crear su cuento <Icon.arrow size={20} />
-              </Link>
-              <a href="#muestra" className="btn-moon btn-lg">
-                Ver un libro de ejemplo
-              </a>
+              {open ? (
+                <>
+                  <Link href="/crear" className="btn-primary btn-lg">
+                    Crear su cuento <Icon.arrow size={20} />
+                  </Link>
+                  <a href="#muestra" className="btn-moon btn-lg">
+                    Ver un libro de ejemplo
+                  </a>
+                </>
+              ) : (
+                <a href="#muestra" className="btn-primary btn-lg">
+                  Ver un libro de ejemplo
+                </a>
+              )}
             </div>
             <ul className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[15px] text-[#b9c1da]">
               <li className="flex items-center gap-2">{CHECK}Sin subir fotos</li>
@@ -154,11 +173,12 @@ export default function Landing() {
           </div>
 
           <div className="relative mx-auto w-full max-w-[460px] pb-28 sm:pb-32">
-            <div aria-hidden className="absolute top-12 -right-4 hidden w-[62%] rotate-[8deg] overflow-hidden rounded-[10px] bg-[#fbf6ec] shadow-[0_30px_60px_-30px_rgba(5,10,30,0.8)] sm:block">
-              <img src={muestraImage(3)} alt="" width={1400} height={939} className="block aspect-[3/2] w-full object-cover" />
-              <p className="story m-0 px-4 pt-3 pb-5 text-[12px] leading-relaxed text-[#3a3346]">Al atardecer, Vera se puso su traje de astronauta, el blanco con rayas amarillas. A Toby le tocó un casco de burbuja hecho a su medida.</p>
+            {/* el libro abierto detrás de la portada: ilustración a la izquierda y texto a la derecha */}
+            <div aria-hidden className="absolute -top-4 -right-6 hidden w-[84%] rotate-[6deg] grid-cols-2 overflow-hidden rounded-[6px] bg-[#fbf6ec] shadow-[0_30px_60px_-30px_rgba(5,10,30,0.8)] sm:grid">
+              <img src={muestraImage(3)} alt="" width={1400} height={939} className="block aspect-[4/3] w-full object-cover" />
+              <p className="story m-0 self-center bg-gradient-to-r from-ink/10 to-transparent to-[12%] px-4 text-[10.5px] leading-relaxed text-[#3a3346]">Al atardecer, Vera se puso su traje de astronauta, el blanco con rayas amarillas. A Toby le tocó un casco de burbuja hecho a su medida.</p>
             </div>
-            <div className="floaty relative mx-auto w-[78%] sm:mx-0 sm:w-[82%]">
+            <div className="floaty relative mx-auto w-[92%] pt-0 sm:mx-0 sm:w-[86%] sm:pt-24">
               <BookCover name={MUESTRA.hero} title={MUESTRA.title} from="mamá y papá" src={muestraImage(0)} alt={`Portada de «${MUESTRA.title}»: Vera y su perro Toby vuelan en un cohete de cartón hacia la Luna`} />
             </div>
             <div className="absolute bottom-0 left-0 w-[72%] max-w-[290px] rotate-[2.5deg] rounded-[20px] bg-card px-4 pt-3.5 pb-4 text-ink shadow-[0_24px_50px_-22px_rgba(5,10,30,0.75)] sm:-left-4">
@@ -191,9 +211,11 @@ export default function Landing() {
           ))}
         </ol>
         <div className="mt-12 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-center">
-          <Link href="/crear" className="btn-primary btn-lg">
-            Empezar su cuento
-          </Link>
+          {open && (
+            <Link href="/crear" className="btn-primary btn-lg">
+              Empezar su cuento
+            </Link>
+          )}
           <span className="text-[15px] text-ink-soft">Lees el cuento entero y ves su portada gratis. Pagas solo por las doce ilustraciones.</span>
         </div>
       </section>
@@ -220,27 +242,36 @@ export default function Landing() {
           <h2 className="display m-0 max-w-[20ch] text-[36px] sm:text-[52px]">Cada uno, su historia.</h2>
           <p className="m-0 mt-1 max-w-[52ch] text-lg text-ink-soft">Cuatro portadas más. Debajo de cada una, la idea de la que salió.</p>
         </div>
-        <ul className="m-0 mt-12 grid list-none grid-cols-2 gap-x-6 gap-y-10 p-0 lg:grid-cols-4">
+        <ul className="m-0 mt-12 grid list-none grid-cols-1 gap-x-10 gap-y-12 p-0 sm:grid-cols-2">
           {COVERS.map((c) => (
             <li key={c.src} className="reveal grid justify-items-center gap-3.5">
-              <BookCover name={c.name} title={c.title} src={c.src} alt={`Portada de «${c.title}»`} tilt={c.tilt} className="w-full max-w-[250px] transition-transform duration-300 hover:-translate-y-1" />
+              <BookCover name={c.name} title={c.title} src={c.src} alt={`Portada de «${c.title}»`} tilt={c.tilt} className="w-full max-w-[420px] transition-transform duration-300 hover:-translate-y-1" />
               <span className="hand text-center text-[17px] text-ink-soft sm:text-[18px]">{c.who}</span>
             </li>
           ))}
         </ul>
         <div className="mt-16 grid justify-items-center gap-4">
-          <p className="display m-0 text-[22px] sm:text-[24px]">¿Por dónde empezamos?</p>
+          <p className="display m-0 text-[22px] sm:text-[24px]">{open ? "¿Por dónde empezamos?" : "Algunas ideas para empezar"}</p>
           <div className="flex max-w-[860px] flex-wrap justify-center gap-2.5">
-            {STARTS.map((s) => (
-              <Link key={s.id} href={`/crear?idea=${s.id}`} className="chip transition-transform hover:-translate-y-0.5">
-                <s.icon size={18} className="text-accent" />
-                {s.label}
+            {STARTS.map((s) =>
+              open ? (
+                <Link key={s.id} href={`/crear?idea=${s.id}`} className="chip transition-transform hover:-translate-y-0.5">
+                  <s.icon size={18} className="text-accent" />
+                  {s.label}
+                </Link>
+              ) : (
+                <span key={s.id} className="chip cursor-default">
+                  <s.icon size={18} className="text-accent" />
+                  {s.label}
+                </span>
+              ),
+            )}
+            {open && (
+              <Link href="/crear" className="chip chip-on transition-transform hover:-translate-y-0.5">
+                <Sparkle size={15} />
+                Sorpréndeme
               </Link>
-            ))}
-            <Link href="/crear" className="chip chip-on transition-transform hover:-translate-y-0.5">
-              <Sparkle size={15} />
-              Sorpréndeme
-            </Link>
+            )}
           </div>
         </div>
       </section>
@@ -275,16 +306,16 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">Gratis</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px]">
-                {["El cuento completo, escrito para él o ella", "Cómo será en el libro y la portada ilustrada", "PDF en A4: la portada ilustrada y las páginas solo con texto"].map((x) => (
+                {["El cuento completo, escrito para él o ella", "Cómo será en el libro y la portada ilustrada", "PDF en A4 apaisado: la portada ilustrada y las páginas solo con texto"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-accent" />
                     {x}
                   </li>
                 ))}
               </ul>
-              <Link href="/crear" className="btn-ghost mt-auto w-full">
+              <Cta open={open} className="btn-ghost mt-auto w-full">
                 Empezar gratis
-              </Link>
+              </Cta>
             </div>
 
             <div className="relative flex flex-col gap-5 rounded-[28px] bg-night px-7 py-8 text-moon shadow-[0_40px_70px_-40px_rgba(29,39,71,0.9)]">
@@ -297,17 +328,17 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_HARDCOVER}</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px] text-[#e4e8f2]">
-                {["Todo lo de la edición gratis", "Libro de tapa dura de 20×20 cm con las doce ilustraciones", "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Te lo enviamos a casa (Península y Baleares) y tienes el PDF al momento"].map((x) => (
+                {["Todo lo de la edición gratis", "Libro apaisado de tapa dura, con las doce ilustraciones a página completa", "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Te lo enviamos a casa (Península y Baleares) y tienes el PDF al momento"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-star" />
                     {x}
                   </li>
                 ))}
               </ul>
-              {hardcoverStatus && <p className="m-0 text-sm text-moon-soft">{hardcoverStatus}</p>}
-              <Link href="/crear" className="btn-primary mt-auto w-full">
+              {open && hardcoverStatus && <p className="m-0 text-sm text-moon-soft">{hardcoverStatus}</p>}
+              <Cta open={open} className="btn-primary mt-auto w-full">
                 Crear su cuento
-              </Link>
+              </Cta>
             </div>
 
             <div className="flex flex-col gap-5 rounded-[28px] bg-card px-7 py-8 shadow-[0_2px_0_#e6d8c1]">
@@ -316,17 +347,17 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_ILLUSTRATED}</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px]">
-                {["Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"].map((x) => (
+                {["Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4 apaisado: imprímelo en casa o en una copistería"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-accent" />
                     {x}
                   </li>
                 ))}
               </ul>
-              {illustratedStatus && <p className="m-0 text-sm text-ink-soft">{illustratedStatus}</p>}
-              <Link href="/crear" className="btn-ghost mt-auto w-full">
+              {open && illustratedStatus && <p className="m-0 text-sm text-ink-soft">{illustratedStatus}</p>}
+              <Cta open={open} className="btn-ghost mt-auto w-full">
                 Crear su cuento
-              </Link>
+              </Cta>
             </div>
           </div>
           <p className="m-0 mt-5 text-center text-sm text-ink-soft">Precios con IVA incluido.</p>
@@ -363,22 +394,49 @@ export default function Landing() {
       </section>
 
       {/* Cierre */}
-      <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
+      <section id="pronto" className="mx-auto max-w-6xl scroll-mt-6 px-4 pb-20 sm:px-6">
         <div className="relative grid justify-items-center gap-4 overflow-hidden rounded-[32px] bg-night px-6 py-14 text-center text-moon sm:rounded-[36px] sm:py-18">
           <Moon className="absolute top-6 right-6 sm:top-9 sm:right-auto sm:left-[8%]" size={52} />
           <Sparkle className="twinkle absolute top-[30%] right-[12%]" size={18} />
           <Sparkle className="twinkle-slow absolute bottom-[22%] left-[16%]" size={12} color="var(--moon)" />
-          <h2 className="display m-0 max-w-[18ch] text-[34px] sm:text-[58px]">
-            ¿Qué historia le vas a contar <span className="text-star">esta noche?</span>
-          </h2>
-          <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Una frase, su nombre y unos rasgos. Lo demás lo hacemos nosotros.</p>
-          <Link href="/crear" className="btn-primary btn-lg mt-2">
-            Crear su cuento
-          </Link>
-          <span className="hand text-[19px] text-star">el cuento escrito, gratis</span>
+          {open ? (
+            <>
+              <h2 className="display m-0 max-w-[18ch] text-[34px] sm:text-[58px]">
+                ¿Qué historia le vas a contar <span className="text-star">esta noche?</span>
+              </h2>
+              <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Una frase, su nombre y unos rasgos. Lo demás lo hacemos nosotros.</p>
+              <Link href="/crear" className="btn-primary btn-lg mt-2">
+                Crear su cuento
+              </Link>
+              <span className="hand text-[19px] text-star">el cuento escrito, gratis</span>
+            </>
+          ) : (
+            <>
+              <h2 className="display m-0 max-w-[18ch] text-[34px] sm:text-[58px]">
+                Abrimos <span className="text-star">muy pronto.</span>
+              </h2>
+              <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Estamos preparando los primeros libros. Si tienes alguna pregunta, escríbenos.</p>
+              <a href={`mailto:${contact}`} className="btn-primary btn-lg mt-2" data-testid="pronto-contact">
+                {contact}
+              </a>
+            </>
+          )}
         </div>
       </section>
     </main>
+  );
+}
+
+/** Botón de una edición: a /crear con la app abierta; con ella cerrada, «Muy pronto» sin enlace. */
+function Cta({ open, className, children }: { open: boolean; className: string; children: React.ReactNode }) {
+  return open ? (
+    <Link href="/crear" className={className}>
+      {children}
+    </Link>
+  ) : (
+    <span className={`${className} cursor-default opacity-60`} aria-disabled="true">
+      Muy pronto
+    </span>
   );
 }
 
@@ -411,18 +469,12 @@ function SheetCard() {
   );
 }
 
-/** Paso 3 dibujado: dos páginas del libro (A4: ilustración arriba, texto debajo). */
+/** Paso 3 dibujado: el libro abierto, con la ilustración a la izquierda y el texto a la derecha. */
 function PagesCard() {
-  const page = (n: number, rot: string, extra = "") => (
-    <div className={`w-[46%] max-w-[156px] overflow-hidden rounded-[3px_8px_8px_3px] bg-[#fbf6ec] shadow-[3px_3px_0_#eaddc6,0_18px_36px_-18px_rgba(35,32,54,0.6)] ${rot} ${extra}`}>
-      <img src={muestraImage(n)} alt="" width={1400} height={939} loading="lazy" className="block aspect-[3/2] w-full object-cover" />
-      <p className="story m-0 line-clamp-5 px-3 pt-2.5 pb-4 text-[8.5px] leading-normal text-[#3a3346]">{MUESTRA.pages[n - 1]}</p>
-    </div>
-  );
   return (
-    <div className="flex w-full items-start justify-center">
-      {page(5, "-rotate-3")}
-      {page(9, "rotate-[4deg]", "-ml-[8%] mt-[8%]")}
+    <div className="grid w-full max-w-[330px] -rotate-2 grid-cols-2 overflow-hidden rounded-[5px] bg-[#fbf6ec] shadow-[3px_3px_0_#eaddc6,0_18px_36px_-18px_rgba(35,32,54,0.6)]">
+      <img src={muestraImage(9)} alt="" width={1400} height={939} loading="lazy" className="block aspect-[4/3] h-full w-full object-cover" />
+      <p className="story m-0 line-clamp-7 self-center bg-gradient-to-r from-ink/10 to-transparent to-[14%] px-3 text-[8.5px] leading-normal text-[#3a3346]">{MUESTRA.pages[8]}</p>
     </div>
   );
 }

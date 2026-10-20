@@ -16,7 +16,8 @@ import { jobKey } from "../generation/keys";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
 import { canSpend } from "../generation/budget";
-import { castArt, castArtKey, coverPrompt, pageArtKey, pagePrompt, pagesArt, pagesArtKey, reviseCast, sheetPrompt, type CastArt, type PagesArt } from "../plan/art";
+import { castArt, castArtKey, coverPrompt, pageArtKey, pagePrompt, pagesArt, pagesArtKey, redoScene, reviseCast, sheetPrompt, type CastArt, type PageFix, type PagesArt } from "../plan/art";
+import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_FIX_EN, REDO_REASONS, cleanNote, isRedoReason, type RedoReason } from "./feedback";
 import { fichaHash, normalizeFicha } from "../plan/ficha";
 import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
@@ -27,7 +28,7 @@ import { PRICE_CENTS as PRICES, paidEdition } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PrintView, type Shipping } from "../print/types";
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
-export const MAX_PAGE_JOBS = 3; // la incluida + 1 versión más + 1 por si el padre cambia la escena
+export const MAX_PAGE_JOBS = 1 + MAX_PAGE_REDOS + 1; // la incluida + 2 versiones con motivo + 1 por si el padre cambia la escena
 /** Precio del PDF ilustrado (el de la tapa dura, en lib/print/prices.ts). */
 export const PRICE_CENTS = PRICES.illustrated;
 
@@ -448,11 +449,12 @@ export async function pendingPageJobs(store: GenStore, bookId: string): Promise<
 
 /* ------------------------------ tras el pago: páginas ------------------------------ */
 
-function pageRow(book: BookRecord, d: BookDraftV2, n: number, variant: number, sheetJobId: string): NewJob {
+function pageRow(book: BookRecord, d: BookDraftV2, n: number, variant: number, sheetJobId: string, redo?: { sceneEn: string } & PageFix): NewJob {
   const style = getStyle(d.ficha.styleId)!;
   const page = d.plan.pages[n - 1];
-  const ap = d.pagesArt!.pages.find((p) => p.n === n)!;
-  const prompt = pagePrompt(d.castArt!, page, ap, style);
+  const base = d.pagesArt!.pages.find((p) => p.n === n)!;
+  const ap = redo ? { ...base, sceneEn: redo.sceneEn } : base;
+  const prompt = pagePrompt(d.castArt!, page, ap, style, redo ?? {});
   return {
     book_id: book.id,
     kind: "page",
@@ -475,7 +477,7 @@ function currentPageJobs(jobs: GenJob[], d: BookDraftV2, n: number, sheetJobId: 
 
 export async function requestPages(
   store: GenStore,
-  input: { bookId?: unknown; page?: unknown },
+  input: { bookId?: unknown; page?: unknown; reason?: unknown; note?: unknown },
   adapter: Pick<GenerationAdapter, "name">,
   { dryRunPayment }: { dryRunPayment: boolean },
   llm: Llm = selectLlm("art"),
@@ -504,12 +506,35 @@ export async function requestPages(
 
   const wanted: NewJob[] = [];
   const reopenedIds: string[] = [];
+  let redo: { reason: RedoReason; note: string | null } | null = null;
   if (input.page !== undefined) {
     const n = Number(input.page);
     if (!Number.isInteger(n) || n < 1 || n > 12) return fail(400, "page");
+    // «Otra versión» con motivo: sin motivo ni nota no hay versión nueva (es lo que permite corregirla)
+    const note = cleanNote(input.note);
+    const reason = isRedoReason(input.reason) ? input.reason : note ? "otro" : null;
+    if (!reason) return fail(400, "reason", "Dinos qué no te gusta de esta ilustración.");
+    const bad = note ? (blockedWord(note) ?? contactData(note)) : null;
+    if (bad) return fail(422, "moderation", `Eso no lo podemos poner en un cuento infantil («${bad}»).`);
     const all = jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j));
-    if (all.length >= MAX_PAGE_JOBS) return fail(409, "max_versions", "Esta página ya no admite más versiones.");
-    wanted.push(pageRow(book, d, n, all.length + 1, sheet.id));
+    const current = currentPageJobs(jobs, d, n, sheet.id).filter((j) => j.status !== "failed");
+    if (all.length >= MAX_PAGE_JOBS || current.length >= 1 + MAX_PAGE_REDOS) return fail(409, "max_versions", "Esta página ya no admite más versiones.");
+    const redos = jobs.filter((j) => j.kind === "page" && j.variant > 1 && v2Of(j)).length;
+    if (redos >= MAX_BOOK_REDOS) return fail(409, "max_versions", "Ya has usado las versiones extra de este libro. Si alguna página sigue sin estar bien, avísanos desde esa página.");
+    // la escena se reescribe con el motivo; si falla el modelo, se usa la corrección fija del motivo
+    const ap = d.pagesArt!.pages.find((p) => p.n === n)!;
+    const page = d.plan.pages[n - 1];
+    let fix: { sceneEn: string; fixEn: string } = { sceneEn: ap.sceneEn, fixEn: REDO_FIX_EN[reason] };
+    try {
+      const r = await redoScene(d.castArt!, page, ap, REDO_REASONS[reason], note, llm);
+      fix = { sceneEn: r.sceneEn, fixEn: [REDO_FIX_EN[reason], r.fixEn].filter(Boolean).join(" ") };
+    } catch (e) {
+      console.warn(`[redo] ${e instanceof Error ? e.message.slice(0, 160) : "error"}`);
+    }
+    // la última versión posible de la página, con la escena simplificada
+    const simple = current.length + 1 === 1 + MAX_PAGE_REDOS;
+    wanted.push(pageRow(book, d, n, all.length + 1, sheet.id, { ...fix, simple }));
+    redo = { reason, note };
   } else {
     for (let n = 1; n <= 12; n++) {
       const cur = currentPageJobs(jobs, d, n, sheet.id);
@@ -532,7 +557,49 @@ export async function requestPages(
   if (wanted.length > 0) await store.markIllustrating(book.id);
   const keys = new Set(wanted.map((w) => w.job_key));
   const after = await store.listJobs(book.id);
-  return { ok: true, bookId: book.public_id, jobs: [...after.filter((j) => keys.has(j.job_key)).map((j) => j.id), ...reopenedIds], created: wanted.length };
+  const created = after.filter((j) => keys.has(j.job_key));
+  if (redo && created[0]) {
+    // el motivo se apunta aunque falle el guardado: no puede impedir la versión nueva
+    await store
+      .addFeedback({ book_id: book.id, job_id: created[0].id, kind: "redo", page_n: created[0].page_n!, variant: created[0].variant, reason: redo.reason, note: redo.note, style_id: created[0].style_id })
+      .catch((e) => console.warn(`[redo] feedback: ${e instanceof Error ? e.message.slice(0, 160) : "error"}`));
+  }
+  return { ok: true, bookId: book.public_id, jobs: [...created.map((j) => j.id), ...reopenedIds], created: wanted.length };
+}
+
+/**
+ * «Sigue sin estar bien» (sin versiones o sin que ninguna valga): queda apuntado y nos llega un email para arreglarla a
+ * mano. Una vez por página. `notify` manda el email (lib/mail.ts); en las pruebas, un doble.
+ */
+export async function reportPage(
+  store: GenStore,
+  input: { bookId?: unknown; page?: unknown; note?: unknown },
+  notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
+  link: (publicId: string) => string,
+): Promise<{ ok: true } | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  const { book, d } = loaded;
+  if (!(await store.hasPaidOrder(book.id))) return fail(402, "not_paid");
+  const n = Number(input.page);
+  if (!Number.isInteger(n) || n < 1 || n > 12) return fail(400, "page");
+  const note = cleanNote(input.note);
+  const bad = note ? (blockedWord(note) ?? contactData(note)) : null;
+  if (bad) return fail(422, "moderation", `Eso no lo podemos poner en un cuento infantil («${bad}»).`);
+  const prior = await store.listFeedback(book.id);
+  if (prior.some((f) => f.kind === "report" && f.page_n === n)) return fail(409, "already_reported", "Ya nos has avisado de esta página. La estamos mirando.");
+  await store.addFeedback({ book_id: book.id, job_id: null, kind: "report", page_n: n, variant: null, reason: "sigue_mal", note, style_id: d.ficha.styleId });
+  const redos = prior.filter((f) => f.kind === "redo" && f.page_n === n).map((f) => `- versión ${f.variant ?? "?"}: ${REDO_REASONS[f.reason as RedoReason] ?? f.reason}${f.note ? `: «${f.note}»` : ""}`);
+  const text = [
+    `Página ${n} del libro «${d.plan.title}» (${book.public_id}).`,
+    note ? `Lo que dice: «${note}»` : "No ha escrito nada más.",
+    redos.length ? `Versiones que pidió antes:\n${redos.join("\n")}` : "No pidió otras versiones con motivo.",
+    `Escena: ${d.plan.pages[n - 1]?.scene ?? ""}`,
+    `Libro: ${link(book.public_id)}`,
+  ].join("\n\n");
+  const sent = await notify(`Sigue sin estar bien: página ${n} de «${d.plan.title}»`, text);
+  if (!sent.sent) console.warn(`[report] aviso sin enviar (${book.public_id}, página ${n})`);
+  return { ok: true };
 }
 
 
@@ -560,6 +627,10 @@ export interface BookView {
   paid: boolean;
   approvedSheetJobId: string | null;
   sheetsLeft: number;
+  /** Versiones con motivo que quedan en el libro (tope MAX_BOOK_REDOS). */
+  redosLeft: number;
+  /** Páginas de las que ya avisó con «Sigue sin estar bien». */
+  reported: number[];
   jobs: BookJobView[];
   /** Lo que va al libro: portada de la hoja aprobada (o la última) y la versión elegida de cada página. */
   chosen: { sheet: string | null; cover: string | null; pages: Record<number, string | null> };
@@ -608,9 +679,12 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     pages[n] = pick?.id ?? null;
   }
   const order = await store.getOrder(book.id);
+  const feedback = await store.listFeedback(book.id).catch(() => []);
   return {
     ok: true,
     bookId: book.public_id,
+    redosLeft: Math.max(0, MAX_BOOK_REDOS - jobs.filter((j) => j.kind === "page" && j.variant > 1).length),
+    reported: [...new Set(feedback.filter((f) => f.kind === "report").map((f) => f.page_n))],
     ficha: d.ficha,
     plan: d.plan,
     paid: await store.hasPaidOrder(book.id),
