@@ -11,7 +11,7 @@ import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
 import { bookView, choosePage, payDryRun, pendingPageJobs, prepareCheckout, recordStripePayment, requestPages, savePlan, startBook, updateShipping } from "../../lib/book/service";
 import { completePrint, handlePrintWebhook, printCron, refreshPrint, startPrint, type PrintDeps } from "../../lib/book/print";
-import { advances, coverFromApi, estimatedCover, gelatoOrderBody, gelatoOrderType, gelatoPageCount, isLandscapeHardcover, mapGelatoStatus, pickLandscapeHardcover, printMode, type GelatoOrder } from "../../lib/print/gelato";
+import { advances, coverFromApi, estimatedCover, gelatoOrderBody, gelatoOrderType, gelatoPageCount, isLandscapeHardcover, landscapeSizeMm, mapGelatoStatus, pickLandscapeHardcover, printMode, type GelatoOrder } from "../../lib/print/gelato";
 import { cleanShipping, splitName } from "../../lib/print/shipping";
 import { PRICE_CENTS, eur } from "../../lib/print/prices";
 import { checkoutBody, printableInEnv } from "../../lib/stripe";
@@ -48,7 +48,7 @@ function fakeDeps(over: Partial<PrintDeps> = {}) {
     mode: "dry-run",
     orderType: "draft",
     pageCount: 34,
-    resolveProductUid: async () => "photobooks-hardcover_pf_280x210-mm-11x8-inch_pt_170-gsm",
+    resolveProductUid: async () => "photobooks-hardcover_pf_210x280-mm-8x11-inch_pt_170-gsm_hor",
     productSize: async () => ({ trimWidth: 280, trimHeight: 210, bleed: 4 }),
     coverGeometry: async () => estimatedCover(),
     estimatedCover,
@@ -106,16 +106,24 @@ test("Gelato: modo, tipo de pedido y estados", () => {
   assert.equal(gelatoOrderType({ VERCEL_ENV: "production" }), "order");
   assert.equal(gelatoPageCount({}), 34);
   assert.equal(gelatoPageCount({ GELATO_PAGE_COUNT: "32" }), 32);
-  assert.ok(isLandscapeHardcover("photobooks-hardcover_pf_280x210-mm-11x8-inch_pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_130-gsm-65-lb-cover-coated-silk_ver"));
-  assert.ok(!isLandscapeHardcover("photobooks-hardcover_pf_200x200-mm-8x8-inch"), "el cuadrado ya no");
-  assert.ok(!isLandscapeHardcover("photobooks-hardcover_pf_210x280-mm-8x11-inch"), "vertical no");
-  assert.ok(!isLandscapeHardcover("photobooks-softcover_pf_280x210-mm-11x8-inch"), "tapa blanda no");
-  assert.ok(!isLandscapeHardcover("photobooks-hardcover-layflat_pf_280x210-mm-11x8-inch"), "layflat no");
-  assert.equal(
-    pickLandscapeHardcover(["photobooks-hardcover_pf_200x200-mm-8x8-inch", "photobooks-hardcover_pf_420x297-mm", "photobooks-hardcover_pf_297x210-mm-a4", "photobooks-softcover_pf_280x210-mm"]),
-    "photobooks-hardcover_pf_297x210-mm-a4",
-    "la tapa dura apaisada más cercana a 280×210",
-  );
+  // productUid reales del catálogo de Gelato (20 oct): la medida corta primero y la orientación al final
+  const tail = "_pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_130-gsm-65-lb-cover-coated-silk";
+  const HOR = `photobooks-hardcover_pf_210x280-mm-8x11-inch${tail}_hor`;
+  const HOR_IN = `photobooks-hardcover_pf_8x11-inch-210x280-mm${tail}_hor`;
+  const VER = `photobooks-hardcover_pf_210x280-mm-8x11-inch${tail}_ver`;
+  const SQ = `photobooks-hardcover_pf_200x200-mm-8x8-inch${tail}_ver`;
+  const SOFT = "photobooks-softcover_pf_140x215-mm-5_5x8_5-inch_pt_250-gsm-100-lb-text-uncoated_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_250-gsm-100-lb-cover-uncoated_hor_custom";
+  assert.ok(isLandscapeHardcover(HOR));
+  assert.ok(isLandscapeHardcover(HOR_IN));
+  assert.ok(!isLandscapeHardcover(VER), "vertical no");
+  assert.ok(!isLandscapeHardcover(SQ), "el cuadrado ya no");
+  assert.ok(!isLandscapeHardcover(SOFT), "tapa blanda no");
+  assert.ok(!isLandscapeHardcover(`photobooks-hardcover-layflat_pf_210x280-mm${tail}_hor`), "layflat no");
+  assert.deepEqual(landscapeSizeMm(HOR), { w: 280, h: 210 });
+  assert.deepEqual(landscapeSizeMm(HOR_IN), { w: 280, h: 210 });
+  assert.equal(landscapeSizeMm(VER), null);
+  assert.equal(pickLandscapeHardcover([SQ, VER, HOR_IN, HOR, SOFT]), HOR, "la apaisada, la variante en milímetros");
+  assert.equal(pickLandscapeHardcover([SQ, VER, HOR_IN]), HOR_IN);
   assert.equal(pickLandscapeHardcover(["photobooks-hardcover_pf_200x200-mm-8x8-inch"]), null);
   assert.equal(mapGelatoStatus("passed"), "sent");
   assert.equal(mapGelatoStatus("printed"), "in_production");
