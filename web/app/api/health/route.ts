@@ -27,6 +27,19 @@ interface GelatoCatalog {
   chosen: string | null;
   size: { trimWidth: number; trimHeight: number } | null;
   cover: { source: string; width: number; height: number; spine: number } | null;
+  /** precio a España y medidas de la cubierta según el pageCount: para ver qué cuenta Gelato (¿30 interiores o 34 con tapas?) */
+  byPageCount: Record<string, { price: unknown; cover: unknown }>;
+}
+
+async function gelatoGet(path: string): Promise<{ status: number; json: unknown }> {
+  const key = process.env.GELATO_API_KEY?.trim();
+  if (!key) return { status: 0, json: null };
+  try {
+    const res = await fetch(`https://product.gelatoapis.com/v3${path}`, { headers: { "X-API-KEY": key }, signal: AbortSignal.timeout(15_000), cache: "no-store" });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  } catch {
+    return { status: 0, json: null };
+  }
 }
 
 async function gelatoCatalog(pageCount: number): Promise<GelatoCatalog | "error"> {
@@ -35,6 +48,18 @@ async function gelatoCatalog(pageCount: number): Promise<GelatoCatalog | "error"
     const chosen = await resolveProductUid();
     const size = chosen ? await productSize(chosen) : null;
     const cover = chosen ? await coverGeometry(chosen, pageCount) : null;
+    const byPageCount: GelatoCatalog["byPageCount"] = {};
+    if (chosen) {
+      for (const n of [28, 30, 32, 34]) {
+        const uid = encodeURIComponent(chosen);
+        const [price, cov] = await Promise.all([gelatoGet(`/products/${uid}/prices?country=ES&currency=EUR&pageCount=${n}`), gelatoGet(`/products/${uid}/cover-dimensions?pageCount=${n}`)]);
+        const c = cov.json as Record<string, unknown> | null;
+        byPageCount[n] = {
+          price: price.status === 200 ? price.json : { status: price.status, body: JSON.stringify(price.json).slice(0, 200) },
+          cover: cov.status === 200 && c ? { pagesCount: c.pagesCount, spine: (c.spineSize as { width?: number } | undefined)?.width } : { status: cov.status, body: JSON.stringify(cov.json).slice(0, 200) },
+        };
+      }
+    }
     return {
       photobooks: all.length,
       uids: all.slice(0, 60),
@@ -42,6 +67,7 @@ async function gelatoCatalog(pageCount: number): Promise<GelatoCatalog | "error"
       chosen,
       size: size ? { trimWidth: size.trimWidth, trimHeight: size.trimHeight } : null,
       cover: cover ? { source: cover.source, width: cover.width, height: cover.height, spine: cover.spine.width } : null,
+      byPageCount,
     };
   } catch {
     return "error";
