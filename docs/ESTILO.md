@@ -45,7 +45,7 @@ La web actual es correcta pero sobria: papel beige, tinta, un solo acento verde,
 - Sin cursivas en textos que pueden llevar «f» (dedicatorias, cuento). La marca «cuentos» y «para» sí van en cursiva.
 - Descartadas: Fraunces, por su «f», y Kalam, que tiene una «f» parecida.
 
-**Forma:** botones y chips píldora; tarjetas de 20–24 px de radio; secciones de 28 px; imágenes de 14. El libro se enseña como objeto: A4 vertical, ilustración 3:2 arriba con el título, «para Vera» en la banda (como el PDF real), lomo sombreado y cantos de papel.
+**Forma:** botones y chips píldora; tarjetas de 20–24 px de radio; secciones de 28 px; imágenes de 14. El libro se enseña como objeto apaisado (D5 bis, 18 oct; antes A4 vertical): la portada es la ilustración entera con el título y «para Vera» arriba a la izquierda, con lomo sombreado y cantos de papel. Las páginas se enseñan como libro abierto: ilustración a la izquierda y texto a la derecha (`BookSpread`); en móvil, una debajo de otra.
 
 **Motivos:** estrella de cuatro puntas, luna, colina entre la noche y la crema, manchas de gouache detrás de las imágenes, cinta adhesiva en la hoja de personajes, camino de puntos para el progreso.
 

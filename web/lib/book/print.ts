@@ -8,7 +8,7 @@
  *
  * Todo lo externo (maquetar el PDF, la API de Gelato, los emails) se inyecta en `PrintDeps`, para probarlo sin red.
  */
-import { advances, mapGelatoStatus, type CoverGeometry, type GelatoOrder, type GelatoOrderInput, type PrintMode, type PrintSize } from "../print/gelato";
+import { advances, DEFAULT_PRINT_SIZE, mapGelatoStatus, type CoverGeometry, type GelatoOrder, type GelatoOrderInput, type PrintMode, type PrintSize } from "../print/gelato";
 import { shippingLine } from "../print/shipping";
 import type { PaidOrder, PrintStatus } from "../print/types";
 import type { GenStore } from "../generation/store";
@@ -39,7 +39,7 @@ export interface PrintDeps {
 }
 
 const fail = (status: number, error: string, reason?: string): Fail => ({ ok: false, status, error, ...(reason ? { reason } : {}) });
-const DEFAULT_SIZE: PrintSize = { trimWidth: 200, trimHeight: 200, bleed: 4 };
+const DEFAULT_SIZE: PrintSize = DEFAULT_PRINT_SIZE;
 /** El PDF de imprenta se queda en el bucket y la imprenta lo descarga con este enlace firmado. */
 const FILE_URL_SECONDS = 7 * 24 * 3600;
 

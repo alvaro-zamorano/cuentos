@@ -152,13 +152,13 @@ export function StepCast({
         />
       )}
 
-      <section className="grid items-center gap-6 sm:grid-cols-[230px_1fr] sm:gap-9" aria-label="La portada">
+      <section className="grid items-center gap-6 sm:grid-cols-[300px_1fr] sm:gap-9" aria-label="La portada">
         <BookCover
           name={name}
           title={record.plan.title}
           from={ficha.from?.trim()}
           tilt={-2}
-          className="w-[210px] justify-self-center sm:w-full"
+          className="w-[280px] justify-self-center sm:w-full"
           image={<BookImage job={cover} alt="Portada" testId="cover" box="absolute inset-0 overflow-hidden" />}
         />
         <div className="grid gap-3">
@@ -171,7 +171,7 @@ export function StepCast({
               </span>
               <span className="grid">
                 <span className="font-bold">Tu cuento gratis en PDF</span>
-                <span className="text-sm">Portada y texto, para imprimir en A4</span>
+                <span className="text-sm">Portada y texto, para imprimir en A4 apaisado</span>
               </span>
             </a>
           )}
@@ -306,7 +306,7 @@ function EmailGate({
         <p className="mt-3 max-w-[48ch] text-moon-soft">
           En uno o dos minutos verás {who} y la portada del libro. Es gratis, igual que el cuento en PDF con la portada.
         </p>
-        <div aria-hidden className="mt-7 grid max-w-[440px] grid-cols-[1.5fr_1fr] items-end gap-5">
+        <div aria-hidden className="mt-7 grid max-w-[460px] grid-cols-2 items-end gap-5">
           <div className="grid aspect-[3/2] place-items-center rounded-2xl border-2 border-dashed border-moon/25 bg-night-2">
             <span className="hand px-3 text-center text-[18px] text-moon-soft">sus personajes</span>
           </div>

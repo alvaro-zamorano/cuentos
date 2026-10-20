@@ -1,6 +1,6 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-18, noche (variables y webhook de Gelato; preview comprobada con Stripe, Resend y Gelato) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
+Actualizado: 2026-10-18, noche (libro apaisado en web, PDF e impreso; variables y webhook de Gelato; preview comprobada con Stripe, Resend y Gelato) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
@@ -82,6 +82,9 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-18 | Correo de `hola@erasesuvez.com` con **Resend** en vez de un servicio de reenvío (Álvaro). Sustituye la línea anterior sobre el reenvío. Resend recibe, avisa a `/api/mail/inbound` y la web lo reenvía a `MAIL_FORWARD_TO` con «Responder a» el remitente; no se reenvía lo que no pasa DMARC | Un proveedor menos con datos de clientes: Resend ya está en la política de privacidad | `lib/inbound.ts`, `PAGO.md` |
 | 2026-10-18 | El planificador no inventa familiares (abuelos, padres, hermanos, tíos, primos) que el adulto no haya puesto: rechazo duro y nuevo intento. Texto e imagen tienen que contar lo mismo. Nadie medio tapado por un mueble. Lo que el protagonista recibe en la historia no va en su ropa habitual. El control de calidad rechaza personajes que atraviesan objetos | Libro de Olivia: abuela inventada, perro atravesando el sofá, capa y corona desde la página 1 (`ILUSTRACION.md`) | `lib/plan/prompt.ts`, `validate.ts`, `art.ts`, `qc.ts` |
 | 2026-10-18 | «Otra versión» pedirá el motivo (opciones y una línea) para recoger feedback y corregir el prompt; una versión más por página con motivo y tope por libro; en el último intento se simplifica la escena; si aun así no vale, «Sigue sin estar bien» nos avisa por email (Álvaro aprueba la propuesta) | Hoy «Otra versión» repite el prompt idéntico: si el fallo está en la escena, se repite | `lib/book/feedback.ts`, `requestPages`, `reportPage`, `/api/libro/report`, tabla `cuentos_feedback` (migración 0006) |
+| 2026-10-18 | **D5 bis (Álvaro): «que todo se vea como un libro normal», apaisado.** Sustituye D5 (A4 vertical, imagen arriba y texto en banda) y el 20×20 de D7. Impreso: tapa dura apaisada; el código elige en el catálogo de Gelato la apaisada más cercana a 280×210 mm (sin confirmar en el catálogo: lo dirá la compra de prueba). PDF: A4 apaisado con la misma maqueta. Web: portada apaisada y doble página. En todos, cada escena a doble página: ilustración a página completa a la izquierda y texto a la derecha. Las ilustraciones siguen en 3:2 y se recortan un poco por los lados; los prompts piden a los personajes lejos de los bordes | Un libro infantil de verdad se ve así; las imágenes ya eran horizontales y los contenedores no. Cierra E15 (el blanco bajo el texto) | `lib/pdf/printHtml.ts` (maqueta única), `lib/pdf/book2.ts`, `lib/print/gelato.ts`, `components/brand.tsx` (`BookCover`, `BookSpread`), `SampleFlipper.tsx`, `StepBook.tsx`, `StepCast.tsx`, `app/page.tsx`, condiciones §6, `lib/plan/art.ts`; PLAN (D5, D7, E15), `IMPRESION.md` §3, `ESTILO.md` §3 |
+| 2026-10-18 | La contracubierta del impreso dice `erasesuvez.com` (decía `erasesuvez.es`, que no es nuestro) | Cambio de marca; un dominio ajeno impreso en cada libro | `lib/pdf/printHtml.ts` (`SITE_DOMAIN`) |
+| 2026-10-18 | El PDF gratis (D3) lleva también la página «Así son los personajes»; el de pago, además, el colofón. Los dos salen de la maqueta del impreso | Un solo diseño de libro en vez de dos. *Propuesta de Claude, pendiente de que Álvaro la confirme* (encaja con §4.22) | `lib/pdf/printHtml.ts` |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -144,13 +147,20 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Arreglos del libro de Olivia comprobados en la preview (PR #13):** la página 3 repintada con las reglas nuevas sale con Topito entero y delante del sofá (escena reescrita a «stands beside the sofa», sin «glasses», con la línea de personajes sólidos; control de calidad aprobado). Coste: una imagen (6 c) y su control. La capa y la corona siguen en ese libro porque conserva su dirección de arte del reparto; en libros nuevos ya no.
 - **Motivo de «Otra versión» (PR B):** cinco motivos y una línea libre; con ellos un modelo reescribe la escena y el prompt lleva la corrección; la última versión posible se simplifica; hasta 2 versiones con motivo por página y 8 por libro; después, «¿Sigue sin estar bien? Avísanos» manda un email a `MAIL_FORWARD_TO` con la página, lo que pidió antes y el enlace. Tabla `cuentos_feedback` creada en Supabase el 18 oct (aditiva, RLS sin políticas). A los 30 días se vacía la nota y la fila se desliga del libro. Para ver qué falla: `select reason, count(*) from cuentos_feedback group by 1`.
 
+### 18 oct, noche (libro apaisado)
+
+- **Comprobado en local:** tsc, eslint, 109 unitarios, build, 9 Playwright (el recorrido descarga el PDF y comprueba 29 páginas A4 apaisadas). PDF de la muestra: imprenta de 33 páginas (cubierta estimada de 610×240 mm e interior de 288×218), ilustrado de 29 y gratis de 17, mirados en capturas. Capturas de la landing y de los pasos 1, 4 y 5 en móvil (390 px) y escritorio (1440 px), con las imágenes de la muestra en lugar de las de prueba.
+- **Sin comprobar:** qué tapa dura apaisada tiene Gelato (su catálogo no se ve sin clave) y cómo queda impresa. La búsqueda acepta cualquier tapa dura apaisada sin «layflat»; `GELATO_PRODUCT_UID` la fija.
+- **El PDF de la muestra pesa unos 25 MB** porque las imágenes locales son WebP y Chromium las reincrusta. En Vercel las ilustraciones son JPEG (el PDF vertical pesaba 6,75 MB): mirarlo en la compra de prueba.
+- **La imagen para compartir** (`app/opengraph-image.jpg`) sigue enseñando el libro vertical. Rehacerla cuando se apruebe el apaisado.
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
 2. **Stripe:** claves (pasos en `PAGO.md`). Resend ya está (18 oct). Álvaro.
 3. **Legales (E6):** los cuatro datos del titular van en las variables `LEGAL_*` de Vercel (PR #5). Quedan como hueco: región de Supabase, IVA y epígrafe IAE. E18 decidido el 16 oct. Álvaro.
 4. **Fiscal:** IVA al 4 % decidido (18 oct). Quedan el epígrafe IAE y cómo emitir las facturas. Álvaro con su gestoría.
-5. **Formato del PDF (D5):** con A4 vertical e imagen 3:2 queda blanco bajo el texto. ¿Se mantiene, o se prueba una imagen más alta (4:3) o un formato cuadrado? Decisión de Álvaro.
+5. ~~**Formato del PDF (D5):**~~ Cerrado el 18 oct: apaisado en todo (D5 bis, §2). Antes: con A4 vertical e imagen 3:2 quedaba blanco bajo el texto.
 6. ~~**Antes de unir el PR #1:** ¿se borran las rutas del flujo antiguo y `/api/dev`?~~ El flujo antiguo redirige a `/crear` (16 oct). `/api/dev` sigue: en producción da 404 siempre.
 7. **`claude/ASSETS.md` está superado por D1.** ¿Se retira del Project? Sigue en el repo.
 8. **Vigilar el paso 3:** una vez, en la preview, el cuento nuevo no apareció en 150 s; no se ha podido reproducir (después tardó 26 s y 4 s). Si vuelve a pasar, mirar los logs de `/api/plan` en Vercel.
@@ -178,13 +188,14 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 29. ~~**Stripe en producción**~~ Cobro real (Álvaro, 18 oct) y salvaguarda en el código (§2). Falta que Álvaro active la cuenta, ponga `sk_live_` y el secreto del endpoint real en Production y separe `STRIPE_WEBHOOK_SECRET` de Preview (`PAGO.md`). Álvaro.
 30. ~~**Buzón de `hola@erasesuvez.com`**~~ Funciona con Resend desde el 18 oct (noche; §3). Al salir a producción, cambiar la URL del webhook de Resend a `www`. Para revisar con los legales: el buzón de destino es un Gmail personal.
 31. ~~**Variable antigua `service_role`**~~ Borrada de Vercel el 18 oct (noche), con el visto bueno de Álvaro. Entra en el siguiente despliegue.
+32. **Tamaño del libro apaisado:** 280×210 mm es supuesto. En la compra de prueba, mirar en el pedido de Gelato qué producto eligió y sus medidas; fijarlo en `GELATO_PRODUCT_UID` y poner la medida real en las condiciones §6 y en `IMPRESION.md`. Claude con Álvaro.
 
 ## 5. Próxima sesión — empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. Preguntar a Álvaro por §4.19 (Gemini de pago) y §4.22 (qué es gratis).
 3. Correo entrante: hecho y probado (§3). Al unir el PR #1 a `main`, cambiar la URL del webhook de Resend a `https://www.erasesuvez.com/api/mail/inbound`.
-4. **Compra de prueba completa en la preview** (todo configurado el 18 oct, noche): Álvaro crea un libro de tapa dura, paga con la tarjeta 4242 4242 4242 4242 y pulsa «Mandar a imprimir». Claude comprueba el webhook de Stripe (200), el pedido en `cuentos_orders`, las 12 páginas pintadas con la pestaña cerrada, los dos emails, el borrador en Gelato (producto, medidas de la cubierta, que acepte el PDF) y los avisos del webhook de Gelato. Coste: unos 1 $ de generación. Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.25 y §4.27.
+4. **Compra de prueba completa en la preview** (todo configurado el 18 oct, noche): Álvaro crea un libro de tapa dura, paga con la tarjeta 4242 4242 4242 4242 y pulsa «Mandar a imprimir». Claude comprueba el webhook de Stripe (200), el pedido en `cuentos_orders`, las 12 páginas pintadas con la pestaña cerrada, los dos emails, el borrador en Gelato (producto, medidas de la cubierta, que acepte el PDF) y los avisos del webhook de Gelato. Coste: unos 1 $ de generación. Comprobar también el producto apaisado que elige el catálogo y sus medidas (§4.32). Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.25 y §4.27.
 5. Stripe real en Production (§4.29, `PAGO.md`): lo pone Álvaro. La salvaguarda del código va en el PR de `feat/stripe-livemode`.
 6. Antes de unir el PR #1 a `main`: variables de producción (§7 del PLAN; ya están `CRON_SECRET`, `GELATO_WEBHOOK_SECRET`, `RESEND_WEBHOOK_SECRET`, `MAIL_FORWARD_TO` y `LEGAL_EMAIL`; faltan `SITE_URL`, los otros `LEGAL_*` y Stripe real), cambiar el webhook de Gelato a `https://www.erasesuvez.com/api/print/webhook?token=…` (mismo token), CI en verde, descripción del PR al día y la prueba con tres personas (B7). Después, comprobar en producción `https://www.erasesuvez.com/robots.txt` (debe permitir y apuntar al sitemap) y la vista previa del enlace en WhatsApp.
 
