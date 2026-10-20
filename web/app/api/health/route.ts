@@ -7,15 +7,43 @@ import { geminiModel, providerName } from "@/lib/generation/adapter";
 import { mailEnabled } from "@/lib/mail";
 import { forwardTargets, inboundEnabled } from "@/lib/inbound";
 import { paymentMode } from "@/lib/stripe";
-import { gelatoOrderType, gelatoPageCount, printMode } from "@/lib/print/gelato";
+import { coverGeometry, findPhotobookProducts, gelatoOrderType, gelatoPageCount, isLandscapeHardcover, printMode, productSize, resolveProductUid } from "@/lib/print/gelato";
 
 /**
  * GET /api/health — qué configuración tiene este despliegue. Nunca devuelve valores, solo si existen.
  * GET /api/health?deep=1 — además comprueba cada clave con una llamada gratuita (sin generar nada):
  *   Supabase: un count sobre cuentos_books · Anthropic: ficha del modelo configurado · Gemini: ficha del modelo de imagen.
+ *   Gelato: el catálogo de fotolibros, el producto que se usaría, sus medidas y las de la cubierta (solo lectura).
  * Respuesta de cada comprobación: "ok", el código HTTP del proveedor o "error".
  */
 type Check = "ok" | "skipped" | "error" | number | { status: number; type?: string; message?: string };
+
+/** Lo que Gelato tiene para el libro apaisado: los productUid no son secretos. */
+interface GelatoCatalog {
+  photobooks: number;
+  landscapeHardcovers: string[];
+  chosen: string | null;
+  size: { trimWidth: number; trimHeight: number } | null;
+  cover: { source: string; width: number; height: number; spine: number } | null;
+}
+
+async function gelatoCatalog(pageCount: number): Promise<GelatoCatalog | "error"> {
+  try {
+    const all = await findPhotobookProducts();
+    const chosen = await resolveProductUid();
+    const size = chosen ? await productSize(chosen) : null;
+    const cover = chosen ? await coverGeometry(chosen, pageCount) : null;
+    return {
+      photobooks: all.length,
+      landscapeHardcovers: all.filter(isLandscapeHardcover).slice(0, 12),
+      chosen,
+      size: size ? { trimWidth: size.trimWidth, trimHeight: size.trimHeight } : null,
+      cover: cover ? { source: cover.source, width: cover.width, height: cover.height, spine: cover.spine.width } : null,
+    };
+  } catch {
+    return "error";
+  }
+}
 
 const has = (k: string) => Boolean(process.env[k]?.trim());
 
@@ -66,7 +94,15 @@ export async function GET(req: Request) {
     background: process.env.BACKGROUND_PAINT !== "0",
     cron: { secret: has("CRON_SECRET") },
     // libro impreso (B8): "gelato" con clave; fuera de producción los pedidos son borradores salvo GELATO_ORDER_TYPE=order
-    print: { mode: printMode(), orderType: gelatoOrderType(), pageCount: gelatoPageCount(), apiKey: has("GELATO_API_KEY"), productUid: has("GELATO_PRODUCT_UID"), webhookSecret: has("GELATO_WEBHOOK_SECRET") },
+    print: {
+      mode: printMode(),
+      orderType: gelatoOrderType(),
+      pageCount: gelatoPageCount(),
+      apiKey: has("GELATO_API_KEY"),
+      productUid: has("GELATO_PRODUCT_UID"),
+      webhookSecret: has("GELATO_WEBHOOK_SECRET"),
+      catalog: "skipped" as Check | GelatoCatalog,
+    },
   };
 
   if (deep) {
@@ -103,6 +139,13 @@ export async function GET(req: Request) {
       checks.push(
         status("https://api.resend.com/emails/receiving?limit=1", { authorization: `Bearer ${resendKey}` }).then((c) => {
           out.inbound.receivingCheck = c;
+        }),
+      );
+    }
+    if (process.env.GELATO_API_KEY?.trim()) {
+      checks.push(
+        gelatoCatalog(out.print.pageCount).then((c) => {
+          out.print.catalog = c;
         }),
       );
     }
