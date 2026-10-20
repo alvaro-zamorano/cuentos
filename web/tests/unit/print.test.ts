@@ -11,11 +11,11 @@ import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
 import { bookView, choosePage, payDryRun, pendingPageJobs, prepareCheckout, recordStripePayment, requestPages, savePlan, startBook, updateShipping } from "../../lib/book/service";
 import { completePrint, handlePrintWebhook, printCron, refreshPrint, startPrint, type PrintDeps } from "../../lib/book/print";
-import { advances, coverFromApi, estimatedCover, gelatoOrderBody, gelatoOrderType, gelatoPageCount, isSquareHardcover, mapGelatoStatus, printMode, type GelatoOrder } from "../../lib/print/gelato";
+import { advances, coverFromApi, estimatedCover, gelatoOrderBody, gelatoOrderType, gelatoPageCount, isLandscapeHardcover, mapGelatoStatus, pickLandscapeHardcover, printMode, type GelatoOrder } from "../../lib/print/gelato";
 import { cleanShipping, splitName } from "../../lib/print/shipping";
 import { PRICE_CENTS, eur } from "../../lib/print/prices";
 import { checkoutBody, printableInEnv } from "../../lib/stripe";
-import { printCoverHtml, printInteriorHtml } from "../../lib/pdf/printHtml";
+import { pdfBookHtml, printCoverHtml, printInteriorHtml } from "../../lib/pdf/printHtml";
 import { purgeExpired, type PurgeDb } from "../../lib/purge";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -48,8 +48,8 @@ function fakeDeps(over: Partial<PrintDeps> = {}) {
     mode: "dry-run",
     orderType: "draft",
     pageCount: 34,
-    resolveProductUid: async () => "photobooks-hardcover_pf_200x200-mm-8x8-inch_pt_170-gsm",
-    productSize: async () => ({ trimWidth: 200, trimHeight: 200, bleed: 4 }),
+    resolveProductUid: async () => "photobooks-hardcover_pf_280x210-mm-11x8-inch_pt_170-gsm",
+    productSize: async () => ({ trimWidth: 280, trimHeight: 210, bleed: 4 }),
     coverGeometry: async () => estimatedCover(),
     estimatedCover,
     render: async () => new Uint8Array([37, 80, 68, 70]),
@@ -64,7 +64,7 @@ function fakeDeps(over: Partial<PrintDeps> = {}) {
       shipped: async (to, _title, url) => (mails.push(`enviado|${to}|${url}`), { sent: true }),
       reminder: async (to) => (mails.push(`recordatorio|${to}`), { sent: true }),
     },
-    link: (id) => `https://erasesuvez.es/crear?b=${id}`,
+    link: (id) => `https://www.erasesuvez.com/crear?b=${id}`,
     ...over,
   };
   return { deps, mails, orders, setGelato: (g: Partial<GelatoOrder>) => (gelato = { ...gelato, ...g }) };
@@ -106,9 +106,17 @@ test("Gelato: modo, tipo de pedido y estados", () => {
   assert.equal(gelatoOrderType({ VERCEL_ENV: "production" }), "order");
   assert.equal(gelatoPageCount({}), 34);
   assert.equal(gelatoPageCount({ GELATO_PAGE_COUNT: "32" }), 32);
-  assert.ok(isSquareHardcover("photobooks-hardcover_pf_200x200-mm-8x8-inch_pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_130-gsm-65-lb-cover-coated-silk_ver"));
-  assert.ok(!isSquareHardcover("photobooks-softcover_pf_200x200-mm-8x8-inch"));
-  assert.ok(!isSquareHardcover("photobooks-hardcover_pf_210x280-mm-8x11-inch"));
+  assert.ok(isLandscapeHardcover("photobooks-hardcover_pf_280x210-mm-11x8-inch_pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_130-gsm-65-lb-cover-coated-silk_ver"));
+  assert.ok(!isLandscapeHardcover("photobooks-hardcover_pf_200x200-mm-8x8-inch"), "el cuadrado ya no");
+  assert.ok(!isLandscapeHardcover("photobooks-hardcover_pf_210x280-mm-8x11-inch"), "vertical no");
+  assert.ok(!isLandscapeHardcover("photobooks-softcover_pf_280x210-mm-11x8-inch"), "tapa blanda no");
+  assert.ok(!isLandscapeHardcover("photobooks-hardcover-layflat_pf_280x210-mm-11x8-inch"), "layflat no");
+  assert.equal(
+    pickLandscapeHardcover(["photobooks-hardcover_pf_200x200-mm-8x8-inch", "photobooks-hardcover_pf_420x297-mm", "photobooks-hardcover_pf_297x210-mm-a4", "photobooks-softcover_pf_280x210-mm"]),
+    "photobooks-hardcover_pf_297x210-mm-a4",
+    "la tapa dura apaisada más cercana a 280×210",
+  );
+  assert.equal(pickLandscapeHardcover(["photobooks-hardcover_pf_200x200-mm-8x8-inch"]), null);
   assert.equal(mapGelatoStatus("passed"), "sent");
   assert.equal(mapGelatoStatus("printed"), "in_production");
   assert.equal(mapGelatoStatus("in_transit"), "shipped");
@@ -117,7 +125,7 @@ test("Gelato: modo, tipo de pedido y estados", () => {
   assert.equal(eur(PRICE_CENTS.hardcover), "34,90 €");
 });
 
-test("cubierta: medidas de la API (el pliego es la unión de las áreas) y la estimada para un 20×20", () => {
+test("cubierta: medidas de la API (el pliego es la unión de las áreas) y la estimada para el apaisado de 280×210", () => {
   const api = coverFromApi({
     productUid: "x",
     measureUnit: "mm",
@@ -136,31 +144,54 @@ test("cubierta: medidas de la API (el pliego es la unión de las áreas) y la es
   assert.equal(api.source, "gelato");
   assert.equal(coverFromApi({ spineSize: { width: 6, height: 280 } }), null, "sin portada ni trasera no vale");
   const est = estimatedCover();
-  assert.equal(est.width, 450);
-  assert.equal(est.height, 230);
+  assert.equal(est.width, 610);
+  assert.equal(est.height, 240);
   assert.ok(est.back.left + est.back.width < est.spine.left && est.spine.left + est.spine.width < est.front.left);
 });
 
-test("maqueta: 30 páginas interiores de 208 mm (20 cm + sangre) y la cubierta con portada, lomo y trasera", () => {
+test("maqueta: 30 páginas interiores apaisadas (280×210 + sangre), ilustración a la izquierda y cubierta con portada, lomo y trasera", () => {
   const input = { plan, heroName: "Vera", from: "los abuelos", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
-  const inner = printInteriorHtml(input, { trimWidth: 200, trimHeight: 200, bleed: 4 });
+  const inner = printInteriorHtml(input, { trimWidth: 280, trimHeight: 210, bleed: 4 });
   assert.equal(inner.pages, 30);
-  assert.equal(inner.widthMm, 208);
+  assert.equal(inner.widthMm, 288);
+  assert.equal(inner.heightMm, 218);
   assert.equal((inner.html.match(/<section class="pg/g) ?? []).length, 30);
   assert.equal((inner.html.match(/class="ill"/g) ?? []).length, 12, "una ilustración por escena");
-  assert.match(inner.html, /size: 208mm 208mm/);
+  assert.match(inner.html, /size: 288mm 218mm/);
   assert.match(inner.html, /octubre de 2026/);
   assert.match(inner.html, /De parte de los abuelos/);
-  // cada ilustración en una página par (izquierda): portadilla 1, personajes 2, dedicatoria 3, escena 1 en la 4
-  const sections = inner.html.split('<section class="pg"').slice(1);
+  // cada ilustración en una página par (izquierda) y su texto enfrente: portadilla 1, personajes 2, dedicatoria 3, escena 1 en la 4
+  const sections = inner.html.split('<section class="pg').slice(1);
   sections.forEach((sec, i) => {
-    if (sec.includes('class="ill"')) assert.equal((i + 1) % 2, 0, `ilustración en la página ${i + 1}`);
+    if (sec.includes('class="ill"')) {
+      assert.equal((i + 1) % 2, 0, `ilustración en la página ${i + 1}`);
+      assert.match(sections[i + 1], /class="txt"/, `texto enfrente de la página ${i + 1}`);
+    }
   });
   const cover = printCoverHtml(input, estimatedCover());
-  assert.equal(cover.widthMm, 450);
-  assert.match(cover.html, /size: 450mm 230mm/);
+  assert.equal(cover.widthMm, 610);
+  assert.match(cover.html, /size: 610mm 240mm/);
   assert.match(cover.html, /class="area spine"/);
+  assert.match(cover.html, /erasesuvez\.com/);
+  assert.doesNotMatch(cover.html, /erasesuvez\.es/, "el .es no es nuestro");
   assert.ok(cover.html.includes(plan.title.replace(/&/g, "&amp;").slice(0, 20)));
+});
+
+test("PDF que se descarga: A4 apaisado con la maqueta del libro; el gratis sin las 12 ilustraciones", () => {
+  const input = { plan, heroName: "Vera", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
+  const full = pdfBookHtml(input, "full");
+  assert.equal(full.pages, 29, "portada, personajes, dedicatoria, 24, fin y colofón");
+  assert.match(full.html, /size: 297mm 210mm/);
+  const sections = full.html.split('<section class="pg').slice(1);
+  assert.match(sections[0], /cover\.jpg/, "la portada primero");
+  sections.slice(1).forEach((sec, j) => {
+    const page = j + 2;
+    if (sec.includes("https://img/p")) assert.equal(page % 2, 0, `ilustración en la página ${page}: a la izquierda con la portada sola`);
+  });
+  const free = pdfBookHtml(input, "free");
+  assert.equal(free.pages, 17);
+  assert.doesNotMatch(free.html, /https:\/\/img\/p\d/, "sin las ilustraciones de pago");
+  assert.match(free.html, /cover\.jpg/);
 });
 
 test("Stripe: la tapa dura va en los metadatos con su nombre y su descripción", () => {

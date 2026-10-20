@@ -352,7 +352,8 @@ export function coverPrompt(art: CastArt, style: StyleDef): string {
     `Scene: ${art.coverEn.replace(/\.?$/, ".")}`,
     `Characters: ${recurring.map((c) => castLine(c)).join("; ")}.`,
     sameAsSheet(recurring),
-    `Landscape 3:2. Inviting, warm and bright; keep the upper third of the image calm and simple (sky, wall or soft background) so the title can sit over it.`,
+    // el libro es apaisado (4:3 o A4): la ilustración 3:2 se recorta un poco por los lados
+    `Landscape 3:2. Inviting, warm and bright; keep the upper third of the image calm and simple (sky, wall or soft background) so the title can sit over it. Keep the characters away from the left and right edges.`,
     SOLID,
     STYLE_REF_ONLY,
     NO_TEXT,
@@ -382,7 +383,8 @@ export function pagePrompt(art: CastArt, page: PlanPage, artPage: ArtPage, style
     // la hoja trae a todo el reparto y el modelo tiende a meterlo entero (página 1 de Mateo: apareció la gata)
     absent.length ? `${absent.map((c) => c.name).join(" and ")} ${absent.length > 1 ? "are" : "is"} on the reference sheet but must NOT appear in this image.` : "",
     `${FRAMING[page.shot] ?? FRAMING.medio}; ${LIGHT[page.time] ?? LIGHT.dia}.`,
-    "Landscape 3:2 composition.",
+    // la página del libro es apaisada (4:3 o A4) y la ilustración va a sangre: se recorta un poco por los lados
+    "Landscape 3:2 composition; keep the characters and key objects away from the far left and right edges.",
     fix.fixEn ? `Correction from the previous version: ${fix.fixEn.replace(/\.?$/, ".")}` : "",
     fix.simple ? SIMPLE_EN : "",
     SOLID,

@@ -13,3 +13,8 @@ export function indexable(env: Record<string, string | undefined> = process.env)
 
 /** Páginas públicas que van al sitemap (el flujo antiguo redirige a /crear y no entra). */
 export const PUBLIC_PATHS = ["/", "/crear", "/privacidad", "/condiciones", "/aviso-legal"] as const;
+
+/** Las del sitemap: sin /crear mientras la app esté cerrada (lib/appOpen.ts). */
+export function sitemapPaths(open: boolean): string[] {
+  return PUBLIC_PATHS.filter((p) => open || p !== "/crear");
+}

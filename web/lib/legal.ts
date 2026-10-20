@@ -24,7 +24,18 @@ export function titular(env: Record<string, string | undefined> = process.env): 
   return { name: clean(env.LEGAL_NAME), nif: clean(env.LEGAL_NIF), address: clean(env.LEGAL_ADDRESS), email: clean(env.LEGAL_EMAIL) };
 }
 
-/** ¿Están los cuatro datos? Sin ellos no se puede abrir al público. */
+/** Nombre comercial: lo que enseñan los legales cuando no hay nombre del titular (decisión de Álvaro, 20 oct). */
+export const BRAND = "Érase su vez";
+
+/**
+ * Quién es el titular en una línea. Con nombre, NIF y domicilio en las variables, los tres; sin ellos, el nombre
+ * comercial. Álvaro decidió con su gestoría (20 oct) salir sin nombre, NIF ni domicilio; el email sí va.
+ */
+export function holderLine(t: Titular): string {
+  return [t.name ?? BRAND, t.nif ? `NIF ${t.nif}` : null, t.address ? `domicilio en ${t.address}` : null].filter(Boolean).join(", ");
+}
+
+/** ¿Están los cuatro datos? (Se sale sin ellos por decisión de Álvaro, 20 oct; ver holderLine.) */
 export function titularComplete(t: Titular): boolean {
   return !!(t.name && t.nif && t.address && t.email);
 }

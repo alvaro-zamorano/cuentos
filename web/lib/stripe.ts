@@ -73,7 +73,7 @@ export function checkoutBody({ bookId, email, title, amountCents, origin, waiver
   p.set("line_items[0][price_data][product_data][name]", `${hard ? "Libro de tapa dura" : "Libro ilustrado"} · ${title}`.slice(0, 120));
   p.set(
     "line_items[0][price_data][product_data][description]",
-    hard ? "Tapa dura de 20×20 cm con 12 ilustraciones, envío a la Península y Baleares incluido, y el PDF." : "12 ilustraciones, revisión página a página y PDF para imprimir en A4.",
+    hard ? "Libro apaisado de tapa dura con 12 ilustraciones, envío a la Península y Baleares incluido, y el PDF." : "12 ilustraciones, revisión página a página y PDF para imprimir en A4 apaisado.",
   );
   p.set("locale", "es");
   return p;
