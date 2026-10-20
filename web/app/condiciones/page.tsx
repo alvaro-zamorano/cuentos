@@ -32,7 +32,7 @@ export default function Condiciones() {
         <li>Cuentas la idea y cómo es el niño o la niña.</li>
         <li>Escribimos el cuento con IA. Puedes cambiar cualquier texto o pedir que se reescriba una página con una frase.</li>
         <li>Con tu email pintamos la hoja de personajes y la portada. Puedes pedir hasta dos cambios con palabras.</li>
-        <li>Al pagar se pintan las doce páginas. Puedes pedir una versión más de cada página.</li>
+        <li>Al pagar se pintan las doce páginas. Si una ilustración no te convence, nos dices qué cambiar y pintamos otra: hasta dos versiones más por página. Si aun así no queda bien, nos avisas desde esa página y la arreglamos nosotros.</li>
         <li>Descargas el PDF.</li>
         <li>
           Si has comprado el libro de tapa dura, lo revisas y pulsas «Mandar a imprimir». No lo imprimimos hasta entonces, y después ya no se
@@ -43,8 +43,8 @@ export default function Condiciones() {
       <h2>4. Contenido hecho con IA</h2>
       <p>
         El cuento y las ilustraciones los generan modelos de inteligencia artificial y tú los revisas antes de pagar. Pueden salir detalles que no
-        esperabas o pequeñas diferencias entre ilustraciones. Por eso puedes ver el cuento entero, la hoja y la portada antes de pagar, y pedir otra
-        versión de cada página después.
+        esperabas o pequeñas diferencias entre ilustraciones. Por eso puedes ver el cuento entero, la hoja y la portada antes de pagar, y pedir otras
+        versiones de cada página después.
       </p>
 
       <h2>5. Declaración de quien compra</h2>

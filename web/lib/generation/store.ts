@@ -95,6 +95,20 @@ export interface GenStore {
   claimPrint(id: string, from: PrintStatus[], to: PrintStatus): Promise<boolean>;
   /** Pedidos de tapa dura en alguno de estos estados (para el cron), los más antiguos primero. */
   listPrintOrders(statuses: PrintStatus[], limit: number): Promise<PaidOrder[]>;
+  addFeedback(row: FeedbackRow): Promise<void>;
+  listFeedback(bookId: string): Promise<FeedbackRow[]>;
+}
+
+/** Motivo de «Otra versión» o aviso de «Sigue sin estar bien» (cuentos_feedback, lib/book/feedback.ts). */
+export interface FeedbackRow {
+  book_id: string;
+  job_id: string | null;
+  kind: "redo" | "report";
+  page_n: number;
+  variant: number | null;
+  reason: string;
+  note: string | null;
+  style_id: string | null;
 }
 
 export interface NewPaidOrder {
@@ -307,6 +321,19 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       if (error) throw new Error(`orders: ${error.message}`);
       return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
     },
+    async addFeedback(row) {
+      const { error } = await db.from("cuentos_feedback").insert(row);
+      if (error) throw new Error(`feedback: ${error.message}`);
+    },
+    async listFeedback(bookId) {
+      const { data, error } = await db
+        .from("cuentos_feedback")
+        .select("book_id, job_id, kind, page_n, variant, reason, note, style_id")
+        .eq("book_id", bookId)
+        .order("created_at", { ascending: true });
+      if (error) throw new Error(`feedback: ${error.message}`);
+      return (data ?? []).map((r) => ({ ...r, book_id: r.book_id ?? bookId, kind: r.kind === "report" ? "report" : "redo" }));
+    },
   };
 }
 
@@ -318,6 +345,7 @@ interface MemoryState {
   tick: number;
   paid?: Set<string>;
   orders?: Map<string, PaidOrder>;
+  feedback?: FeedbackRow[];
 }
 
 /** Estado en globalThis: las rutas de Next pueden cargar el módulo más de una vez en el mismo proceso. */
@@ -401,6 +429,12 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async listPrintOrders(statuses, limit) {
       return [...(state.orders?.values() ?? [])].filter((o) => o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus)).slice(0, limit).map((o) => ({ ...o }));
+    },
+    async addFeedback(row) {
+      (state.feedback ??= []).push({ ...row });
+    },
+    async listFeedback(bookId) {
+      return (state.feedback ?? []).filter((f) => f.book_id === bookId).map((f) => ({ ...f }));
     },
     async listJobs(bookId) {
       return [...state.jobs.values()].filter((j) => j.book_id === bookId).map(clone);

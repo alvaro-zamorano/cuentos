@@ -72,7 +72,7 @@ function fakeDb() {
 test("purga: con dry=1 cuenta y no toca nada", async () => {
   const { db, books, removed } = fakeDb();
   const r = await purgeExpired(db, { dryRun: true });
-  assert.deepEqual({ ...r }, { dryRun: true, deleted: 1, scrubbedPaid: 1, keptForPrint: 0, files: 3, stories: 5, leads: 1, spend: 1, remaining: false });
+  assert.deepEqual({ ...r }, { dryRun: true, deleted: 1, scrubbedPaid: 1, keptForPrint: 0, files: 3, stories: 5, leads: 1, spend: 1, feedback: 0, remaining: false });
   assert.equal(books.size, 3);
   assert.deepEqual(removed, []);
 });

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
+import { MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
 import type { Plan, PlanPage } from "@/lib/plan/types";
 import { EDITION_LABEL, PRICE_CENTS, eur } from "@/lib/print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition } from "@/lib/print/types";
@@ -32,7 +33,7 @@ function paintingCopy(v: BookView | null): string {
 /**
  * Paso 5: el libro. Antes del pago, la portada y las 12 páginas veladas con el precio. Tras el pago, las 12
  * ilustraciones (el servidor las pinta en segundo plano y el navegador, si sigue abierto, también tira de ellas),
- * revisión página a página con una versión más incluida, y el PDF.
+ * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
  * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
 export function StepBook({ bookId, confirming = false, onPlan }: { bookId: string; confirming?: boolean; onPlan: (p: Plan) => void }) {
@@ -73,7 +74,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
   );
 
   const paintPages = useCallback(
-    async (body: { page?: number } = {}) => {
+    async (body: { page?: number; reason?: RedoReason; note?: string } = {}) => {
       setError(null);
       setBusy(body.page ? `Pintando otra versión de la página ${body.page}…` : "Preparando las ilustraciones…");
       const r = await postJson<{ jobs?: string[] }>("/api/libro/pages", { bookId, ...body });
@@ -171,7 +172,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
             {view.paid
               ? locked
                 ? "Así va impreso. Ya no se puede cambiar."
-                : `Tu libro${hardcover ? " de tapa dura" : " ilustrado"}. Revisa cada página: el texto se puede retocar y cada ilustración admite una versión más.`
+                : `Tu libro${hardcover ? " de tapa dura" : " ilustrado"}. Revisa cada página: el texto se puede retocar y, si una ilustración no te convence, dinos qué cambiar y pintamos otra.`
               : "Portada, dedicatoria y doce páginas, que se pintarán con la hoja que has aprobado."}
           </p>
         </div>
@@ -208,7 +209,15 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
                 const r = await postJson("/api/libro/page", { bookId, jobId });
                 if (r.status === 200) await refresh();
               }}
-              onAnother={() => void paintPages({ page: p.n })}
+              redosLeft={view.redosLeft}
+              reported={view.reported.includes(p.n)}
+              onAnother={(reason, note) => void paintPages({ page: p.n, reason, note })}
+              onReport={async (note) => {
+                const r = await postJson("/api/libro/report", { bookId, page: p.n, note });
+                if (r.status !== 200) return errorMessage(r.json);
+                await refresh();
+                return null;
+              }}
             />
           ))}
         </ol>
@@ -420,9 +429,12 @@ function PageView({
   chosen,
   disabled,
   locked,
+  redosLeft,
+  reported,
   onText,
   onChoose,
   onAnother,
+  onReport,
 }: {
   page: PlanPage;
   jobs: BookJobView[];
@@ -430,20 +442,30 @@ function PageView({
   disabled: boolean;
   /** Ya en la imprenta: solo se ve. */
   locked: boolean;
+  /** Versiones con motivo que quedan en el libro. */
+  redosLeft: number;
+  /** Ya avisó de esta página con «Sigue sin estar bien». */
+  reported: boolean;
   onText: (t: string) => void;
   onChoose: (jobId: string) => void;
-  onAnother: () => void;
+  onAnother: (reason: RedoReason, note: string) => void;
+  onReport: (note: string) => Promise<string | null>;
 }) {
+  const [panel, setPanel] = useState<"redo" | "report" | null>(null);
   const current = jobs.filter((j) => j.current);
   const shown = current.find((j) => j.id === chosen) ?? current[current.length - 1];
   const done = current.filter((j) => j.status === "done");
-  const canAnother = !locked && jobs.length < 3 && done.length > 0 && done.length < 2;
+  const busyHere = current.some(inFlight);
+  const canAnother = !locked && jobs.length < 2 + MAX_PAGE_REDOS && done.length > 0 && current.filter((j) => j.status !== "failed").length < 1 + MAX_PAGE_REDOS && redosLeft > 0;
+  // sin versiones (de la página o del libro) y con alguna hecha: nos avisa y la arreglamos a mano
+  const canReport = !locked && !reported && done.length > 0 && !canAnother && !busyHere;
+  const left = Math.min(1 + MAX_PAGE_REDOS - current.filter((j) => j.status !== "failed").length, redosLeft);
   return (
     <li className="overflow-hidden rounded-[22px] bg-card shadow-[0_2px_0_#e6d8c1,0_24px_40px_-32px_rgba(35,32,54,0.5)]" data-testid={`book-page-${page.n}`}>
       <BookImage job={shown} alt={`Ilustración de la página ${page.n}`} box="relative aspect-[3/2] w-full overflow-hidden bg-paper-deep" />
       <div className="grid gap-3 px-5 pt-4 pb-4 sm:px-7">
         {done.length > 1 && (
-          <div className="flex gap-2" role="group" aria-label={`Versiones de la página ${page.n}`}>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={`Versiones de la página ${page.n}`}>
             {done.map((j) => (
               <button key={j.id} aria-pressed={j.id === shown?.id} disabled={locked} className={`chip btn-sm ${j.id === shown?.id ? "chip-on" : ""}`} onClick={() => onChoose(j.id)}>
                 Versión {j.variant}
@@ -459,16 +481,112 @@ function PageView({
           onChange={(e) => onText(e.target.value)}
           aria-label={`Texto de la página ${page.n}`}
         />
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-[12px] tracking-[0.14em] text-mute">{page.n}</span>
-          {canAnother && (
-            <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-deep hover:underline disabled:opacity-40" disabled={disabled} onClick={onAnother}>
+          {canAnother && panel !== "redo" && (
+            <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-deep hover:underline disabled:opacity-40" disabled={disabled} onClick={() => setPanel("redo")} data-testid={`another-${page.n}`}>
               <Icon.brush size={15} />
               Otra versión de esta ilustración
             </button>
           )}
+          {canReport && panel !== "report" && (
+            <button className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={() => setPanel("report")} data-testid={`report-${page.n}`}>
+              ¿Sigue sin estar bien? Avísanos
+            </button>
+          )}
+          {reported && !locked && <span className="text-[13px] text-mute">Nos has avisado: la estamos mirando.</span>}
         </div>
+        {panel === "redo" && canAnother && (
+          <RedoForm
+            left={left}
+            disabled={disabled}
+            onCancel={() => setPanel(null)}
+            onSubmit={(reason, note) => {
+              setPanel(null);
+              onAnother(reason, note);
+            }}
+          />
+        )}
+        {panel === "report" && canReport && <ReportForm onCancel={() => setPanel(null)} onSubmit={onReport} />}
       </div>
     </li>
+  );
+}
+
+/** «Otra versión»: qué no le gusta (obligatorio) y, si quiere, qué cambiaría. Con eso se corrige la versión nueva. */
+function RedoForm({ left, disabled, onCancel, onSubmit }: { left: number; disabled: boolean; onCancel: () => void; onSubmit: (reason: RedoReason, note: string) => void }) {
+  const [reason, setReason] = useState<RedoReason | null>(null);
+  const [note, setNote] = useState("");
+  const ready = !!reason || !!note.trim();
+  return (
+    <form
+      className="grid gap-3 rounded-2xl bg-paper-deep/60 p-4"
+      data-testid="redo-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready) onSubmit(reason ?? "otro", note.trim());
+      }}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="display text-[18px]">¿Qué no te gusta?</p>
+        <span className="text-[13px] text-mute">{left === 1 ? "te queda 1 versión" : `te quedan ${left} versiones`}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Motivo">
+        {(Object.keys(REDO_REASONS) as RedoReason[]).map((k) => (
+          <button type="button" key={k} aria-pressed={reason === k} className={`chip btn-sm ${reason === k ? "chip-on" : ""}`} onClick={() => setReason(reason === k ? null : k)}>
+            {REDO_REASONS[k]}
+          </button>
+        ))}
+      </div>
+      <input
+        className="input"
+        value={note}
+        maxLength={REDO_NOTE_MAX}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Cuéntanos qué cambiarías (opcional)"
+        aria-label="Qué cambiarías"
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary btn-sm" disabled={disabled || !ready} data-testid="redo-submit">
+          <Icon.brush size={15} />
+          Pintar otra versión
+        </button>
+        <button type="button" className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** «Sigue sin estar bien»: nos llega un aviso con la página y lo arreglamos a mano. */
+function ReportForm({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (note: string) => Promise<string | null> }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-3 rounded-2xl bg-paper-deep/60 p-4"
+      data-testid="report-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(await onSubmit(note.trim()));
+        setBusy(false);
+      }}
+    >
+      <p className="display text-[18px]">Lo arreglamos nosotros</p>
+      <p className="text-sm text-ink-soft">Cuéntanos qué falla y te escribimos cuando esté. Mientras, puedes elegir la versión que menos te disguste.</p>
+      <input className="input" value={note} maxLength={REDO_NOTE_MAX} onChange={(e) => setNote(e.target.value)} placeholder="Qué falla en esta ilustración" aria-label="Qué falla" />
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary btn-sm" disabled={busy} data-testid="report-submit">
+          Enviar aviso
+        </button>
+        <button type="button" className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+      {err && <p className="text-sm text-danger">{err}</p>}
+    </form>
   );
 }

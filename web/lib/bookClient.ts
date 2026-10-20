@@ -108,6 +108,10 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return "Ahora mismo no podemos guardar el libro. Inténtalo más tarde.";
     case "print_unavailable":
       return "El libro impreso todavía no está disponible.";
+    case "reason":
+      return json.reason ?? "Dinos qué no te gusta de esta ilustración.";
+    case "already_reported":
+      return json.reason ?? "Ya nos has avisado de esta página.";
     case "test_order":
       return "Este libro se pagó en modo de prueba y no se imprime.";
     case "printed":
