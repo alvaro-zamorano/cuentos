@@ -88,8 +88,9 @@ El detalle está en `PLAN.md` §5. Resumen:
 | PDF y maqueta del libro | `lib/pdf/printHtml.ts` (maqueta única del libro apaisado: impreso y PDF), `lib/pdf/book2.ts` (PDF en A4 apaisado), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf`; en la web, `BookCover` y `BookSpread` en `components/brand.tsx` |
 | Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra y los dos PDF que se descargan), migración `0005` |
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (dos crons: borrado e imprenta) |
-| Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`); proveedores en `docs/PROVEEDORES.md` |
+| Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`; sin ellos, el nombre comercial); proveedores en `docs/PROVEEDORES.md` |
 | Buscadores | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts` (solo producción con `SITE_URL`) |
+| App abierta o cerrada («Muy pronto») | `lib/appOpen.ts` (`APP_OPEN`; sin valor, cerrada en producción), `proxy.ts` (`/crear` a la landing, API a 404 salvo salud, crons, correo y webhooks), `app/page.tsx` |
 | Salud y pruebas | `app/api/health`; `app/api/dev` (fuera de producción; en Vercel solo con `DEV_TOKEN`, `lib/devAccess.ts`; fuerza Gemini y cuesta dinero) |
 | Tests | `tests/unit/*.test.ts` (100), `tests/crear.spec.ts` + `tests/journey.spec.ts` (9 Playwright), `.github/workflows/ci.yml` |
 | Flujo antiguo (fuera del embudo por D1; redirige a `/crear` desde el 16 oct, `next.config.ts`) | `app/{clasico,ilustrado,libro,gratis}`, `lib/{story,pieces,arcs,…}`, `app/api/{story,jobs,books,pdf,generate/book,generate/sample}` |
