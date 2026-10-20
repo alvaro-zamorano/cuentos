@@ -138,7 +138,7 @@ function Crear() {
           )}
           <div key={s.step} className="rise">
             {s.step === 1 && <StepIdea ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(2)} />}
-            {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} />}
+            {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
             {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(4)} />}
             {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => update({ bookId: id, email })} onNext={() => go(5)} />}
             {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
