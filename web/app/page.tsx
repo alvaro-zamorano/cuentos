@@ -8,6 +8,9 @@ import { paymentMode } from "@/lib/stripe";
 import { printMode } from "@/lib/print/gelato";
 import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
+import { appEnabled, startCta } from "@/lib/launch";
+import { ocasionForStarter, ocasionPath } from "@/lib/ocasiones";
+import { ClosedNote } from "@/components/ocasiones/parts";
 
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
@@ -92,12 +95,17 @@ const FAQ = [
 const CHECK = <Icon.check size={18} className="shrink-0 text-star" />;
 
 export default function Landing() {
+  // app cerrada (lib/launch.ts, 20 oct): los botones llevan a la lista de espera y las ideas, a su página de ocasión
+  const open = appEnabled();
+  const start = startCta(open).href;
+  const cta = (label: string) => (open ? label : "Avísame cuando abra");
+  const ideaHref = (id: string) => (open ? startCta(true, id).href : ocasionForStarter(id) ? ocasionPath(ocasionForStarter(id)!.slug) : startCta(false, id).href);
   // se fija al construir la página (estática): Stripe configurado → disponible
-  const illustratedStatus = { stripe: null, "dry-run": "Disponible en prueba", none: "Muy pronto" }[paymentMode()];
+  const illustratedStatus = open ? { stripe: null, "dry-run": "Disponible en prueba", none: "Muy pronto" }[paymentMode()] : null;
   // tapa dura: hace falta el pago y la imprenta (o las dos simuladas en la preview)
   const pm = paymentMode();
   const pr = printMode();
-  const hardcoverStatus = pm === "none" || pr === "none" ? "Muy pronto" : pm === "dry-run" || pr === "dry-run" ? "Disponible en prueba" : null;
+  const hardcoverStatus = !open ? null : pm === "none" || pr === "none" ? "Muy pronto" : pm === "dry-run" || pr === "dry-run" ? "Disponible en prueba" : null;
   return (
     <main className="flex-1">
       {/* Portada en noche */}
@@ -118,8 +126,8 @@ export default function Landing() {
                 Preguntas
               </a>
             </div>
-            <Link href="/crear" className="btn-primary btn-sm">
-              Crear su cuento
+            <Link href={start} className="btn-primary btn-sm">
+              {open ? "Crear su cuento" : "Avísame"}
             </Link>
           </nav>
         </SiteHeader>
@@ -132,20 +140,21 @@ export default function Landing() {
           <div className="grid gap-6">
             <span className="inline-flex items-center gap-2 justify-self-start rounded-full border border-star/40 bg-star/15 px-3.5 py-1.5 text-sm font-semibold text-star">
               <Sparkle size={12} />
-              Su cuento, esta misma noche
+              {open ? "Su cuento, esta misma noche" : "Abrimos muy pronto"}
             </span>
             <h1 className="display m-0 text-[44px] leading-[1.04] text-moon sm:text-[58px] lg:text-[74px]">
               Una frase tuya. <span className="text-star">Un libro suyo.</span>
             </h1>
             <p className="m-0 max-w-[36ch] text-lg leading-relaxed text-moon-soft sm:text-xl">Cuéntanos la idea en una frase. La convertimos en un cuento ilustrado de doce páginas, con tu hijo, tu nieta o tu sobrino de protagonista.</p>
             <div className="mt-1 flex flex-wrap items-center gap-3">
-              <Link href="/crear" className="btn-primary btn-lg">
-                Crear su cuento <Icon.arrow size={20} />
+              <Link href={start} className="btn-primary btn-lg">
+                {cta("Crear su cuento")} <Icon.arrow size={20} />
               </Link>
               <a href="#muestra" className="btn-moon btn-lg">
                 Ver un libro de ejemplo
               </a>
             </div>
+            <ClosedNote open={open} className="-mt-2 text-moon-soft" />
             <ul className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[15px] text-[#b9c1da]">
               <li className="flex items-center gap-2">{CHECK}Sin subir fotos</li>
               <li className="flex items-center gap-2">{CHECK}El cuento y la portada, gratis</li>
@@ -191,8 +200,8 @@ export default function Landing() {
           ))}
         </ol>
         <div className="mt-12 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-center">
-          <Link href="/crear" className="btn-primary btn-lg">
-            Empezar su cuento
+          <Link href={start} className="btn-primary btn-lg">
+            {cta("Empezar su cuento")}
           </Link>
           <span className="text-[15px] text-ink-soft">Lees el cuento entero y ves su portada gratis. Pagas solo por las doce ilustraciones.</span>
         </div>
@@ -232,12 +241,12 @@ export default function Landing() {
           <p className="display m-0 text-[22px] sm:text-[24px]">¿Por dónde empezamos?</p>
           <div className="flex max-w-[860px] flex-wrap justify-center gap-2.5">
             {STARTS.map((s) => (
-              <Link key={s.id} href={`/crear?idea=${s.id}`} className="chip transition-transform hover:-translate-y-0.5">
+              <Link key={s.id} href={ideaHref(s.id)} className="chip transition-transform hover:-translate-y-0.5">
                 <s.icon size={18} className="text-accent" />
                 {s.label}
               </Link>
             ))}
-            <Link href="/crear" className="chip chip-on transition-transform hover:-translate-y-0.5">
+            <Link href={start} className="chip chip-on transition-transform hover:-translate-y-0.5">
               <Sparkle size={15} />
               Sorpréndeme
             </Link>
@@ -282,8 +291,8 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <Link href="/crear" className="btn-ghost mt-auto w-full">
-                Empezar gratis
+              <Link href={start} className="btn-ghost mt-auto w-full">
+                {cta("Empezar gratis")}
               </Link>
             </div>
 
@@ -305,8 +314,8 @@ export default function Landing() {
                 ))}
               </ul>
               {hardcoverStatus && <p className="m-0 text-sm text-moon-soft">{hardcoverStatus}</p>}
-              <Link href="/crear" className="btn-primary mt-auto w-full">
-                Crear su cuento
+              <Link href={start} className="btn-primary mt-auto w-full">
+                {cta("Crear su cuento")}
               </Link>
             </div>
 
@@ -324,8 +333,8 @@ export default function Landing() {
                 ))}
               </ul>
               {illustratedStatus && <p className="m-0 text-sm text-ink-soft">{illustratedStatus}</p>}
-              <Link href="/crear" className="btn-ghost mt-auto w-full">
-                Crear su cuento
+              <Link href={start} className="btn-ghost mt-auto w-full">
+                {cta("Crear su cuento")}
               </Link>
             </div>
           </div>
@@ -372,10 +381,10 @@ export default function Landing() {
             ¿Qué historia le vas a contar <span className="text-star">esta noche?</span>
           </h2>
           <p className="m-0 max-w-[44ch] text-lg text-moon-soft">Una frase, su nombre y unos rasgos. Lo demás lo hacemos nosotros.</p>
-          <Link href="/crear" className="btn-primary btn-lg mt-2">
-            Crear su cuento
+          <Link href={start} className="btn-primary btn-lg mt-2">
+            {cta("Crear su cuento")}
           </Link>
-          <span className="hand text-[19px] text-star">el cuento escrito, gratis</span>
+          <span className="hand text-[19px] text-star">{open ? "el cuento escrito, gratis" : "abrimos muy pronto"}</span>
         </div>
       </section>
     </main>

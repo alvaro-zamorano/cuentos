@@ -1,6 +1,6 @@
 # ÍNDICE MAESTRO — cuentos
 
-Actualizado: 2026-10-18 · Owner: Álvaro · Fase: B1–B5 hechos (a B5 le faltan las claves), B6 en parte (estilo y copy unidos), B7 en curso, B8 (libro impreso, D7) código hecho, falta la clave de Gelato
+Actualizado: 2026-10-20 · Owner: Álvaro · Fase: B1–B5 hechos (a B5 le faltan las claves), B6 en parte (estilo y copy unidos), B7 en curso, B8 (libro impreso, D7) código hecho, falta la clave de Gelato
 
 Mapa para empezar cualquier hilo. Lee esto y `ESTADO.md`; el resto, solo si la tarea lo pide. Los documentos que mandan están en el repo (`docs/`). El Project «Cuentos niños» guarda una copia (`claude/…`); quien cambie uno, actualiza el otro.
 
@@ -88,6 +88,8 @@ El detalle está en `PLAN.md` §5. Resumen:
 | PDF | `lib/pdf/book2.ts` (maqueta), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf` |
 | Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra), migración `0005` |
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (dos crons: borrado e imprenta) |
+| Interruptor de la app y lista de espera (20 oct) | `lib/launch.ts` (`APP_ENABLED`), `proxy.ts`, `app/lista-de-espera`, `components/WaitlistForm.tsx`, `app/api/lista` (guarda en `cuentos_leads`) |
+| Páginas de ocasión (SEO) | `lib/ocasiones.ts` (contenido), `app/cuento-personalizado/` (índice y `[ocasion]`), `components/ocasiones/parts.tsx`, `components/JsonLd.tsx`, `app/sitemap.ts` |
 | Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`); proveedores en `docs/PROVEEDORES.md` |
 | Buscadores | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts` (solo producción con `SITE_URL`) |
 | Salud y pruebas | `app/api/health`; `app/api/dev` (fuera de producción; en Vercel solo con `DEV_TOKEN`, `lib/devAccess.ts`; fuerza Gemini y cuesta dinero) |

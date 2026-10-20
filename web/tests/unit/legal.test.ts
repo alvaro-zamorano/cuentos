@@ -16,3 +16,10 @@ test("titular: sin variables o con blancos, huecos (y no se puede abrir al públ
   assert.equal(titularComplete(t), false);
   assert.equal(titularComplete(titular({})), false);
 });
+
+test("titularLine: sin datos, la marca; con ellos, nombre, NIF y domicilio", async () => {
+  const { titularLine } = await import("../../lib/legal");
+  assert.equal(titularLine(titular({})), "Érase su vez");
+  assert.equal(titularLine(titular({ LEGAL_NAME: "Ana Pérez", LEGAL_NIF: "00000000T", LEGAL_ADDRESS: "Calle Mayor 1, Madrid" })), "Ana Pérez, NIF 00000000T, domicilio Calle Mayor 1, Madrid");
+  assert.equal(titularLine(titular({ LEGAL_NAME: "Ana Pérez" })), "Ana Pérez");
+});

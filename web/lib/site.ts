@@ -11,5 +11,5 @@ export function indexable(env: Record<string, string | undefined> = process.env)
   return env.VERCEL_ENV === "production" && !!siteUrl(env);
 }
 
-/** Páginas públicas que van al sitemap (el flujo antiguo redirige a /crear y no entra). */
+/** Páginas públicas que van al sitemap (el flujo antiguo redirige a /crear y no entra; las ocasiones, en sitemap.ts). */
 export const PUBLIC_PATHS = ["/", "/crear", "/privacidad", "/condiciones", "/aviso-legal"] as const;

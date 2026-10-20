@@ -31,7 +31,8 @@ test("Flujo antiguo: /clasico, /ilustrado, /libro y /gratis llevan a /crear", as
     expect(new URL(r.headers()["location"], "http://x").pathname, path).toBe("/crear");
   }
   await page.goto("/gratis");
-  await expect(page).toHaveURL(/\/crear$/);
+  // con la app cerrada (APP_ENABLED=0, tests/salida.spec.ts), /crear sigue hasta la lista de espera
+  await expect(page).toHaveURL(process.env.APP_ENABLED === "0" ? /\/lista-de-espera$/ : /\/crear$/);
   expect(consoleErrors).toEqual([]);
 });
 

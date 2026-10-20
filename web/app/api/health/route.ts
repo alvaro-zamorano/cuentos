@@ -7,6 +7,7 @@ import { geminiModel, providerName } from "@/lib/generation/adapter";
 import { mailEnabled } from "@/lib/mail";
 import { forwardTargets, inboundEnabled } from "@/lib/inbound";
 import { paymentMode } from "@/lib/stripe";
+import { appEnabled } from "@/lib/launch";
 import { gelatoOrderType, gelatoPageCount, printMode } from "@/lib/print/gelato";
 
 /**
@@ -58,6 +59,8 @@ export async function GET(req: Request) {
     story: { requested, active: provider.name, model: storyModel, artModel: selectLlm("art").model, qcModel: selectLlm("qc").model, anthropicKey: has("ANTHROPIC_API_KEY"), openaiKey: has("OPENAI_API_KEY"), check: "skipped" as Check },
     anthropic: { model: anthropicModel, check: "skipped" as Check },
     images: { provider: imageProvider, geminiKey: has("GEMINI_API_KEY"), geminiModel: geminiModel(), check: "skipped" as Check },
+    // interruptor de la app (lib/launch.ts): cerrada en producción salvo APP_ENABLED=1
+    app: { enabled: appEnabled(), variable: process.env.APP_ENABLED ?? null },
     // mode: "stripe" con STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET; "dry-run" nunca en producción
     payment: { mode: paymentMode(), dryRun: process.env.NEXT_PUBLIC_DRY_RUN_PAYMENT === "1", stripeKey: has("STRIPE_SECRET_KEY"), stripeWebhookSecret: has("STRIPE_WEBHOOK_SECRET") },
     mail: { enabled: mailEnabled(), resendKey: has("RESEND_API_KEY"), from: has("MAIL_FROM"), siteUrl: has("SITE_URL") },

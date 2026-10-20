@@ -1,14 +1,21 @@
 import { SiteHeader } from "./SiteHeader";
+import { DEFAULT_CONTACT } from "@/lib/legal";
 
-/** Plantilla común de las páginas legales. Todas son borradores hasta la revisión por abogado (PRD §9, §15.5). */
+/**
+ * Plantilla común de las páginas legales. Son borradores hasta la revisión por abogado (PRD §9, §15.5): el aviso se ve
+ * en las previews, no en producción.
+ */
 export function LegalPage({ title, updated, children }: { title: string; updated: string; children: React.ReactNode }) {
+  const draft = process.env.VERCEL_ENV !== "production";
   return (
     <main className="flex-1">
       <SiteHeader />
       <article className="legal mx-auto max-w-3xl px-4 pb-16 pt-6 sm:px-6">
-        <p className="notice mb-8" role="note" data-testid="legal-draft">
-          Borrador pendiente de revisión legal
-        </p>
+        {draft && (
+          <p className="notice mb-8" role="note" data-testid="legal-draft">
+            Borrador pendiente de revisión legal
+          </p>
+        )}
         <h1 className="display text-[34px] md:text-[44px]">{title}</h1>
         <p className="mt-2 text-sm text-ink-soft">Última actualización: {updated}</p>
         <div className="mt-8 grid max-w-[68ch] gap-4 leading-relaxed">{children}</div>
@@ -17,23 +24,12 @@ export function LegalPage({ title, updated, children }: { title: string; updated
   );
 }
 
-/** Hueco que hay que rellenar antes de publicar (titular, NIF, dirección…). */
-export function Pending({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-[3px] bg-paper-deep px-1 text-ink-soft">[{children}]</span>;
-}
-
-/** Un dato del titular (lib/legal.ts): el valor si está en las variables de entorno; si no, el hueco marcado. */
-export function Dato({ value, children }: { value?: string; children: React.ReactNode }) {
-  return value ? <>{value}</> : <Pending>{children}</Pending>;
-}
-
-/** El email de contacto como enlace, o el hueco. */
+/** El email de contacto como enlace (LEGAL_EMAIL o, sin él, el de la marca). */
 export function ContactEmail({ value }: { value?: string }) {
-  return value ? (
-    <a href={`mailto:${value}`} className="link">
-      {value}
+  const email = value ?? DEFAULT_CONTACT;
+  return (
+    <a href={`mailto:${email}`} className="link">
+      {email}
     </a>
-  ) : (
-    <Pending>email de contacto</Pending>
   );
 }

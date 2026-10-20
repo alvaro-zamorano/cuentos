@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ContactEmail, Dato, LegalPage } from "@/components/LegalPage";
-import { titular } from "@/lib/legal";
+import { ContactEmail, LegalPage } from "@/components/LegalPage";
+import { titular, titularLine } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Condiciones" };
 
@@ -11,7 +11,7 @@ export default function Condiciones() {
     <LegalPage title="Condiciones de uso y de compra" updated="18 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
-        <Dato value={t.name}>nombre o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, <Dato value={t.address}>dirección</Dato>, <ContactEmail value={t.email} />. Datos completos en el{" "}
+        {titularLine(t)}, <ContactEmail value={t.email} />. Datos completos en el{" "}
         <Link href="/aviso-legal" className="link">aviso legal</Link>.
       </p>
 

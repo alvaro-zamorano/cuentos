@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ContactEmail, Dato, LegalPage, Pending } from "@/components/LegalPage";
-import { titular } from "@/lib/legal";
+import { ContactEmail, LegalPage } from "@/components/LegalPage";
+import { titular, titularLine } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Política de privacidad" };
 
 export default function Privacidad() {
   const t = titular();
   return (
-    <LegalPage title="Política de privacidad" updated="18 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="20 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
-        Responsable del tratamiento: <Dato value={t.name}>nombre y apellidos o razón social</Dato>, NIF <Dato value={t.nif}>NIF</Dato>, domicilio{" "}
-        <Dato value={t.address}>dirección</Dato>. Contacto para privacidad: <ContactEmail value={t.email} />.
+        Responsable del tratamiento: {titularLine(t)}. Contacto para privacidad: <ContactEmail value={t.email} />.
       </p>
 
       <h2>2. Qué datos tratamos</h2>
@@ -29,6 +28,10 @@ export default function Privacidad() {
         <li>
           <strong>Datos de quien crea o compra el libro</strong>: el email, si quieres o no recibir novedades y, si compras, los datos del
           pedido. Los datos de la tarjeta los recoge Stripe; nosotros no los vemos.
+        </li>
+        <li>
+          <strong>Si te apuntas a la lista de espera</strong>: el email y, si llegas desde la página de una ocasión (Navidad, cumpleaños…),
+          cuál era.
         </li>
         <li>
           <strong>Si compras el libro impreso</strong>: el nombre y la dirección de quien lo recibe y, si lo das, un teléfono para el
@@ -77,6 +80,10 @@ export default function Privacidad() {
           en cualquier momento desde el propio email o escribiéndonos.
         </li>
         <li>
+          Avisarte cuando abramos y enviarte novedades, si te apuntas a la lista de espera y lo aceptas en su casilla (consentimiento, art. 21
+          LSSI). Cada email lleva cómo darte de baja.
+        </li>
+        <li>
           Medición de uso de la web (Microsoft Clarity) en forma agregada: <strong>solo si lo aceptas</strong> en el aviso de cookies
           (consentimiento, art. 22.2 LSSI). Si lo rechazas, no se carga y no se instala ninguna cookie de medición. Puedes cambiar tu elección
           borrando los datos de este sitio en tu navegador.
@@ -102,6 +109,7 @@ export default function Privacidad() {
           El email que nos das para recibir el enlace del libro se borra a los 30 días, con el libro, si no has aceptado recibir novedades. Si
           compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
+        <li>El email de la lista de espera lo guardamos hasta que te des de baja.</li>
         <li>Si nos escribes, guardamos tu mensaje el tiempo necesario para atenderte y, si es sobre un pedido, con el pedido.</li>
         <li>
           El motivo de «otra versión» y lo que escribas se guardan con el libro. A los 30 días se borra lo que escribiste y el motivo se
@@ -129,7 +137,7 @@ export default function Privacidad() {
         </li>
         <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
         <li>
-          Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo) <Pending>entidad exacta del contrato</Pending>,
+          Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo),
           que encarga la impresión a una imprenta de su red, normalmente cerca de tu casa. Recibe el libro, el nombre, la dirección, el email y,
           si lo das, el teléfono.
         </li>
