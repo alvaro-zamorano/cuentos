@@ -1,12 +1,12 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-20 («Muy pronto» y legales sin titular para salir con la landing; CI en Ubuntu 24.04; libro apaisado recuperado) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
+Actualizado: 2026-10-20, tarde («Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora (20 oct):** la landing y los legales a producción con la app cerrada («Muy pronto», `APP_OPEN`): falta unir los PR #20 y del «muy pronto», `SITE_URL` en Production y unir el PR #1 a `main`. Antes de abrir al público, Vercel Pro (§4.17).
+- **Ahora (20 oct, tarde):** todo lo de hoy está en la rama de trabajo (#15 a #17, #19 a #23; #18 cerrado). Para sacar la landing, las páginas de ocasión y los legales con la app cerrada solo falta: `SITE_URL` en Production (Álvaro), decidir Vercel Pro (§4.17) y unir el PR #1 a `main`.
 - **Después (18 oct, noche):** MVP con family and friends en producción. La preview ya tiene Stripe (test), Resend y Gelato (borradores), con todas las comprobaciones en verde (§3). Falta: la compra de prueba completa en la preview, Stripe real en Production (§4.29), `SITE_URL`, `LEGAL_NAME`, `LEGAL_NIF` y `LEGAL_ADDRESS` en Production y la prueba con tres personas. El correo de `hola@` ya funciona. Después, unir el PR #1 a `main`.
 - **Producto (18 oct, D7):** se sale con el libro de tapa dura (34,90 €, envío a la Península y Baleares, PDF incluido). La conexión con Gelato está en el PR de B8; falta que Álvaro cree la cuenta, ponga la clave en Preview y pida la muestra (`IMPRESION.md` §7).
 - **Después:** unir el PR #1 a `main` (salida a producción).
@@ -169,6 +169,15 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Nadie rellenaba «Lo que solo tú sabes»:** los 6 planes guardados hasta el 18 oct tenían cero detalles. Estaba plegado al final del paso 2.
 - **Seguridad en las escenas:** el Hugo sin detalles sale por la ventana al tejado y sube solo a un campanario; la Olivia con detalles, con 2 años, sale sola a la calle y entra en una panadería. Regla nueva en el planificador (PR #17). Probada con las dos fichas y dos semillas cada una (23 c): en los 4 planes, nada de tejados, ventanas ni calle. A vigilar: sin un adulto en el reparto todo tiende a la fantasía (los dos Hugo acabaron en la Luna).
 
+### 20 oct (salida y Gelato)
+
+- **Gelato, catálogo real** (consultado con `/api/health?deep=1` en la preview): 19 fotolibros. Gelato escribe la medida corta primero (`210x280`) y marca la orientación al final (`_hor`, `_ver`). El filtro del código buscaba «ancho mayor que alto» y descartaba los 19: el primer «Mandar a imprimir» habría fallado sin producto. Arreglado en el PR #23. Ahora elige la tapa dura apaisada de 280×210 y la API de cubiertas acepta 34 páginas.
+- **Gelato nunca ha recibido un pedido:** en `cuentos_orders` no hay ninguno de tapa dura (un pago de prueba de Stripe del 18 oct, edición PDF, y cuatro de prueba del 13). Siguen sin probar: crear el pedido, que acepte el PDF de 33 páginas y los avisos del webhook.
+- **CI:** desde el 19 oct `ubuntu-latest` es Ubuntu 26 y `playwright install --with-deps` fallaba (PR #19, Ubuntu 24.04 fijo).
+- **El PR #12 (apaisado) se unió a una rama ya cerrada** y no llegó a la rama de trabajo; recuperado en el PR #20.
+- **Dos sesiones hicieron la salida a la vez** (#18 y #21). Se queda #21 («Muy pronto») con las páginas de ocasión de #18 (PR #22).
+- **El límite de `/api/plan` (12 por hora e IP) está cerca del total de la suite de Playwright:** un servidor local que se queda vivo entre dos pasadas da 429. En la CI no pasa (servidor nuevo en cada pasada).
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
@@ -198,20 +207,19 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 24. ~~**IVA del libro impreso**~~ 4 % (Álvaro, 18 oct).
 25. **Segundo ejemplar y tarjeta regalo:** propuestas para subir el ticket medio (un segundo ejemplar a 24,90 € a la misma dirección) y para quien regala sin conocer al niño. Álvaro.
 26. ~~**Orden de salida**~~ Se sale con la tapa dura (18 oct). Queda fijar la fecha límite de Navidad con los plazos reales de la muestra.
-27. **Producto exacto de Gelato:** el código busca en el catálogo una tapa dura cuadrada de 20×20; si encuentra otra cosa o nada, poner `GELATO_PRODUCT_UID`. Se ve en la muestra. Claude con Álvaro.
+27. ~~**Producto exacto de Gelato:**~~ Resuelto el 20 oct (PR #23): `photobooks-hardcover_pf_210x280-mm-8x11-inch_…_hor`, 280×210 mm; la API de cubiertas acepta 34 páginas (pliego de 618×256 mm, lomo de 6 mm). `GELATO_PRODUCT_UID` no hace falta.
 28. **Sin probar contra Gelato:** la API real, el webhook y que acepte el PDF. La clave y el webhook ya están en la preview (18 oct, noche): falta la compra de prueba (§5). Álvaro y Claude.
 29. ~~**Stripe en producción**~~ Cobro real (Álvaro, 18 oct) y salvaguarda en el código (§2). Falta que Álvaro active la cuenta, ponga `sk_live_` y el secreto del endpoint real en Production y separe `STRIPE_WEBHOOK_SECRET` de Preview (`PAGO.md`). Álvaro.
 30. ~~**Buzón de `hola@erasesuvez.com`**~~ Funciona con Resend desde el 18 oct (noche; §3). Al salir a producción, cambiar la URL del webhook de Resend a `www`. Para revisar con los legales: el buzón de destino es un Gmail personal.
 31. ~~**Variable antigua `service_role`**~~ Borrada de Vercel el 18 oct (noche), con el visto bueno de Álvaro. Entra en el siguiente despliegue.
-32. **Tamaño del libro apaisado:** 280×210 mm es supuesto. En la compra de prueba, mirar en el pedido de Gelato qué producto eligió y sus medidas; fijarlo en `GELATO_PRODUCT_UID` y poner la medida real en las condiciones §6 y en `IMPRESION.md`. Claude con Álvaro.
+32. ~~**Tamaño del libro apaisado:**~~ 280×210 mm, confirmado en el catálogo de Gelato el 20 oct (§4.27). Queda verlo impreso en la muestra.
 
-## 5. Próxima sesión — empezar por
+## 5. Próxima sesión: empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
-2. Preguntar a Álvaro por §4.19 (Gemini de pago) y §4.22 (qué es gratis).
-3. Correo entrante: hecho y probado (§3). Al unir el PR #1 a `main`, cambiar la URL del webhook de Resend a `https://www.erasesuvez.com/api/mail/inbound`.
-4. **Compra de prueba completa en la preview** (todo configurado el 18 oct, noche): Álvaro crea un libro de tapa dura, paga con la tarjeta 4242 4242 4242 4242 y pulsa «Mandar a imprimir». Claude comprueba el webhook de Stripe (200), el pedido en `cuentos_orders`, las 12 páginas pintadas con la pestaña cerrada, los dos emails, el borrador en Gelato (producto, medidas de la cubierta, que acepte el PDF) y los avisos del webhook de Gelato. Coste: unos 1 $ de generación. Comprobar también el producto apaisado que elige el catálogo y sus medidas (§4.32). Después, la muestra con `GELATO_ORDER_TYPE=order` (`IMPRESION.md` §7). Preguntas que siguen: §4.25 y §4.27.
-5. Stripe real en Production (§4.29, `PAGO.md`): lo pone Álvaro. La salvaguarda del código va en el PR de `feat/stripe-livemode`.
-6. Para abrir la app en producción: `APP_OPEN=1` en Production y volver a desplegar. Antes, variables de producción (§7 del PLAN; ya están `CRON_SECRET`, `GELATO_WEBHOOK_SECRET`, `RESEND_WEBHOOK_SECRET`, `MAIL_FORWARD_TO` y `LEGAL_EMAIL`; falta Stripe real; los otros `LEGAL_*` no se ponen por decisión del 20 oct), cambiar el webhook de Gelato a `https://www.erasesuvez.com/api/print/webhook?token=…` (mismo token), CI en verde, descripción del PR al día y la prueba con tres personas (B7). Después, comprobar en producción `https://www.erasesuvez.com/robots.txt` (debe permitir y apuntar al sitemap) y la vista previa del enlace en WhatsApp.
-
-Hecho del antiguo §5: la purga en simulación contra la base real (16 oct, sin errores: `leads` 0 y `spend` 0, la base tiene menos de 30 días).
+2. **Salir con la landing** (app cerrada): `SITE_URL=https://www.erasesuvez.com` en Production (Álvaro; `APP_OPEN` sin poner), Vercel Pro (§4.17) y unir el PR #1 a `main`. Después, en producción: `/`, las ocasiones, los legales sin aviso de borrador, `/crear` a `/#pronto`, `/api/plan` 404, `robots.txt` y `sitemap.xml`, y la vista previa del enlace en WhatsApp. Cambiar el webhook de Resend a `https://www.erasesuvez.com/api/mail/inbound` (mismo secreto).
+3. **Compra de prueba en la preview** (Álvaro paga con la tarjeta 4242 4242 4242 4242: Claude no mete números de tarjeta): un libro de tapa dura, la dirección y «Mandar a imprimir». Claude comprueba el webhook de Stripe, el pedido en `cuentos_orders` (`print_status`, `print_order_id`, `print_error`), las 12 páginas, los dos emails y que Gelato acepte el borrador. Coste ≈ 1 $ de imágenes.
+4. **Muestra impresa:** antes, método de pago en Gelato. `GELATO_ORDER_TYPE=order` en Preview, otro libro a la dirección de Álvaro y, después, quitar la variable. Sus plazos fijan la fecha límite de Navidad.
+5. Stripe real en Production (§4.29, `PAGO.md`) y la entidad del contrato de Gelato con su DPA (§4.23). Álvaro.
+6. Para abrir la app: `APP_OPEN=1` en Production, cambiar el webhook de Gelato a `https://www.erasesuvez.com/api/print/webhook?token=…` (mismo token) y volver a desplegar. Antes, la prueba con tres personas (B7).
+7. Preguntas que siguen: §4.19 (Gemini de pago), §4.22 (qué es gratis), §4.25.
