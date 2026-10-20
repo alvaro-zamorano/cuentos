@@ -144,6 +144,15 @@
     width: calc(100% - 11px);
   }
 }
+/* Mancha de gouache que se llena mientras se pinta una imagen (≈ lo que tarda una página). */
+@keyframes bloom {
+  from {
+    scale: 0.35;
+  }
+  to {
+    scale: 1;
+  }
+}
 @layer components {
   /* Titulares: Lora seminegrita. El énfasis va en color (.em), no en cursiva. */
   .display {
@@ -349,6 +358,9 @@
   }
   .walk {
     animation: walk 40s cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+  }
+  .bloom {
+    animation: bloom 45s cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
   }
   .grow {
     animation: grow 40s cubic-bezier(0.3, 0.6, 0.3, 1) forwards;

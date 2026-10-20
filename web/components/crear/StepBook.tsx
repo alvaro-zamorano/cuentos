@@ -137,6 +137,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
   const byId = new Map(view.jobs.map((j) => [j.id, j]));
   const cover = view.chosen.cover ? byId.get(view.chosen.cover) : undefined;
   const allDone = Object.values(view.chosen.pages).every(Boolean);
+  const pagesDone = Object.values(view.chosen.pages).filter(Boolean).length;
   const name = view.ficha.hero.name.trim();
 
   const setText = (n: number, text: string) => {
@@ -187,7 +188,12 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       </div>
 
       {/* el aviso se va en cuanto el libro está completo (el navegador puede seguir unos segundos esperando a jobs que ya ha terminado el servidor) */}
-      {showBusy && <Status testId="pages-busy">{busy}</Status>}
+      {showBusy && (
+        <Status testId="pages-busy">
+          {busy}
+          {view.paid && pagesDone > 0 && !allDone && ` Van ${pagesDone} de ${plan.pages.length}: puedes ir revisándolas.`}
+        </Status>
+      )}
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {view.paid && view.print && (
@@ -464,7 +470,7 @@ function PageView({
     <BookSpread
       as="li"
       testId={`book-page-${page.n}`}
-      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} box="absolute inset-0 overflow-hidden bg-paper-deep" />}
+      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} box="absolute inset-0 overflow-hidden bg-paper-deep" />}
       right={
         <div className="grid flex-1 content-between gap-3 px-5 pt-5 pb-4 sm:px-8 sm:pt-7">
           <div className="grid gap-3">
