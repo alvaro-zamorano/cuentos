@@ -75,7 +75,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Marca «Érase su vez» | `components/SiteHeader.tsx` (`Wordmark`), `app/layout.tsx` (títulos y `openGraph`), `app/icon.svg`, `app/apple-icon.png`, `app/opengraph-image.jpg` (+ `.alt.txt`), `lib/mail.ts` |
 | Estilo (tokens, capas, movimiento) | `app/globals.css`, `app/layout.tsx` (fuentes), `components/brand.tsx` (estrella, luna, colina, iconos, `BookCover`), `docs/ESTILO.md` |
 | Landing | `app/page.tsx`, `components/landing/SampleFlipper.tsx` (+ `lib/muestra.ts`, `public/muestra/`, miniaturas en `public/muestra/mini/`) |
-| Flujo `/crear` (5 pasos) | `app/crear/page.tsx` (cabecera, progreso, «así va su libro», `?b=` y `?idea=`), `components/crear/Step{Idea,Hero,Story,Cast,Book}.tsx`, `BookImage`, `BookLink`, `ui.tsx` (avisos, cinta), `lib/crearStore.ts`, `lib/bookClient.ts` |
+| Flujo `/crear` (5 pasos) | `app/crear/page.tsx` (cabecera, progreso, «así va su libro», `?b=` y `?idea=`), `components/crear/Step{Idea,Hero,Story,Cast,Book}.tsx`, `QuickQuestions.tsx` (tres preguntas si la ficha es pobre, regla en `lib/plan/quick.ts`), `BookImage`, `BookLink`, `ui.tsx` (avisos, cinta), `lib/crearStore.ts`, `lib/bookClient.ts` |
 | Miniaturas del paso 2 | `components/crear/Tiles.tsx` (las repinta con `lib/recolor.ts`), `lib/crearPicks.ts` (opciones y textos), `public/crear/` (salen de `public/catalog/gouache` con `scripts/crear-thumbs.mjs`) |
 | Ficha y plan del libro (B1) | `lib/plan/` (ficha, starters, moderation, rules, prompt, validate, planner, mock, evalCases), `app/api/plan/`, `lib/llm.ts` |
 | Dirección de arte y control de calidad | `lib/plan/art.ts`, `lib/plan/qc.ts` |
@@ -92,7 +92,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Buscadores | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts` (solo producción con `SITE_URL`) |
 | App abierta o cerrada («Muy pronto») | `lib/appOpen.ts` (`APP_OPEN`; sin valor, cerrada en producción), `proxy.ts` (`/crear` a la landing, API a 404 salvo salud, crons, correo y webhooks), `app/page.tsx` |
 | Salud y pruebas | `app/api/health`; `app/api/dev` (fuera de producción; en Vercel solo con `DEV_TOKEN`, `lib/devAccess.ts`; fuerza Gemini y cuesta dinero) |
-| Tests | `tests/unit/*.test.ts` (100), `tests/crear.spec.ts` + `tests/journey.spec.ts` (9 Playwright), `.github/workflows/ci.yml` |
+| Tests | `tests/unit/*.test.ts` (116), `tests/crear.spec.ts` + `tests/journey.spec.ts` (11 Playwright), `.github/workflows/ci.yml` |
 | Flujo antiguo (fuera del embudo por D1; redirige a `/crear` desde el 16 oct, `next.config.ts`) | `app/{clasico,ilustrado,libro,gratis}`, `lib/{story,pieces,arcs,…}`, `app/api/{story,jobs,books,pdf,generate/book,generate/sample}` |
 
 ## 6. Cómo trabajar

@@ -36,12 +36,12 @@ async function writeStory(page: Page) {
   // el paso 2 enseña lo que se elige: miniatura marcada y repintada con el color de pelo elegido
   await expect(page.getByRole("button", { name: "Rizos media melena" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('[data-pick="rizos-media"] img')).toHaveAttribute("src", /^data:image\/png/);
-  // el reparto y los detalles van en filas plegables
+  // el reparto va en una fila plegable
   await page.locator("summary", { hasText: "Quién más sale" }).click();
   await page.getByTestId("add-cast").click();
   await page.getByTestId("cast-0").getByPlaceholder("Toby").fill("Toby");
   await page.getByTestId("cast-0").getByPlaceholder("su perro").fill("su perro");
-  await page.locator("summary", { hasText: "Lo que solo tú sabes" }).click();
+  // «Lo que solo tú sabes» está a la vista; con un detalle no salen las tres preguntas
   await page.getByTestId("detail-0").fill("le encantan los dinosaurios");
   await page.getByTestId("next-2").click();
   await expect(page.getByTestId("plan-pages").locator("li")).toHaveCount(12, { timeout: 20_000 });
@@ -220,6 +220,47 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
     expect((await page.request.post("/api/libro/plan", { data: { bookId, plan: edited } })).status()).toBe(409);
     expect((await page.request.post("/api/libro/print", { data: { bookId } })).status()).toBe(409);
   }
+  expect(errors).toEqual([]);
+});
+
+test("Ficha pobre: tres preguntas rápidas antes de escribir; lo contestado llega al cuento y no se repiten", async ({ page }) => {
+  await page.getByTestId("hero-name").fill("Olivia");
+  await page.getByTestId("hero-age").selectOption("2");
+  await page.getByTestId("idea").fill("Olivia acaba de llegar a la tierra y conquista el mundo");
+  await page.getByTestId("next-1").click();
+  await page.getByTestId("next-2").click();
+  await expect(page.getByRole("heading", { name: "Tres preguntas sobre Olivia" })).toBeVisible();
+  // banco de su edad
+  await expect(page.getByRole("button", { name: "dar palmas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "montar en bici" })).toHaveCount(0);
+  await expect(page.getByTestId("quick-go")).toHaveText(/Escribir sin esto/);
+  await page.getByRole("button", { name: "los animales" }).click();
+  await page.getByTestId("quick-frase").fill("dice «¡mío!» a todo");
+  await expect(page.getByTestId("quick-go")).toHaveText(/Escribir el cuento/);
+  await page.getByTestId("quick-go").click();
+  await expect(page.getByTestId("plan-pages").locator("li")).toHaveCount(12, { timeout: 20_000 });
+  // el mock pone el primer detalle en la página 3
+  await expect(page.getByTestId("page-3")).toContainText("Lo que más le gusta: los animales");
+  // al volver, los detalles están en «Lo que solo tú sabes» y escribir ya no pregunta
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("detail-1")).toHaveValue("Frase o manía suya: dice «¡mío!» a todo");
+  await page.getByTestId("detail-0").fill("");
+  await page.getByTestId("detail-1").fill("");
+  await page.getByTestId("next-2").click();
+  await expect(page.getByTestId("quick")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("Ficha pobre: «Escríbelo ya» salta las preguntas", async ({ page }) => {
+  await page.getByTestId("hero-name").fill("Hugo");
+  await page.getByTestId("surprise").click();
+  await page.getByTestId("next-1").click();
+  await page.getByTestId("next-2").click();
+  await expect(page.getByRole("button", { name: "montar en bici" })).toBeVisible();
+  await page.getByRole("button", { name: "montar en bici" }).click();
+  await page.getByTestId("quick-skip").click();
+  await expect(page.getByTestId("plan-pages").locator("li")).toHaveCount(12, { timeout: 20_000 });
+  await expect(page.getByTestId("plan-pages")).not.toContainText("montar en bici");
   expect(errors).toEqual([]);
 });
 

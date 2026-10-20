@@ -6,17 +6,20 @@ import { EYES, GLASSES, HAIR_COLORS, SKINS } from "@/lib/traits";
 import { GLASSES_PICKS, HAIR_PICKS, OUTFIT_PICKS, PET_PICKS } from "@/lib/crearPicks";
 import { LIMITS } from "@/lib/plan/ficha";
 import type { CastMember, Ficha, Look } from "@/lib/plan/types";
+import { mergeDetails, needsQuickQuestions } from "@/lib/plan/quick";
 import type { Glasses, HairShape } from "@/lib/types";
+import { QuickQuestions } from "./QuickQuestions";
 import { Tiles } from "./Tiles";
 
 const FIRST_HAIR = 6;
 
 /**
- * Paso 2: cómo es y quién más sale. Arriba la cara (piel, pelo, peinado y ojos); el resto, en filas plegables con su
- * resumen. Todo opcional: lo que no se marque lo decide el ilustrador y se ve en la hoja de personajes, donde se puede
- * corregir con palabras.
+ * Paso 2: cómo es y quién más sale. Arriba la cara (piel, pelo, peinado y ojos) y «Lo que solo tú sabes», a la vista
+ * porque es lo que más hace suyo el cuento; el resto, en filas plegables con su resumen. Todo opcional: lo que no se
+ * marque lo decide el ilustrador y se ve en la hoja de personajes, donde se puede corregir con palabras.
+ * Si la ficha no trae nada del niño, «Escribir el cuento» pasa antes por tres preguntas rápidas (una vez por libro).
  */
-export function StepHero({ ficha, onChange, onNext }: { ficha: Ficha; onChange: (f: Ficha) => void; onNext: () => void }) {
+export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: Ficha; onChange: (f: Ficha) => void; onNext: () => void; asked: boolean; onAsked: () => void }) {
   const hero = ficha.hero;
   const look = hero.look;
   const name = hero.name.trim() || "tu protagonista";
@@ -28,6 +31,7 @@ export function StepHero({ ficha, onChange, onNext }: { ficha: Ficha; onChange: 
   const setCast = (cast: CastMember[]) => onChange({ ...ficha, cast: cast.map((c, i) => ({ ...c, id: i === 0 ? "c1" : "c2" })) });
   const details = [...ficha.details, ...Array(Math.max(0, 3 - ficha.details.length)).fill("")].slice(0, LIMITS.details);
   const [allHair, setAllHair] = useState(false);
+  const [quick, setQuick] = useState(false);
   const hairPicks = allHair ? HAIR_PICKS : HAIR_PICKS.filter((p, i) => i < FIRST_HAIR || p.id === look.hair?.shape);
 
   const unique = hero.gender === "nina" ? "Algo que le hace única" : hero.gender === "nino" ? "Algo que le hace único" : "Algo que le hace especial";
@@ -35,14 +39,38 @@ export function StepHero({ ficha, onChange, onNext }: { ficha: Ficha; onChange: 
     .map((c) => [c.name.trim(), c.relation.trim()].filter(Boolean).join(", "))
     .filter(Boolean)
     .join(" · ");
-  const detailSummary = ficha.details.map((d) => d.trim()).filter(Boolean).join("; ");
+
+  if (quick) {
+    return (
+      <QuickQuestions
+        name={name}
+        age={hero.age}
+        onBack={() => {
+          setQuick(false);
+          window.scrollTo({ top: 0 });
+        }}
+        onSkip={() => {
+          onAsked();
+          onNext();
+        }}
+        onDone={(added) => {
+          onChange({ ...ficha, details: mergeDetails(ficha.details, added) });
+          onAsked();
+          onNext();
+        }}
+      />
+    );
+  }
 
   return (
     <form
       className="grid gap-8"
       onSubmit={(e) => {
         e.preventDefault();
-        onNext();
+        if (!asked && needsQuickQuestions(ficha)) {
+          setQuick(true);
+          window.scrollTo({ top: 0 });
+        } else onNext();
       }}
     >
       <div className="grid gap-2">
@@ -104,6 +132,41 @@ export function StepHero({ ficha, onChange, onNext }: { ficha: Ficha; onChange: 
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="card grid gap-4 p-5 sm:p-7" aria-labelledby="details-title">
+        <div className="flex items-start gap-3.5">
+          <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-butter text-ink">
+            <Icon.pencil />
+          </span>
+          <div className="grid gap-0.5">
+            <h3 id="details-title" className="font-bold text-ink">
+              Lo que solo tú sabes
+            </h3>
+            <p className="text-sm text-ink-soft">Frases que dice, manías, lo que le encanta. Es lo que más hace suyo el cuento: lo repartimos por las páginas.</p>
+          </div>
+        </div>
+        {details.map((d, i) => (
+          <input
+            key={i}
+            className="input"
+            aria-label={`Detalle ${i + 1}`}
+            value={d}
+            maxLength={LIMITS.detail}
+            placeholder={["le encantan los dinosaurios", "dice «¡despegue!» por todo", "duerme con una linterna"][i] ?? "otro detalle"}
+            onChange={(e) => {
+              const next = [...details];
+              next[i] = e.target.value;
+              onChange({ ...ficha, details: next });
+            }}
+            data-testid={`detail-${i}`}
+          />
+        ))}
+        {details.length < LIMITS.details && details.every((d) => d.trim()) && (
+          <button type="button" className="btn-soft btn-sm justify-self-start" onClick={() => onChange({ ...ficha, details: [...details, ""] })}>
+            Otro detalle
+          </button>
+        )}
       </section>
 
       <div className="grid gap-3">
@@ -182,30 +245,6 @@ export function StepHero({ ficha, onChange, onNext }: { ficha: Ficha; onChange: 
           )}
         </Row>
 
-        <Row icon={<Icon.pencil />} tint="bg-paper-deep" title="Lo que solo tú sabes" summary={detailSummary || "Frases, manías, lo que le encanta"} done={!!detailSummary}>
-          <p className="text-sm text-ink-soft">Frases que dice, manías, sitios, lo que le encanta. Lo repartimos por el cuento.</p>
-          {details.map((d, i) => (
-            <input
-              key={i}
-              className="input"
-              aria-label={`Detalle ${i + 1}`}
-              value={d}
-              maxLength={LIMITS.detail}
-              placeholder={["le encantan los dinosaurios", "dice «¡despegue!» por todo", "duerme con una linterna"][i] ?? "otro detalle"}
-              onChange={(e) => {
-                const next = [...details];
-                next[i] = e.target.value;
-                onChange({ ...ficha, details: next });
-              }}
-              data-testid={`detail-${i}`}
-            />
-          ))}
-          {details.length < LIMITS.details && details.every((d) => d.trim()) && (
-            <button type="button" className="btn-soft btn-sm justify-self-start" onClick={() => onChange({ ...ficha, details: [...details, ""] })}>
-              Otro detalle
-            </button>
-          )}
-        </Row>
 
         <Row icon={<Icon.mail />} tint="bg-paper-deep" title="La dedicatoria" summary={ficha.from?.trim() ? `De parte de ${ficha.from.trim()}` : "Si la dejas vacía, te proponemos una"} done={!!(ficha.from?.trim() || ficha.dedication?.trim())}>
           <label className="grid gap-1.5">
