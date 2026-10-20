@@ -21,6 +21,8 @@ type Check = "ok" | "skipped" | "error" | number | { status: number; type?: stri
 /** Lo que Gelato tiene para el libro apaisado: los productUid no son secretos. */
 interface GelatoCatalog {
   photobooks: number;
+  /** todos los productUid de fotolibros (no son secretos): para ver qué formatos hay */
+  uids: string[];
   landscapeHardcovers: string[];
   chosen: string | null;
   size: { trimWidth: number; trimHeight: number } | null;
@@ -35,6 +37,7 @@ async function gelatoCatalog(pageCount: number): Promise<GelatoCatalog | "error"
     const cover = chosen ? await coverGeometry(chosen, pageCount) : null;
     return {
       photobooks: all.length,
+      uids: all.slice(0, 60),
       landscapeHardcovers: all.filter(isLandscapeHardcover).slice(0, 12),
       chosen,
       size: size ? { trimWidth: size.trimWidth, trimHeight: size.trimHeight } : null,
