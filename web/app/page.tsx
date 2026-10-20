@@ -154,11 +154,12 @@ export default function Landing() {
           </div>
 
           <div className="relative mx-auto w-full max-w-[460px] pb-28 sm:pb-32">
-            <div aria-hidden className="absolute top-12 -right-4 hidden w-[62%] rotate-[8deg] overflow-hidden rounded-[10px] bg-[#fbf6ec] shadow-[0_30px_60px_-30px_rgba(5,10,30,0.8)] sm:block">
-              <img src={muestraImage(3)} alt="" width={1400} height={939} className="block aspect-[3/2] w-full object-cover" />
-              <p className="story m-0 px-4 pt-3 pb-5 text-[12px] leading-relaxed text-[#3a3346]">Al atardecer, Vera se puso su traje de astronauta, el blanco con rayas amarillas. A Toby le tocó un casco de burbuja hecho a su medida.</p>
+            {/* el libro abierto detrás de la portada: ilustración a la izquierda y texto a la derecha */}
+            <div aria-hidden className="absolute -top-4 -right-6 hidden w-[84%] rotate-[6deg] grid-cols-2 overflow-hidden rounded-[6px] bg-[#fbf6ec] shadow-[0_30px_60px_-30px_rgba(5,10,30,0.8)] sm:grid">
+              <img src={muestraImage(3)} alt="" width={1400} height={939} className="block aspect-[4/3] w-full object-cover" />
+              <p className="story m-0 self-center bg-gradient-to-r from-ink/10 to-transparent to-[12%] px-4 text-[10.5px] leading-relaxed text-[#3a3346]">Al atardecer, Vera se puso su traje de astronauta, el blanco con rayas amarillas. A Toby le tocó un casco de burbuja hecho a su medida.</p>
             </div>
-            <div className="floaty relative mx-auto w-[78%] sm:mx-0 sm:w-[82%]">
+            <div className="floaty relative mx-auto w-[92%] pt-0 sm:mx-0 sm:w-[86%] sm:pt-24">
               <BookCover name={MUESTRA.hero} title={MUESTRA.title} from="mamá y papá" src={muestraImage(0)} alt={`Portada de «${MUESTRA.title}»: Vera y su perro Toby vuelan en un cohete de cartón hacia la Luna`} />
             </div>
             <div className="absolute bottom-0 left-0 w-[72%] max-w-[290px] rotate-[2.5deg] rounded-[20px] bg-card px-4 pt-3.5 pb-4 text-ink shadow-[0_24px_50px_-22px_rgba(5,10,30,0.75)] sm:-left-4">
@@ -220,10 +221,10 @@ export default function Landing() {
           <h2 className="display m-0 max-w-[20ch] text-[36px] sm:text-[52px]">Cada uno, su historia.</h2>
           <p className="m-0 mt-1 max-w-[52ch] text-lg text-ink-soft">Cuatro portadas más. Debajo de cada una, la idea de la que salió.</p>
         </div>
-        <ul className="m-0 mt-12 grid list-none grid-cols-2 gap-x-6 gap-y-10 p-0 lg:grid-cols-4">
+        <ul className="m-0 mt-12 grid list-none grid-cols-1 gap-x-10 gap-y-12 p-0 sm:grid-cols-2">
           {COVERS.map((c) => (
             <li key={c.src} className="reveal grid justify-items-center gap-3.5">
-              <BookCover name={c.name} title={c.title} src={c.src} alt={`Portada de «${c.title}»`} tilt={c.tilt} className="w-full max-w-[250px] transition-transform duration-300 hover:-translate-y-1" />
+              <BookCover name={c.name} title={c.title} src={c.src} alt={`Portada de «${c.title}»`} tilt={c.tilt} className="w-full max-w-[420px] transition-transform duration-300 hover:-translate-y-1" />
               <span className="hand text-center text-[17px] text-ink-soft sm:text-[18px]">{c.who}</span>
             </li>
           ))}
@@ -275,7 +276,7 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">Gratis</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px]">
-                {["El cuento completo, escrito para él o ella", "Cómo será en el libro y la portada ilustrada", "PDF en A4: la portada ilustrada y las páginas solo con texto"].map((x) => (
+                {["El cuento completo, escrito para él o ella", "Cómo será en el libro y la portada ilustrada", "PDF en A4 apaisado: la portada ilustrada y las páginas solo con texto"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-accent" />
                     {x}
@@ -297,7 +298,7 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_HARDCOVER}</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px] text-[#e4e8f2]">
-                {["Todo lo de la edición gratis", "Libro de tapa dura de 20×20 cm con las doce ilustraciones", "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Te lo enviamos a casa (Península y Baleares) y tienes el PDF al momento"].map((x) => (
+                {["Todo lo de la edición gratis", "Libro apaisado de tapa dura, con las doce ilustraciones a página completa", "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Te lo enviamos a casa (Península y Baleares) y tienes el PDF al momento"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-star" />
                     {x}
@@ -316,7 +317,7 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_ILLUSTRATED}</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px]">
-                {["Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4: imprímelo en casa o en una copistería"].map((x) => (
+                {["Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4 apaisado: imprímelo en casa o en una copistería"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-accent" />
                     {x}
@@ -411,18 +412,12 @@ function SheetCard() {
   );
 }
 
-/** Paso 3 dibujado: dos páginas del libro (A4: ilustración arriba, texto debajo). */
+/** Paso 3 dibujado: el libro abierto, con la ilustración a la izquierda y el texto a la derecha. */
 function PagesCard() {
-  const page = (n: number, rot: string, extra = "") => (
-    <div className={`w-[46%] max-w-[156px] overflow-hidden rounded-[3px_8px_8px_3px] bg-[#fbf6ec] shadow-[3px_3px_0_#eaddc6,0_18px_36px_-18px_rgba(35,32,54,0.6)] ${rot} ${extra}`}>
-      <img src={muestraImage(n)} alt="" width={1400} height={939} loading="lazy" className="block aspect-[3/2] w-full object-cover" />
-      <p className="story m-0 line-clamp-5 px-3 pt-2.5 pb-4 text-[8.5px] leading-normal text-[#3a3346]">{MUESTRA.pages[n - 1]}</p>
-    </div>
-  );
   return (
-    <div className="flex w-full items-start justify-center">
-      {page(5, "-rotate-3")}
-      {page(9, "rotate-[4deg]", "-ml-[8%] mt-[8%]")}
+    <div className="grid w-full max-w-[330px] -rotate-2 grid-cols-2 overflow-hidden rounded-[5px] bg-[#fbf6ec] shadow-[3px_3px_0_#eaddc6,0_18px_36px_-18px_rgba(35,32,54,0.6)]">
+      <img src={muestraImage(9)} alt="" width={1400} height={939} loading="lazy" className="block aspect-[4/3] h-full w-full object-cover" />
+      <p className="story m-0 line-clamp-7 self-center bg-gradient-to-r from-ink/10 to-transparent to-[14%] px-3 text-[8.5px] leading-normal text-[#3a3346]">{MUESTRA.pages[8]}</p>
     </div>
   );
 }

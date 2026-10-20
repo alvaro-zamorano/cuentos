@@ -22,7 +22,7 @@ export default function Condiciones() {
           el texto. La hoja y la portada se pintan cuando nos das tu email.
         </li>
         <li>
-          <strong>Libro ilustrado</strong>: las doce páginas ilustradas en un PDF A4. De pago; el precio final, con IVA, se indica antes de pagar.
+          <strong>Libro ilustrado</strong>: las doce páginas ilustradas en un PDF A4 apaisado. De pago; el precio final, con IVA, se indica antes de pagar.
         </li>
         <li><strong>Tapa dura</strong>: más adelante.</li>
       </ul>
@@ -70,7 +70,7 @@ export default function Condiciones() {
 
       <h2>8. Libro impreso: plazos y entrega</h2>
       <p>
-        El libro de tapa dura (20×20 cm) se imprime cuando pulsas «Mandar a imprimir». Suele llegar en una o dos semanas desde entonces; el plazo
+        El libro de tapa dura (apaisado, de unos 28 × 21 cm; la medida exacta es la del formato de la imprenta) se imprime cuando pulsas «Mandar a imprimir». Suele llegar en una o dos semanas desde entonces; el plazo
         es orientativo y te escribimos con el seguimiento cuando sale de la imprenta. Revisa bien la dirección: si el transportista no puede
         entregarlo por un error en ella, el nuevo envío corre por tu cuenta.
       </p>

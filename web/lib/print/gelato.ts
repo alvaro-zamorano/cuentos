@@ -63,23 +63,40 @@ async function call<T>(url: string, init: RequestInit, env: Env, f: Fetch): Prom
 let productCache: string | null = null;
 
 /**
- * El productUid del libro de tapa dura de 20×20: GELATO_PRODUCT_UID, o se busca en el catálogo de fotolibros (una vez por
- * proceso). La búsqueda elige tapa dura, 200×200 mm u 8×8", mate; si no encuentra, null.
+ * El productUid del libro de tapa dura apaisado: GELATO_PRODUCT_UID, o se busca en el catálogo de fotolibros (una vez por
+ * proceso). La búsqueda elige tapa dura apaisada sin «layflat», la más parecida a 280×210 mm; si no encuentra, null.
  */
 export async function resolveProductUid(env: Env = process.env, f: Fetch = fetch): Promise<string | null> {
   const fixed = env.GELATO_PRODUCT_UID?.trim();
   if (fixed) return fixed;
   if (productCache) return productCache;
-  const found = (await findPhotobookProducts(env, f)).find(isSquareHardcover) ?? null;
+  const found = pickLandscapeHardcover(await findPhotobookProducts(env, f));
   if (found) productCache = found;
   return found;
 }
 
-export function isSquareHardcover(uid: string): boolean {
-  return /hardcover/.test(uid) && /(200x200-mm|8x8-inch)/.test(uid) && !/layflat/.test(uid);
+/** Ancho y alto en mm que lleva el productUid de Gelato («…_pf_280x210-mm-11x8-inch_…»), o null. */
+export function uidSizeMm(uid: string): { w: number; h: number } | null {
+  const m = /_pf_(\d+)x(\d+)-mm/.exec(uid);
+  return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
 }
 
-/** productUid de los fotolibros del catálogo (para elegir el de 20×20; también lo usa /api/dev). */
+/** Tapa dura apaisada (más ancha que alta), sin «layflat». */
+export function isLandscapeHardcover(uid: string): boolean {
+  const s = uidSizeMm(uid);
+  return /hardcover/.test(uid) && !/layflat/.test(uid) && !!s && s.w > s.h;
+}
+
+/** De una lista de productUid, la tapa dura apaisada más cercana a 280×210 mm (D5 bis, 18 oct). */
+export function pickLandscapeHardcover(uids: string[]): string | null {
+  const dist = (u: string) => {
+    const s = uidSizeMm(u)!;
+    return Math.abs(s.w - DEFAULT_PRINT_SIZE.trimWidth) + Math.abs(s.h - DEFAULT_PRINT_SIZE.trimHeight);
+  };
+  return uids.filter(isLandscapeHardcover).sort((a, b) => dist(a) - dist(b))[0] ?? null;
+}
+
+/** productUid de los fotolibros del catálogo (para elegir el libro apaisado; también lo usa /api/dev). */
 export async function findPhotobookProducts(env: Env = process.env, f: Fetch = fetch): Promise<string[]> {
   const cats = await call<{ data?: { catalogUid?: string }[] }>(`${PRODUCT_API}/catalogs`, { method: "GET" }, env, f);
   if (!cats.ok) return [];
@@ -126,10 +143,16 @@ export interface PrintSize {
 export const BLEED_MM = 4; // Gelato pide 4 mm de sangre en todos los lados
 
 /**
- * Cubierta estimada para un 20×20 (sin clave, o si la API falla): 15 mm de solapa que se dobla, 7 mm de bisagra a cada
+ * Libro apaisado (D5 bis, 18 oct): 280×210 mm mientras la API no diga otra cosa. La medida buena la da productSize()
+ * con el producto elegido; esta solo sirve para la simulación y la cubierta estimada.
+ */
+export const DEFAULT_PRINT_SIZE: PrintSize = { trimWidth: 280, trimHeight: 210, bleed: BLEED_MM };
+
+/**
+ * Cubierta estimada (sin clave, o si la API falla): 15 mm de solapa que se dobla, 7 mm de bisagra a cada
  * lado del lomo y 6 mm de lomo. La real la da la API de cubiertas de Gelato según el número de páginas.
  */
-export function estimatedCover(size: PrintSize = { trimWidth: 200, trimHeight: 200, bleed: BLEED_MM }): CoverGeometry {
+export function estimatedCover(size: PrintSize = DEFAULT_PRINT_SIZE): CoverGeometry {
   const wrap = 15;
   const joint = 7;
   const spine = 6;

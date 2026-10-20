@@ -40,7 +40,11 @@ Respalda D7 (PLAN §2): el libro impreso de tapa dura, con el PDF incluido, es e
 
 **Propuesta:** Gelato para salir, por la API y el 20×20. Pedir presupuesto a Podiprint y Realisaprint para comparar con volumen: imprimir en España acorta los plazos de Navidad.
 
-## 3. Formato (propuesta)
+## 3. Formato
+
+**Decidido el 18 oct (D5 bis):** apaisado. Tapa dura apaisada (el código busca en Gelato la más cercana a 280×210 mm, sin confirmar en su catálogo), 30 páginas interiores con cada escena a doble página: la ilustración a página completa (a sangre) a la izquierda y el texto a la derecha. La 3:2 se recorta un 5 a 11 % por los lados según el tamaño final. La cubierta lleva la portada a sangre con el título arriba. El PDF que se descarga usa la misma maqueta en A4 apaisado. Lo de debajo es la propuesta del 18 oct, superada en el tamaño.
+
+Propuesta anterior:
 
 - 20×20, tapa dura, 24 páginas interiores a doble página: la ilustración 3:2 a un lado y el texto al otro, más la dedicatoria. Cumple el mínimo de páginas y quita el blanco bajo el texto (E15).
 - **A 2K basta:** 2528 px en 20 cm son unos 320 ppp. Solo haría falta 4K si la ilustración ocupa la doble página. Quita los ≈ 2 $ que el PLAN reservaba para el 4K.
