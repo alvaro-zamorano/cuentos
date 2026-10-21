@@ -130,7 +130,7 @@ function Crear() {
   const aside = s.step <= 3;
 
   return (
-    <main className="min-h-dvh pb-16" data-clarity-mask="True" data-private>
+    <main className="min-h-dvh pb-16">
       <h1 className="sr-only">Crear su cuento</h1>
       <CrearHeader step={s.step} reachable={reachable} go={go} dirty={dirty} />
       <div className={`mx-auto w-full px-4 pt-6 sm:px-6 lg:pt-10 ${aside ? "max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-14" : "max-w-3xl"}`}>

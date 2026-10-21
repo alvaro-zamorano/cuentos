@@ -75,7 +75,7 @@ test("Páginas legales enlazadas desde el footer", async ({ page }) => {
   await expect(page.getByText("art. 103.c)")).toBeVisible();
 });
 
-test("Cookies: Clarity y PostHog solo tras aceptar (si el build lleva NEXT_PUBLIC_CLARITY_ID o NEXT_PUBLIC_POSTHOG_KEY)", async ({ page }) => {
+test("Cookies: PostHog solo tras aceptar (si el build lleva NEXT_PUBLIC_POSTHOG_KEY)", async ({ page }) => {
   // nada sale de verdad hacia PostHog: se cuenta y se responde aquí
   const posthogCalls: string[] = [];
   await page.route(/posthog\.com/, (route) => {
@@ -85,8 +85,7 @@ test("Cookies: Clarity y PostHog solo tras aceptar (si el build lleva NEXT_PUBLI
   await page.goto("/");
   const banner = page.getByTestId("cookie-consent");
   if ((await banner.count()) === 0) {
-    // build sin identificadores: no hay nada que consentir y no se carga nada
-    await expect(page.locator("#ms-clarity")).toHaveCount(0);
+    // build sin identificador: no hay nada que consentir y no se carga nada
     await page.waitForTimeout(1500);
     expect(posthogCalls).toEqual([]);
     return;
@@ -96,7 +95,6 @@ test("Cookies: Clarity y PostHog solo tras aceptar (si el build lleva NEXT_PUBLI
   expect(posthogCalls, "nada de PostHog antes de decidir").toEqual([]);
   await page.getByTestId("cookie-reject").click();
   await expect(banner).toHaveCount(0);
-  await expect(page.locator("#ms-clarity")).toHaveCount(0);
   await page.reload();
   await expect(page.getByTestId("cookie-consent")).toHaveCount(0);
   await page.waitForTimeout(1500);
@@ -104,8 +102,6 @@ test("Cookies: Clarity y PostHog solo tras aceptar (si el build lleva NEXT_PUBLI
   await page.evaluate(() => localStorage.removeItem("cuentos:consent:analytics"));
   await page.reload();
   await page.getByTestId("cookie-accept").click();
-  const banner2 = await page.getByTestId("cookie-consent").count();
-  expect(banner2).toBe(0);
-  if (process.env.NEXT_PUBLIC_CLARITY_ID) await expect(page.locator("#ms-clarity")).toHaveCount(1);
-  if (process.env.NEXT_PUBLIC_POSTHOG_KEY) await expect.poll(() => posthogCalls.length, { message: "PostHog arranca tras aceptar" }).toBeGreaterThan(0);
+  await expect(page.getByTestId("cookie-consent")).toHaveCount(0);
+  await expect.poll(() => posthogCalls.length, { message: "PostHog arranca tras aceptar" }).toBeGreaterThan(0);
 });

@@ -1,15 +1,14 @@
 /**
- * Medición de uso. Dos herramientas, las dos solo tras «Aceptar» en el aviso de cookies (components/CookieConsent.tsx):
- *   - Microsoft Clarity (NEXT_PUBLIC_CLARITY_ID): mapas de calor; no graba /crear.
- *   - PostHog Cloud EU (NEXT_PUBLIC_POSTHOG_KEY): embudo de /crear con eventos propios y grabaciones con el texto oculto.
+ * Medición de uso con PostHog Cloud EU (NEXT_PUBLIC_POSTHOG_KEY), solo tras «Aceptar» en el aviso de cookies
+ * (components/CookieConsent.tsx). Es la única herramienta de medición: Clarity se quitó el 21 oct (Álvaro).
  *
- * Reglas de PostHog (docs/ESTADO.md, 21 oct):
+ * Reglas (docs/ESTADO.md, 21 oct):
  *   - El SDK no se descarga ni se inicia sin consentimiento: nada de cookies ni de eventos antes de «Aceptar».
+ *   - Sin grabaciones de sesión (Álvaro, 21 oct): apagadas aquí, aunque se activen en el panel de PostHog.
  *   - Nunca se identifica a nadie (sin identify, sin email). Los eventos son anónimos.
  *   - Ningún evento lleva datos del niño ni del cuento: solo el paso, la edición y tiempos.
- *   - El parámetro `b` de /crear?b=… abre un libro: se enmascara en las URL de eventos y grabaciones.
- *   - En /crear no se mandan clics automáticos (su texto puede ser el cuento) y la grabación oculta el texto, los campos y
- *     las imágenes.
+ *   - El parámetro `b` de /crear?b=… abre un libro: se enmascara en todas las URL que salen.
+ *   - En /crear no se mandan clics automáticos: su texto puede ser el cuento.
  */
 import type { BeforeSendFn, PostHog } from "posthog-js";
 
@@ -96,12 +95,7 @@ export function startPostHog(): Promise<void> {
       mask_personal_data_properties: true,
       custom_personal_data_properties: SECRET_PARAMS,
       disable_surveys: true,
-      session_recording: {
-        maskAllInputs: true,
-        maskTextSelector: "[data-private], [data-private] *",
-        // las ilustraciones del libro llevan al niño (y la portada, su nombre) y se sirven con URL firmadas: fuera de la grabación
-        blockSelector: "[data-private] img",
-      },
+      disable_session_recording: true,
       before_send: beforeSend,
     });
     posthog.register({ entorno: process.env.NEXT_PUBLIC_VERCEL_ENV ?? "local" });
