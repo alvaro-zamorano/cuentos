@@ -2,18 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-const KEY = "cuentos:consent:analytics";
-type Choice = "accepted" | "rejected";
-
-function readChoice(): Choice | null {
-  try {
-    const v = localStorage.getItem(KEY);
-    return v === "accepted" || v === "rejected" ? v : null;
-  } catch {
-    return null;
-  }
-}
+import { readConsent, saveConsent, startPostHog, type Consent } from "@/lib/analytics";
 
 function loadClarity(id: string) {
   if (document.getElementById("ms-clarity")) return;
@@ -32,34 +21,38 @@ function loadClarity(id: string) {
   document.head.appendChild(s);
 }
 
+function loadAll(clarityId: string | null) {
+  if (clarityId) loadClarity(clarityId);
+  void startPostHog();
+}
+
 /**
  * Consentimiento de analítica. Va en flujo normal (franja superior), no flotante: en el journey la barra de acciones
- * es fija abajo y un aviso flotante la taparía en móvil. Clarity (cookies de medición) solo se carga tras «Aceptar»; «Rechazar» tiene el mismo peso
- * visual y no carga nada. La elección se guarda en este navegador. Sin `clarityId` (build sin NEXT_PUBLIC_CLARITY_ID) no hay
- * nada que consentir y no se muestra.
+ * es fija abajo y un aviso flotante la taparía en móvil. Clarity y PostHog (lib/analytics.ts) solo se cargan tras
+ * «Aceptar»; «Rechazar» tiene el mismo peso visual y no carga nada. La elección se guarda en este navegador. Sin
+ * ninguna de las dos configurada en el build no hay nada que consentir y no se muestra.
  */
-export function CookieConsent({ clarityId }: { clarityId: string | null }) {
-  const [choice, setChoice] = useState<Choice | null | "unknown">("unknown");
+export function CookieConsent({ clarityId, posthog }: { clarityId: string | null; posthog: boolean }) {
+  const [choice, setChoice] = useState<Consent | null | "unknown">("unknown");
+  const any = !!clarityId || posthog;
 
   useEffect(() => {
-    if (!clarityId) return;
-    const c = readChoice();
+    if (!any) return;
+    const c = readConsent();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- lectura de localStorage tras montar (evita desajuste SSR)
     setChoice(c);
-    if (c === "accepted") loadClarity(clarityId);
-  }, [clarityId]);
+    if (c === "accepted") loadAll(clarityId);
+  }, [any, clarityId]);
 
-  if (!clarityId || choice !== null) return null;
+  if (!any || choice !== null) return null;
 
-  const decide = (v: Choice) => {
-    try {
-      localStorage.setItem(KEY, v);
-    } catch {
-      /* sin almacenamiento: la elección vale para esta visita */
-    }
+  const decide = (v: Consent) => {
+    saveConsent(v);
     setChoice(v);
-    if (v === "accepted") loadClarity(clarityId);
+    if (v === "accepted") loadAll(clarityId);
   };
+
+  const tools = [clarityId && "Microsoft Clarity", posthog && "PostHog"].filter(Boolean).join(" y ");
 
   return (
     <div
@@ -71,7 +64,7 @@ export function CookieConsent({ clarityId }: { clarityId: string | null }) {
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-[60ch] leading-snug">
-          Usamos Microsoft Clarity para medir cómo se usa la web. Solo si lo aceptas. Más detalle en la{" "}
+          Usamos {tools} para medir cómo se usa la web y mejorarla. Solo si lo aceptas. Más detalle en la{" "}
           <Link href="/privacidad" className="link">
             política de privacidad
           </Link>

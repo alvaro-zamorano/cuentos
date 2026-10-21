@@ -1,6 +1,6 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
+Actualizado: 2026-10-21 (PostHog en el PR feat/posthog, tras el consentimiento) · Antes: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
@@ -95,6 +95,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-20 | Regla de seguridad en el planificador (libro y «Cambiar esta página»): nada peligroso que el niño pueda imitar (tejados, ventanas, sitios altos, agua, fuego, salir solo a la calle). Fuera de casa va con alguien del reparto que lo cuide; si no hay nadie, la aventura pasa en casa, en el jardín o en un mundo de fantasía (Álvaro aprueba la propuesta). Solo prompt: un validador por palabras daría falsos positivos | Hugo al tejado y Olivia sola en la calle (§3, 20 oct) | `lib/plan/prompt.ts`, PR #17 |
 | 2026-10-20 | Páginas de ocasión en `/cuento-personalizado/<ocasión>` (Navidad y Reyes, cumpleaños, primer día de cole, hermanito, regalo de los abuelos) y su índice, traídas del PR #18 sin la lista de espera (Álvaro eligió «Muy pronto»). Con la app cerrada, los botones dicen «Muy pronto» y las ideas de arranque de la landing llevan a su ocasión. En el sitemap y en el pie. #18 se cierra | SEO y GEO desde el primer día; la lista de espera pedía consentimiento, guardar emails y cambiar la privacidad | `lib/ocasiones.ts`, `app/cuento-personalizado/`, `components/ocasiones/parts.tsx`, `components/JsonLd.tsx`, `components/Footer.tsx`, `app/sitemap.ts`, `proxy.ts` |
 | 2026-10-20 | Salida a producción de la landing, las ocasiones y los legales con la app cerrada (Álvaro: «Sí, publica ya», en Vercel Hobby). PR #1 unido a `main`. Webhook de Resend cambiado a `https://www.erasesuvez.com/api/mail/inbound`. Comprobado en producción: portada, ocasiones y legales 200; ocasión inexistente 404; `/crear` a `/#pronto`; `/api/plan` 404; robots y sitemap; el apex redirige a `www`; sin aviso de borrador; correo entrante configurado y sin errores en consola | Salir con la web antes que la app | `docs/ESTADO.md` |
+| 2026-10-21 | PostHog Cloud EU para medir el uso de la app (Álvaro lo pide). Se integra a mano y no con el wizard de PostHog: el wizard inicia el SDK al cargar la página y se saltaría el aviso de cookies, que promete «solo si lo aceptas». Reglas: el SDK se descarga solo tras «Aceptar» (mismo aviso y misma elección que Clarity); sin identify ni email; eventos propios del embudo sin datos del niño (`crear_paso`, `cuento_escrito`, `cuento_error`, `libro_empezado`, `personajes_aprobados`, `pago_iniciado`, `pago_confirmado`); el `b` de `/crear?b=` se tapa en eventos y grabaciones; en `/crear` no hay clics automáticos y la grabación oculta todo el texto y los campos. Sin proxy propio (`/ingest`): pedía `skipTrailingSlashRedirect` en todo el sitio. `/privacidad` añade PostHog como encargado, lo que se recoge y los plazos (un año los eventos y 30 días las grabaciones, plan gratuito) | Saber dónde se atascan los padres en `/crear` y qué paso cuesta más. Clarity no graba `/crear` | `lib/analytics.ts`, `components/CookieConsent.tsx`, `app/layout.tsx`, `app/crear/page.tsx`, `components/crear/Step{Story,Cast,Book}.tsx`, `app/privacidad/page.tsx`, `tests/unit/analytics.test.ts`, `tests/journey.spec.ts` |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -181,6 +182,15 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Precio real del libro en Gelato a España:** 11,86 € la tapa dura apaisada de 280×210 con 30 páginas, sin envío (API de precios, 20 oct). IMPRESION suponía unos 16,5 € para el 20×20 sin plan: el margen es mejor de lo calculado. Falta el envío, que no da esta API.
 - **El límite de `/api/plan` (12 por hora e IP) está cerca del total de la suite de Playwright:** un servidor local que se queda vivo entre dos pasadas da 429. En la CI no pasa (servidor nuevo en cada pasada).
 
+### 21 oct (PostHog)
+
+- **Comprobado en local con un identificador falso** (build + navegador, peticiones interceptadas): antes de decidir y tras «Rechazar», ninguna petición a PostHog. Tras «Aceptar» salen `$pageview`, `crear_paso` y la grabación. En todo lo enviado no aparece el `b` del enlace (sale `<MASKED>`) ni el texto escrito en el paso 1 (la grabación lo guarda como asteriscos).
+- **PostHog descarta los navegadores automatizados** (Playwright sin cabeza): no manda eventos, solo su configuración. Para probarlo hubo que cambiar el agente de usuario. El test de la suite solo comprueba que no hay peticiones antes de aceptar y sí después.
+- **El DPA de PostHog no va incluido en sus condiciones:** se genera y se firma desde la cuenta (página Legal, con PandaDoc), también en el plan gratuito. `/privacidad` §7 dice que los encargados tienen DPA. PostHog, Inc. (EE. UU.) es encargado, con cláusulas tipo y Marco de Privacidad; EU Cloud está en Fráncfort (AWS).
+- **La grabación tapa también las imágenes de `/crear`:** las ilustraciones llevan al niño, la portada puede llevar su nombre y se sirven con URL firmadas. Comprobado: 21 teselas en pantalla en el paso 2 y ninguna en lo enviado.
+- **En este entorno, «Ficha pobre: tres preguntas rápidas» falla por el mínimo de 1 s entre llamadas a `/api/plan`** (2 de 9 cortadas), también en la rama base sin el cambio. En la CI de GitHub pasa.
+- **Clarity recibe el `b` del enlace del libro:** graba la URL de `/crear?b=…` aunque oculte el texto. Ese `b` abre el libro sin contraseña. No se ha tocado (fuera de este encargo); ver §4.34.
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
@@ -217,6 +227,9 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 31. ~~**Variable antigua `service_role`**~~ Borrada de Vercel el 18 oct (noche), con el visto bueno de Álvaro. Entra en el siguiente despliegue.
 32. ~~**Tamaño del libro apaisado:**~~ 280×210 mm, confirmado en el catálogo de Gelato el 20 oct (§4.27). Queda verlo impreso en la muestra.
 
+33. **PostHog (PR feat/posthog):** crear el proyecto en **EU Cloud** (eu.posthog.com), poner `NEXT_PUBLIC_POSTHOG_KEY` (el `phc_…`, nunca una clave `phx_`) en Preview y, cuando se quiera medir producción, en Production, y volver a desplegar. Firmar el DPA desde la cuenta. En el proyecto: activar Session replay y dejar su retención en 30 días o menos; recomendable «Discard client IP data» (se pierde el país). Si se pasa a un plan de pago, los eventos se guardan 7 años: cambiar `/privacidad` §6. Álvaro.
+34. **Clarity y el `b` del enlace:** Clarity graba la URL de `/crear?b=…`. Opciones: no cargar Clarity en `/crear` o quitarlo (PostHog ya cubre la medición). Álvaro decide.
+
 ## 5. Próxima sesión: empezar por
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
@@ -226,3 +239,4 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 5. Stripe real en Production y `STRIPE_WEBHOOK_SECRET` separado del de Preview (§4.29, `PAGO.md`); el DPA de Gelato desde la cuenta (§4.23). Álvaro.
 6. Para abrir la app: Vercel Pro (§4.17), la prueba con tres personas (B7), `APP_OPEN=1` en Production, el webhook de Gelato a `https://www.erasesuvez.com/api/print/webhook?token=…` (mismo token) y volver a desplegar.
 7. Preguntas que siguen: §4.19 (Gemini de pago), §4.22 (qué es gratis), §4.25.
+8. **PostHog:** revisar y unir el PR feat/posthog; Álvaro crea el proyecto EU y pone la variable en Preview (§4.33); comprobar en la preview que llegan los eventos tras aceptar (con un navegador normal).

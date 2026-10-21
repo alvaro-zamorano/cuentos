@@ -75,22 +75,37 @@ test("Páginas legales enlazadas desde el footer", async ({ page }) => {
   await expect(page.getByText("art. 103.c)")).toBeVisible();
 });
 
-test("Cookies: Clarity solo tras aceptar (si el build lleva NEXT_PUBLIC_CLARITY_ID)", async ({ page }) => {
+test("Cookies: Clarity y PostHog solo tras aceptar (si el build lleva NEXT_PUBLIC_CLARITY_ID o NEXT_PUBLIC_POSTHOG_KEY)", async ({ page }) => {
+  // nada sale de verdad hacia PostHog: se cuenta y se responde aquí
+  const posthogCalls: string[] = [];
+  await page.route(/posthog\.com/, (route) => {
+    posthogCalls.push(route.request().url());
+    return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
   await page.goto("/");
   const banner = page.getByTestId("cookie-consent");
   if ((await banner.count()) === 0) {
-    // build sin identificador de Clarity: no hay nada que consentir y no se carga nada
+    // build sin identificadores: no hay nada que consentir y no se carga nada
     await expect(page.locator("#ms-clarity")).toHaveCount(0);
+    await page.waitForTimeout(1500);
+    expect(posthogCalls).toEqual([]);
     return;
   }
   await expect(banner).toBeVisible();
+  await page.waitForTimeout(1500);
+  expect(posthogCalls, "nada de PostHog antes de decidir").toEqual([]);
   await page.getByTestId("cookie-reject").click();
   await expect(banner).toHaveCount(0);
   await expect(page.locator("#ms-clarity")).toHaveCount(0);
   await page.reload();
   await expect(page.getByTestId("cookie-consent")).toHaveCount(0);
+  await page.waitForTimeout(1500);
+  expect(posthogCalls, "nada de PostHog tras rechazar").toEqual([]);
   await page.evaluate(() => localStorage.removeItem("cuentos:consent:analytics"));
   await page.reload();
   await page.getByTestId("cookie-accept").click();
-  await expect(page.locator("#ms-clarity")).toHaveCount(1);
+  const banner2 = await page.getByTestId("cookie-consent").count();
+  expect(banner2).toBe(0);
+  if (process.env.NEXT_PUBLIC_CLARITY_ID) await expect(page.locator("#ms-clarity")).toHaveCount(1);
+  if (process.env.NEXT_PUBLIC_POSTHOG_KEY) await expect.poll(() => posthogCalls.length, { message: "PostHog arranca tras aceptar" }).toBeGreaterThan(0);
 });

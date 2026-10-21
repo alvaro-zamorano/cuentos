@@ -60,7 +60,10 @@ Los tests simulan `/api/books` y `/api/jobs` en el navegador (sin Supabase) y fu
 
 ## Analítica
 
-Microsoft Clarity se carga desde `app/layout.tsx` solo si existe `NEXT_PUBLIC_CLARITY_ID` en el entorno del build (Vercel → Environment Variables). El valor no va en el repo. Pendiente: banner de cookies antes de activarlo en producción (ver `/privacidad`).
+Dos herramientas, las dos solo tras «Aceptar» en el aviso de cookies (`components/CookieConsent.tsx`) y solo si su variable existe en el entorno del build (Vercel → Environment Variables; el valor no va en el repo):
+
+- Microsoft Clarity (`NEXT_PUBLIC_CLARITY_ID`): mapas de calor; no graba `/crear`.
+- PostHog Cloud EU (`NEXT_PUBLIC_POSTHOG_KEY`): embudo de `/crear` y grabaciones con el texto oculto. Reglas y catálogo de eventos en `web/lib/analytics.ts`.
 
 ## Correr en local
 
@@ -71,7 +74,7 @@ npm run dev        # http://localhost:3000
 npm run build && npx next start -p 3000
 ```
 
-Variables: copia `web/.env.example` a `web/.env.local` y rellena en local (nunca en el repo). `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` activa la demo de la edición ilustrada; `NEXT_PUBLIC_CLARITY_ID` activa Clarity. Sin `SUPABASE_SERVICE_ROLE_KEY` la app funciona: `/api/lead` responde ok sin persistir y `/api/books` responde 503 (no se muestra enlace).
+Variables: copia `web/.env.example` a `web/.env.local` y rellena en local (nunca en el repo). `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` activa la demo de la edición ilustrada; `NEXT_PUBLIC_CLARITY_ID` activa Clarity y `NEXT_PUBLIC_POSTHOG_KEY`, PostHog (los dos tras el aviso de cookies). Sin `SUPABASE_SERVICE_ROLE_KEY` la app funciona: `/api/lead` responde ok sin persistir y `/api/books` responde 503 (no se muestra enlace).
 
 Worker y comprobaciones (desde `web/`):
 
