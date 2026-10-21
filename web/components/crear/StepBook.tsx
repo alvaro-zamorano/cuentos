@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
+import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
 import { MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
 import type { Plan, PlanPage } from "@/lib/plan/types";
@@ -111,6 +112,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
         }
       }
       if (!v.paid) return;
+      if (confirming) trackPaid(bookId, v.edition ?? "illustrated");
       // con Stripe las páginas las encola el webhook: se le da un momento antes de pedirlas desde aquí
       if (v.payment === "stripe" && !v.jobs.some(isPage)) {
         setBusy("Preparando las ilustraciones…");
@@ -124,7 +126,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       if (needsRequest(v)) await paintPages();
       else await drive();
     })();
-  }, [confirming, drive, paintPages, refresh]);
+  }, [bookId, confirming, drive, paintPages, refresh]);
 
   if (!view)
     return (
@@ -327,6 +329,7 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
     setField(null);
     const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body());
     if (r.status === 200 && r.json.url) {
+      track({ name: "pago_iniciado", props: { edicion: edition } }, { beacon: true });
       window.location.assign(r.json.url);
       return;
     }
@@ -603,4 +606,16 @@ function ReportForm({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (n
       {err && <p className="text-sm text-danger">{err}</p>}
     </form>
   );
+}
+
+/** Un «pago_confirmado» por libro y pestaña: recargar la vuelta de Stripe no cuenta dos veces. */
+function trackPaid(bookId: string, edicion: string) {
+  const key = `cuentos:paid-tracked:${bookId}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+  } catch {
+    /* sin almacenamiento: se manda igual */
+  }
+  track({ name: "pago_confirmado", props: { edicion } });
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookView } from "@/lib/book/service";
+import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
 import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
@@ -193,7 +194,10 @@ export function StepCast({
           data-testid="approve"
           onClick={async () => {
             const r = await postJson("/api/libro/approve", { bookId, sheetJobId: shownSheet!.id });
-            if (r.status === 200) onNext();
+            if (r.status === 200) {
+              track({ name: "personajes_aprobados" });
+              onNext();
+            }
             else setError(errorMessage(r.json));
           }}
         >

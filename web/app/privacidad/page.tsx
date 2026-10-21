@@ -33,6 +33,10 @@ export default function Privacidad() {
           <strong>Si compras el libro impreso</strong>: el nombre y la dirección de quien lo recibe y, si lo das, un teléfono para el
           transportista.
         </li>
+        <li>
+          <strong>Si aceptas la medición</strong>: cómo usas la web (páginas, clics y pasos del cuento), el navegador y el dispositivo. Sin
+          tu nombre ni tu email, y sin grabar la pantalla.
+        </li>
         <li>No pedimos fotos, apellidos ni fecha de nacimiento. No usamos reconocimiento facial.</li>
       </ul>
 
@@ -76,9 +80,8 @@ export default function Privacidad() {
           en cualquier momento desde el propio email o escribiéndonos.
         </li>
         <li>
-          Medición de uso de la web (Microsoft Clarity) en forma agregada: <strong>solo si lo aceptas</strong> en el aviso de cookies
-          (consentimiento, art. 22.2 LSSI). Si lo rechazas, no se carga y no se instala ninguna cookie de medición. Puedes cambiar tu elección
-          borrando los datos de este sitio en tu navegador.
+          Medición de uso de la web (PostHog), para saber qué pasos cuestan más y mejorarlos: <strong>solo si lo aceptas</strong> en el aviso
+          de cookies (consentimiento, art. 22.2 LSSI). Si lo rechazas, no se carga y no se instala ninguna cookie de medición. Puedes cambiar tu elección borrando los datos de este sitio en tu navegador.
         </li>
       </ul>
 
@@ -101,6 +104,7 @@ export default function Privacidad() {
           El email que nos das para recibir el enlace del libro se borra a los 30 días, con el libro, si no has aceptado recibir novedades. Si
           compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
+        <li>Los datos de medición de PostHog se guardan un año.</li>
         <li>Si nos escribes, guardamos tu mensaje el tiempo necesario para atenderte y, si es sobre un pedido, con el pedido.</li>
         <li>
           El motivo de «otra versión» y lo que escribas se guardan con el libro. A los 30 días se borra lo que escribiste y el motivo se
@@ -128,6 +132,10 @@ export default function Privacidad() {
         </li>
         <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
         <li>
+          Medición de uso, solo si la aceptas: PostHog, Inc. (EE. UU.), con los datos alojados en Fráncfort (UE), cláusulas tipo y Marco de
+          Privacidad. No recibe tu nombre, tu email ni lo que escribes sobre el niño, y el enlace de tu libro se tapa en las direcciones.
+        </li>
+        <li>
           Impresión y envío del libro de tapa dura: Gelato ASA (Oslo, Noruega, en el Espacio Económico Europeo),
           que encarga la impresión a una imprenta de su red, normalmente cerca de tu casa. Recibe el libro, el nombre, la dirección, el email y,
           si lo das, el teléfono.
@@ -144,14 +152,6 @@ export default function Privacidad() {
         </li>
         <li>
           El transportista que entrega el libro impreso: recibe tu nombre, la dirección y, si lo das, el teléfono para hacer la entrega.
-        </li>
-        <li>
-          Microsoft (Clarity), solo si aceptas la medición: recoge cómo navegas por la web y puede usar esos datos para sus propios fines. No graba
-          lo que escribes sobre el niño ni el cuento.{" "}
-          <a href="https://privacy.microsoft.com/es-es/privacystatement" className="link" target="_blank" rel="noopener noreferrer">
-            Declaración de privacidad de Microsoft
-          </a>
-          .
         </li>
       </ul>
 
