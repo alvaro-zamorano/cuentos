@@ -1,6 +1,6 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
+Actualizado: 2026-10-22 (compra de prueba con Gelato en la preview: todo bien salvo la estrella de la contracubierta, arreglada en el PR #30; Gelato sin método de pago) · Antes: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
@@ -233,7 +233,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. **La web ya está publicada** (20 oct). Cambios nuevos: PR a la rama de trabajo y, para producción, PR de la rama de trabajo a `main`. Falta que Álvaro escriba a `hola@erasesuvez.com` desde otra cuenta para comprobar el correo entrante con el webhook nuevo. También: dar de alta `www.erasesuvez.com` en Search Console con el sitemap y mirar la vista previa del enlace en WhatsApp.
-3. ~~**Compra de prueba en la preview**~~ Hecha el 22 oct (§3): todo bien salvo la estrella, ya arreglada. Comprobar en la preview, con el PDF ilustrado del libro `i2nrupx62b`, que el colofón enseña la estrella.
+3. ~~**Compra de prueba en la preview**~~ Hecha el 22 oct (§3): todo bien salvo la estrella, arreglada en el PR #30 y comprobada en la preview de esa rama (colofón del PDF ilustrado de `i2nrupx62b`, renderizado en Vercel). Falta unir el PR #30.
 4. **Muestra impresa:** antes, una tarjeta como método de pago en Gelato (Billing → Payment → Methods; la cartera no hace falta). `GELATO_ORDER_TYPE=order` en Preview, otro libro a la dirección de Álvaro y, después, quitar la variable. Sus plazos fijan la fecha límite de Navidad.
 5. Stripe real en Production y `STRIPE_WEBHOOK_SECRET` separado del de Preview (§4.29, `PAGO.md`); el DPA de Gelato desde la cuenta (§4.23). Álvaro.
 6. Para abrir la app: Vercel Pro (§4.17), la prueba con tres personas (B7), `APP_OPEN=1` en Production, el webhook de Gelato a `https://www.erasesuvez.com/api/print/webhook?token=…` (mismo token) y volver a desplegar.
