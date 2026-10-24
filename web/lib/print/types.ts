@@ -32,6 +32,21 @@ export const OPEN_PRINT_STATUSES: PrintStatus[] = ["awaiting_approval", "sending
 /** Ya en la imprenta: el libro no admite cambios. */
 export const LOCKED_PRINT_STATUSES: PrintStatus[] = ["sending", "sent", "in_production", "shipped", "delivered", "returned"];
 
+/** Los hitos que se fechan en la página de seguimiento. */
+export type PrintStep = "sent" | "in_production" | "shipped" | "delivered";
+
+/**
+ * Lo que sabemos del envío para la página de seguimiento (cuentos_orders.print_info, 24 oct). Lo rellenan el aviso de
+ * Gelato y el cron; Gelato no da el historial, así que la fecha de cada hito es cuándo lo vimos por primera vez.
+ */
+export interface PrintInfo {
+  method?: string | null;
+  etaFrom?: string | null;
+  etaTo?: string | null;
+  trackingCode?: string | null;
+  steps?: Partial<Record<PrintStep, string>>;
+}
+
 export interface PaidOrder {
   id: string;
   bookId: string;
@@ -50,6 +65,8 @@ export interface PaidOrder {
   createdAt: string;
   /** Último cambio del estado de imprenta (print_updated_at). */
   updatedAt: string | null;
+  /** print_info: método, entrega estimada, número de seguimiento y fecha de cada hito. */
+  info: PrintInfo | null;
 }
 
 /** Lo que ve el padre en el paso 5 tras pagar la tapa dura (sin el resto del pedido). */
@@ -58,6 +75,8 @@ export interface PrintView {
   shipping: Shipping | null;
   trackingUrl: string | null;
   sentAt: string | null;
+  /** Página propia de seguimiento (/seguimiento/<id del pedido>), desde que está en la imprenta. */
+  trackPath: string | null;
   /** La imprenta funciona de verdad aquí (con clave), o es una simulación de la preview. */
   mode: "gelato" | "dry-run" | "none";
 }
