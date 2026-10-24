@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MOCK_LLM } from "../../lib/llm";
+import { MOCK_LLM, type Llm } from "../../lib/llm";
 import { castArt, castArtUser, pagePrompt, pagesArtUser, redoSceneUser } from "../../lib/plan/art";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -99,4 +99,22 @@ test("otra versión con motivo: el modelo recibe la escena, quién sale, el moti
   assert.match(u, /«el perro atraviesa el sofá»/);
   assert.match(u, /every character fully visible/);
   assert.doesNotMatch(redoSceneUser(art, { who: ["hero"] }, { n: 3, sceneEn: "x", outfitEn: null, extrasEn: [] }, "Otra cosa", null), /own words/);
+});
+
+test("abuelos (24 oct): sin descripción se dibujan activos y de unos 60; si el adulto los describe mayores, se respeta", async () => {
+  const systems: string[] = [];
+  const spy: Llm = {
+    name: "anthropic",
+    model: "espía",
+    async complete(req) {
+      systems.push(req.system);
+      return { raw: JSON.stringify({ cast: [], places: {}, objects: {}, coverEn: "cover" }), model: "espía", usage: { input: 0, output: 0 }, ms: 0 };
+    },
+  };
+  const conAbuelo = normalizeFicha({ ...olivia, cast: [{ id: "c1", kind: "persona", name: "Paco", relation: "su abuelo", look: "" }] });
+  await castArt(conAbuelo, mockPlan(conAbuelo), spy);
+  assert.ok(systems.length > 0, "la dirección de arte llama al modelo");
+  assert.match(systems[0], /Grandparents .* about 60/);
+  assert.match(systems[0], /no hair buns, shawls, aprons, walking sticks/);
+  assert.match(systems[0], /If the Spanish describes them older, follow it exactly\./);
 });

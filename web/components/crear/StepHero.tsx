@@ -234,7 +234,7 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
               )}
               <label className="grid gap-1.5">
                 <span className="field-label">Cómo es, en una línea</span>
-                <input className="input" value={c.look} maxLength={LIMITS.castLook} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "pelo blanco recogido y gafas rojas"} />
+                <input className="input" value={c.look} maxLength={LIMITS.castLook} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "media melena gris, gafas de pasta y zapatillas blancas"} />
               </label>
             </div>
           ))}
