@@ -138,8 +138,9 @@ export function disallowedNames(text: string, allowed: Set<string>): string[] {
     if (first === first.toLowerCase() || /^\p{N}/u.test(w)) continue;
     if (w.length > 1 && w === w.toUpperCase()) continue; // onomatopeyas y siglas en mayúsculas (FUUU)
     if (allowed.has(norm(w))) continue;
-    // inicio de frase: principio del texto o tras . ! ? … : ; (con signos de apertura o comillas en medio)
-    const before = text.slice(0, m.index).replace(/[\s¡¿«"“'(—–-]+$/u, "");
+    // inicio de frase: principio del texto o tras . ! ? … : ; (con signos de apertura o comillas en medio,
+    // también de cierre: en «¿Juegas?» El niño…, «El» empieza frase)
+    const before = text.slice(0, m.index).replace(/[\s¡¿«»"“”'’()—–-]+$/u, "");
     if (before.length === 0 || /[.!?…:;]$/u.test(before) || /[«"“—–]\s*$/u.test(text.slice(0, m.index))) continue;
     out.push(w);
   }
