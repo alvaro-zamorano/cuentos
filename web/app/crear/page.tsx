@@ -43,6 +43,7 @@ function Crear() {
   const params = useSearchParams();
   const b = params.get("b");
   const pagado = params.get("pagado") === "1";
+  const mejora = pagado && params.get("mejora") === "1";
   const ideaParam = params.get("idea");
   const [recovering, setRecovering] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
@@ -141,7 +142,7 @@ function Crear() {
             {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
             {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(4)} />}
             {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => update({ bookId: id, email })} onNext={() => go(5)} />}
-            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
+            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} upgrading={mejora && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
           </div>
         </div>
         {aside && <BookAside s={s} />}

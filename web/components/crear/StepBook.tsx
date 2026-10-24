@@ -13,6 +13,7 @@ import { AutoTextarea } from "./AutoTextarea";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
 import { PrintPanel } from "./PrintPanel";
+import { UpgradeCard } from "./UpgradeCard";
 import { ShippingForm, type ShippingDraft } from "./ShippingForm";
 import { ErrorNote, Status } from "./ui";
 
@@ -36,7 +37,7 @@ function paintingCopy(v: BookView | null): string {
  * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
  * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
-export function StepBook({ bookId, confirming = false, onPlan }: { bookId: string; confirming?: boolean; onPlan: (p: Plan) => void }) {
+export function StepBook({ bookId, confirming = false, upgrading = false, onPlan }: { bookId: string; confirming?: boolean; upgrading?: boolean; onPlan: (p: Plan) => void }) {
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +112,16 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
         }
       }
       if (!v.paid) return;
+      if (upgrading && v.edition !== "hardcover") {
+        // vuelta de Stripe tras pasar a tapa dura: el webhook crea el pedido en unos segundos
+        setBusy("Confirmando el pago de la tapa dura…");
+        for (let i = 0; i < 40 && v.edition !== "hardcover" && !c.cancelled; i++) {
+          await sleep(3000);
+          v = (await refresh()) ?? v;
+        }
+        setBusy(null);
+        if (v.edition !== "hardcover") setError("El pago de la tapa dura aún no nos ha llegado. Si ya se ha cobrado, aparecerá aquí en unos minutos: recarga esta página o vuelve con tu enlace.");
+      }
       // con Stripe las páginas las encola el webhook: se le da un momento antes de pedirlas desde aquí
       if (v.payment === "stripe" && !v.jobs.some(isPage)) {
         setBusy("Preparando las ilustraciones…");
@@ -124,7 +135,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       if (needsRequest(v)) await paintPages();
       else await drive();
     })();
-  }, [confirming, drive, paintPages, refresh]);
+  }, [confirming, upgrading, drive, paintPages, refresh]);
 
   if (!view)
     return (
@@ -199,6 +210,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       {view.paid && view.print && (
         <PrintPanel view={view} allDone={allDone} onSend={sendToPrint} onShipping={(shipping) => setView({ ...view, print: { ...view.print!, shipping } })} />
       )}
+      {view.paid && !view.print && view.edition === "illustrated" && view.upgrade && !showBusy && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
 
       {view.paid ? (
         <ol className="m-0 grid list-none gap-8 p-0">
