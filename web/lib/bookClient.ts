@@ -108,6 +108,10 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return "Ahora mismo no podemos guardar el libro. Inténtalo más tarde.";
     case "print_unavailable":
       return "El libro impreso todavía no está disponible.";
+    case "already_hardcover":
+      return "Este libro ya es de tapa dura. Recarga la página.";
+    case "upgrade_closed":
+      return "Ya no se puede pasar a tapa dura: el libro se borra en menos de un día.";
     case "reason":
       return json.reason ?? "Dinos qué no te gusta de esta ilustración.";
     case "already_reported":

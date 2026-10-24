@@ -46,19 +46,25 @@ export interface CheckoutInput {
   origin: string;
   /** Momento (ISO) en que se aceptó la renuncia al desistimiento. */
   waiverAt?: string;
+  /** Pasar a tapa dura un libro ya pagado en PDF: el webhook crea un segundo pedido, de tapa dura. */
+  upgrade?: boolean;
 }
 
 /** Cuerpo form-encoded de /v1/checkout/sessions (exportado para los tests). */
-export function checkoutBody({ bookId, email, title, amountCents, origin, waiverAt, edition = "illustrated" }: CheckoutInput): URLSearchParams {
+export function checkoutBody({ bookId, email, title, amountCents, origin, waiverAt, edition = "illustrated", upgrade = false }: CheckoutInput): URLSearchParams {
   const p = new URLSearchParams();
   p.set("mode", "payment");
-  p.set("success_url", `${origin}/crear?b=${bookId}&pagado=1`);
+  p.set("success_url", `${origin}/crear?b=${bookId}&pagado=1${upgrade ? "&mejora=1" : ""}`);
   p.set("cancel_url", `${origin}/crear?b=${bookId}`);
   p.set("client_reference_id", bookId);
   p.set("metadata[bookId]", bookId);
   p.set("payment_intent_data[metadata][bookId]", bookId);
   p.set("metadata[edition]", edition);
   p.set("payment_intent_data[metadata][edition]", edition);
+  if (upgrade) {
+    p.set("metadata[upgrade]", "1");
+    p.set("payment_intent_data[metadata][upgrade]", "1");
+  }
   if (waiverAt) {
     for (const k of ["metadata", "payment_intent_data[metadata]"]) {
       p.set(`${k}[withdrawal_waiver_at]`, waiverAt);
@@ -70,10 +76,15 @@ export function checkoutBody({ bookId, email, title, amountCents, origin, waiver
   p.set("line_items[0][price_data][currency]", "eur");
   p.set("line_items[0][price_data][unit_amount]", String(amountCents));
   const hard = edition === "hardcover";
-  p.set("line_items[0][price_data][product_data][name]", `${hard ? "Libro de tapa dura" : "Libro ilustrado"} · ${title}`.slice(0, 120));
+  const name = upgrade ? "Pasar a tapa dura" : hard ? "Libro de tapa dura" : "Libro ilustrado";
+  p.set("line_items[0][price_data][product_data][name]", `${name} · ${title}`.slice(0, 120));
   p.set(
     "line_items[0][price_data][product_data][description]",
-    hard ? "Libro apaisado de tapa dura con 12 ilustraciones, envío a la Península y Baleares incluido, y el PDF." : "12 ilustraciones, revisión página a página y PDF para imprimir en A4 apaisado.",
+    upgrade
+      ? "La diferencia hasta el libro apaisado de tapa dura, con envío a la Península y Baleares incluido. El PDF ya lo tienes."
+      : hard
+        ? "Libro apaisado de tapa dura con 12 ilustraciones, envío a la Península y Baleares incluido, y el PDF."
+        : "12 ilustraciones, revisión página a página y PDF para imprimir en A4 apaisado.",
   );
   p.set("locale", "es");
   return p;

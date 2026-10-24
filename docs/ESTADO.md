@@ -1,6 +1,6 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
+Actualizado: 2026-10-24 (pasar a tapa dura desde el PDF pagando la diferencia) · Antes: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
@@ -95,6 +95,8 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 | 2026-10-20 | Regla de seguridad en el planificador (libro y «Cambiar esta página»): nada peligroso que el niño pueda imitar (tejados, ventanas, sitios altos, agua, fuego, salir solo a la calle). Fuera de casa va con alguien del reparto que lo cuide; si no hay nadie, la aventura pasa en casa, en el jardín o en un mundo de fantasía (Álvaro aprueba la propuesta). Solo prompt: un validador por palabras daría falsos positivos | Hugo al tejado y Olivia sola en la calle (§3, 20 oct) | `lib/plan/prompt.ts`, PR #17 |
 | 2026-10-20 | Páginas de ocasión en `/cuento-personalizado/<ocasión>` (Navidad y Reyes, cumpleaños, primer día de cole, hermanito, regalo de los abuelos) y su índice, traídas del PR #18 sin la lista de espera (Álvaro eligió «Muy pronto»). Con la app cerrada, los botones dicen «Muy pronto» y las ideas de arranque de la landing llevan a su ocasión. En el sitemap y en el pie. #18 se cierra | SEO y GEO desde el primer día; la lista de espera pedía consentimiento, guardar emails y cambiar la privacidad | `lib/ocasiones.ts`, `app/cuento-personalizado/`, `components/ocasiones/parts.tsx`, `components/JsonLd.tsx`, `components/Footer.tsx`, `app/sitemap.ts`, `proxy.ts` |
 | 2026-10-20 | Salida a producción de la landing, las ocasiones y los legales con la app cerrada (Álvaro: «Sí, publica ya», en Vercel Hobby). PR #1 unido a `main`. Webhook de Resend cambiado a `https://www.erasesuvez.com/api/mail/inbound`. Comprobado en producción: portada, ocasiones y legales 200; ocasión inexistente 404; `/crear` a `/#pronto`; `/api/plan` 404; robots y sitemap; el apex redirige a `www`; sin aviso de borrador; correo entrante configurado y sin errores en consola | Salir con la web antes que la app | `docs/ESTADO.md` |
+| 2026-10-24 | Pasar a tapa dura después de comprar el PDF (Álvaro): se paga solo la diferencia (20,00 €), con la dirección y la misma casilla de renuncia. Se puede mientras el libro esté guardado (30 días desde que se creó) y se cierra un día antes de que caduque; la tarjeta enseña la fecha. Se ofrece en el paso 5 tras pagar el PDF, en el email de «tu libro está listo» del PDF, en una pregunta de la landing y en las condiciones §2, no en el mensaje principal. El envío sigue incluido en el precio | Quien duda prueba con el PDF y después pide el impreso sin pagar de más. Para nosotros cuesta lo mismo salvo una segunda comisión fija de Stripe (≈ 0,25 €) | `lib/print/prices.ts` (`UPGRADE_CENTS`, `upgradeDeadline`), `lib/book/service.ts` (`prepareUpgrade`, `recordUpgrade`, `upgradeOffer`), `lib/stripe.ts`, rutas `checkout`, `pay`, `view` y `stripe/webhook`, `components/crear/UpgradeCard.tsx`, `StepBook.tsx`, `lib/mail.ts`, `lib/book/readyMail.ts`, `app/page.tsx`, `/condiciones` |
+| 2026-10-24 | La mejora es un segundo pedido (`hardcover`, 2000 c, su propia sesión de Stripe con `metadata.upgrade=1`), sin migración: `getOrder` ya devuelve el pedido pagado más reciente, así que el panel de «Mandar a imprimir», los recordatorios, la salvaguarda `cs_live_` y el borrado funcionan igual. Las páginas no se repintan. Si Stripe cobra una mejora que no se puede registrar (libro caducado, sin PDF pagado o ya en tapa dura), el webhook responde 200 y manda un aviso a `MAIL_FORWARD_TO` para devolverla a mano | Un pedido por cobro cuadra con Stripe y con la contabilidad | `lib/book/service.ts`, `app/api/stripe/webhook/route.ts`, `lib/generation/store.ts` (`expiresAt` en el libro; en memoria, un pedido por sesión o por edición) |
 
 ## 3. Hallazgos cerrados (13 oct, noche)
 
@@ -181,6 +183,14 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Precio real del libro en Gelato a España:** 11,86 € la tapa dura apaisada de 280×210 con 30 páginas, sin envío (API de precios, 20 oct). IMPRESION suponía unos 16,5 € para el 20×20 sin plan: el margen es mejor de lo calculado. Falta el envío, que no da esta API.
 - **El límite de `/api/plan` (12 por hora e IP) está cerca del total de la suite de Playwright:** un servidor local que se queda vivo entre dos pasadas da 429. En la CI no pasa (servidor nuevo en cada pasada).
 
+### 24 oct (pasar a tapa dura)
+
+- **El plazo cuenta desde que se crea el libro, no desde la compra:** `expires_at` es `now() + 30 días` al crearlo. Quien compre el PDF el día 25 tiene unos 4 días para pedir la tapa dura. La tarjeta y el email enseñan la fecha.
+- **Comprobado en local:** tsc, eslint, 131 unitarios (5 nuevos en `tests/unit/upgrade.test.ts`: precio y plazo, cuerpo de Stripe, preparar, webhook idempotente y casos raros, recorrido con email e imprenta simulada), build y 14 Playwright (uno nuevo: PDF, tarjeta, dirección en Palma, pago de prueba, panel de imprenta y sin repintar). Un test falla si se quita la rama de la mejora del webhook. Capturas de la tarjeta cerrada, abierta y del panel después, en móvil (390 px) y escritorio (1440 px).
+- **Sin comprobar:** la mejora con Stripe de verdad (cobro de 20,00 € y vuelta con `?mejora=1`). En la preview, con la tarjeta de prueba, en la próxima compra de prueba.
+- **Margen (cálculo de Claude, 24 oct):** tapa dura ≈ 15,25 € por venta (33,56 € sin IVA − Gelato 11,86 − envío 4,80 − Stripe 0,77 − IA ≈ 0,87); PDF ≈ 13 €; PDF y después mejora ≈ 15 €. Sin captación, cuota de autónomo ni Vercel Pro. Envío a Baleares sin mirar.
+- **Aviso del build:** `npm run build` paró una vez con un aviso de Next.js de que la 16.4.0 tiene una vulnerabilidad conocida y recomienda actualizar; al repetirlo, compiló. No se ha actualizado nada.
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
@@ -218,6 +228,8 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 32. ~~**Tamaño del libro apaisado:**~~ 280×210 mm, confirmado en el catálogo de Gelato el 20 oct (§4.27). Queda verlo impreso en la muestra.
 
 ## 5. Próxima sesión: empezar por
+
+- **Mejora a tapa dura (PR de `feat/mejora-tapa-dura`):** revisarla y unirla; probarla en la preview con la tarjeta de prueba de Stripe (PDF y después tapa dura) y mirar que el email de «listo» del PDF trae la oferta. Mirar en Gelato el envío a Baleares.
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
 2. **La web ya está publicada** (20 oct). Cambios nuevos: PR a la rama de trabajo y, para producción, PR de la rama de trabajo a `main`. Falta que Álvaro escriba a `hola@erasesuvez.com` desde otra cuenta para comprobar el correo entrante con el webhook nuevo. También: dar de alta `www.erasesuvez.com` en Search Console con el sitemap y mirar la vista previa del enlace en WhatsApp.
