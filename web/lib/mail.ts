@@ -64,16 +64,16 @@ export function sendPrintReminder(to: string, bookTitle: string, link: string): 
   return send(to, `Falta un paso para imprimir «${bookTitle}»`, layout(bookTitle, body, link, "Revisar y mandar a imprimir"), `${bookTitle}\n\n${body}\n\n${link}`);
 }
 
-/** El pedido ya está en la imprenta. */
+/** El pedido ya está en la imprenta. `link`: nuestra página de seguimiento. */
 export function sendSentToPrint(to: string, bookTitle: string, link: string, address: string): Promise<MailResult> {
-  const body = `Tu libro ya está en la imprenta. Lo imprimimos, lo encuadernamos en tapa dura y lo enviamos a ${esc(address)}. Suele llegar en una o dos semanas; te escribimos con el seguimiento cuando salga.`;
-  return send(to, `«${bookTitle}» ya está en la imprenta`, layout(bookTitle, body, link, "Ver mi libro"), `${bookTitle}\n\nTu libro ya está en la imprenta. Lo enviamos a ${address}. Suele llegar en una o dos semanas.\n\n${link}`);
+  const body = `Tu libro ya está en la imprenta. Lo imprimimos, lo encuadernamos en tapa dura y lo enviamos a ${esc(address)}. Suele llegar en una o dos semanas. En el enlace de abajo ves cómo va y te escribimos cuando salga.`;
+  return send(to, `«${bookTitle}» ya está en la imprenta`, layout(bookTitle, body, link, "Ver cómo va mi pedido"), `${bookTitle}\n\nTu libro ya está en la imprenta. Lo enviamos a ${address}. Suele llegar en una o dos semanas.\n\nCómo va tu pedido: ${link}`);
 }
 
-/** El libro ha salido de la imprenta, con el enlace de seguimiento del transportista. */
-export function sendShipped(to: string, bookTitle: string, trackingUrl: string): Promise<MailResult> {
-  const body = "Tu libro ha salido de la imprenta y va de camino. Con el enlace de abajo ves dónde está.";
-  return send(to, `«${bookTitle}» va de camino`, layout(bookTitle, body, trackingUrl, "Seguir el envío"), `${bookTitle}\n\nTu libro va de camino. Seguimiento: ${trackingUrl}`);
+/** El libro ha salido de la imprenta. `link`: nuestra página de seguimiento, con el número y el enlace del transportista. */
+export function sendShipped(to: string, bookTitle: string, link: string): Promise<MailResult> {
+  const body = "Tu libro ha salido de la imprenta y va de camino. En el enlace de abajo ves cuándo llega y el seguimiento del transportista.";
+  return send(to, `«${bookTitle}» va de camino`, layout(bookTitle, body, link, "Seguir mi pedido"), `${bookTitle}\n\nTu libro va de camino. Seguimiento: ${link}`);
 }
 
 /**

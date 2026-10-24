@@ -691,7 +691,13 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     edition: order?.edition ?? null,
     print:
       order?.edition === "hardcover" && order.printStatus
-        ? { status: order.printStatus, shipping: order.shipping ?? d.shipping ?? null, trackingUrl: order.trackingUrl, sentAt: order.sentAt }
+        ? {
+            status: order.printStatus,
+            shipping: order.shipping ?? d.shipping ?? null,
+            trackingUrl: order.trackingUrl,
+            sentAt: order.sentAt,
+            trackPath: order.sentAt ? `/seguimiento/${order.id}` : null,
+          }
         : null,
     approvedSheetJobId: d.approvedSheetJobId ?? null,
     sheetsLeft: Math.max(0, MAX_SHEETS - sheets.length),
