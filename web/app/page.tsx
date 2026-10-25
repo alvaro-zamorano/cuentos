@@ -54,6 +54,8 @@ const HOW = [
   { title: "Tú das el visto bueno", body: "Lees el cuento antes de ilustrarlo y revisas cada página antes de imprimir.", tint: "bg-sage", icon: Icon.approve },
 ];
 
+const UPGRADE_Q = "¿Puedo comprar el PDF y pedir la tapa dura después?";
+
 const FAQ = [
   {
     q: "¿Quién escribe e ilustra el cuento?",
@@ -80,7 +82,8 @@ const FAQ = [
     a: "El libro impreso tarda una o dos semanas desde que lo mandas a imprimir. Si vas justo de tiempo, el PDF está listo en unos minutos y el libro llega después.",
   },
   {
-    q: "¿Puedo comprar el PDF y pedir la tapa dura después?",
+    // solo se enseña si la tapa dura se puede comprar de verdad (app abierta, pago e imprenta reales): ver `faq` abajo
+    q: UPGRADE_Q,
     a: `Sí. Desde tu libro pagas solo la diferencia, ${eur(UPGRADE_CENTS)}, y te lo enviamos a casa. Puedes pedirlo mientras tu libro esté guardado, hasta un día antes de que se borre.`,
   },
   {
@@ -108,6 +111,8 @@ export default function Landing() {
   const hardcoverStatus = pm === "none" || pr === "none" ? "Muy pronto" : pm === "dry-run" || pr === "dry-run" ? "Disponible en prueba" : null;
   // con la app cerrada (lib/appOpen.ts, producción hasta que se abra): «Muy pronto» en vez de los botones a /crear
   const open = appOpen();
+  // la mejora a tapa dura no se promete con la app cerrada ni con la tapa dura en «Muy pronto» o en prueba
+  const faq = open && !hardcoverStatus ? FAQ : FAQ.filter((f) => f.q !== UPGRADE_Q);
   const contact = titular().email ?? "hola@erasesuvez.com";
   return (
     <main className="flex-1">
@@ -380,7 +385,7 @@ export default function Landing() {
       <section id="preguntas" className="mx-auto max-w-3xl scroll-mt-6 px-4 pt-20 pb-16 sm:px-6 md:pt-24">
         <h2 className="display m-0 mb-8 text-center text-[34px] sm:text-[48px]">Preguntas</h2>
         <div className="grid gap-3">
-          {FAQ.map((f, i) => (
+          {faq.map((f, i) => (
             <details key={f.q} className="group rounded-[20px] bg-card px-5 py-4 shadow-[0_2px_0_#eaddc6] sm:px-6 sm:py-5" open={i === 0}>
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-display text-[18px] font-semibold sm:text-[20px] [&::-webkit-details-marker]:hidden">
                 {f.q}
