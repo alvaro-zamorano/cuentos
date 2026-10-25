@@ -15,7 +15,8 @@ export const SITE_DOMAIN = "erasesuvez.com";
  *     impar) · 28 «Fin» · 29 marca y web · 30 en blanco (la imprenta puede poner ahí su código de montaje)
  * - "full": PDF ilustrado en A4 apaisado: portada, personajes, dedicatoria, 12 dobles, «Fin» y colofón (29). Con la
  *     portada sola, las dobles caen como en el libro (ilustración a la izquierda) en la vista de dos páginas.
- * - "free" (D3): PDF casero en A4 apaisado: portada, personajes, dedicatoria, 12 páginas de texto, «Fin» y colofón.
+ * - "free" (D3): PDF casero en A4 apaisado: portada, personajes (solo si ya hay retratos), dedicatoria, 12 páginas de
+ *     texto, «Fin» y la marca.
  * Cubierta del impreso: un pliego con trasera, lomo y portada, con las medidas que da la API de Gelato.
  */
 export interface PrintBookInput {
@@ -24,6 +25,8 @@ export interface PrintBookInput {
   from?: string;
   coverUrl: string | null;
   sheetUrl: string | null;
+  /** Un retrato por personaje, en orden (25 oct). Si falta alguno, la página usa la hoja; en el PDF gratis, se quita. */
+  portraits?: { name: string; url: string | null }[];
   pageUrls: Record<number, string | null>;
   /** Fecha de la edición. Ya no se imprime (la última página solo lleva la marca, 25 oct). */
   date: Date;
@@ -80,7 +83,7 @@ function storyHtml(t: string): string {
  * cada lado (0 en los PDF): los márgenes de seguridad se cuentan desde el corte.
  */
 export function bookPages(input: PrintBookInput, kind: BookKind, W: number, H: number, bleed: number): { css: string; pages: string[] } {
-  const { plan, heroName, from, coverUrl, sheetUrl, pageUrls } = input;
+  const { plan, heroName, from, coverUrl, sheetUrl, pageUrls, portraits = [] } = input;
   const safe = bleed + 14;
   const css = `${FONTS}
 @page { size: ${W}mm ${H}mm; margin: 0; }
@@ -95,6 +98,12 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
 .from { font-family: Figtree, sans-serif; font-size: 8.5pt; letter-spacing: .16em; text-transform: uppercase; color: ${SOFT}; margin-top: 12mm; }
 .label { font-family: Figtree, sans-serif; font-size: 8.5pt; letter-spacing: .16em; text-transform: uppercase; color: ${SOFT}; margin-bottom: 6mm; }
 .sheet { height: ${Math.round(H - 2 * safe - 18)}mm; max-width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 2mm; background: #efe8dc; }
+.cast { display: flex; justify-content: center; align-items: flex-start; gap: 12mm; }
+.who { display: flex; flex-direction: column; align-items: center; }
+/* el fondo del retrato se funde con el papel: multiplicar quita el blanco y la máscara difumina los bordes */
+.who img { display: block; object-fit: contain; mix-blend-mode: multiply;
+  -webkit-mask-image: radial-gradient(closest-side, #000 74%, transparent 100%); mask-image: radial-gradient(closest-side, #000 74%, transparent 100%); }
+.who .nm { font-size: 17pt; font-weight: 600; margin-top: 3mm; text-wrap: balance; text-align: center; }
 .ded p { font-size: 21pt; line-height: 1.55; color: #4a4140; text-wrap: balance; max-width: 170mm; }
 .ill { position: absolute; inset: 0; width: ${W}mm; height: ${H}mm; object-fit: cover; display: block; background: #efe8dc; }
 .txt { position: absolute; inset: ${safe}mm ${safe + 10}mm ${safe + 8}mm; display: flex; flex-direction: column; justify-content: center; align-items: center; }
@@ -128,9 +137,18 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
   } else {
     pages.push(cover());
   }
-  pages.push(
-    `<section class="pg"><div class="center"><div class="label">Así son los personajes</div>${sheetUrl ? `<img class="sheet" src="${esc(sheetUrl)}">` : `<div class="sheet"></div>`}</div></section>`,
-  );
+  // Personajes (25 oct): un retrato de cada uno con su nombre debajo, no la hoja con todas las vistas. Si falta algún
+  // retrato, el impreso y el PDF ilustrado usan la hoja (no pueden perder la página) y el gratis la quita.
+  const ready = portraits.length > 0 && portraits.every((p) => p.url);
+  if (ready) {
+    const side = portraits.length === 1 ? 120 : portraits.length === 2 ? 100 : 78;
+    const who = portraits.map((p) => `<div class="who"><img src="${esc(p.url!)}" style="width:${side}mm;height:${side}mm"><div class="nm" style="max-width:${side}mm">${esc(p.name)}</div></div>`).join("");
+    pages.push(`<section class="pg"><div class="center"><div class="label">Así son los personajes</div><div class="cast">${who}</div></div></section>`);
+  } else if (kind !== "free") {
+    pages.push(
+      `<section class="pg"><div class="center"><div class="label">Así son los personajes</div>${sheetUrl ? `<img class="sheet" src="${esc(sheetUrl)}">` : `<div class="sheet"></div>`}</div></section>`,
+    );
+  }
   pages.push(`<section class="pg"><div class="center ded"><p>${esc(plan.dedication)}</p></div></section>`);
   for (const p of plan.pages) {
     if (kind !== "free") {

@@ -16,7 +16,7 @@ import { jobKey } from "../generation/keys";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
 import { canSpend } from "../generation/budget";
-import { castArt, castArtKey, coverPrompt, pageArtKey, pagePrompt, pagesArt, pagesArtKey, redoScene, reviseCast, sheetPrompt, type CastArt, type PageFix, type PagesArt } from "../plan/art";
+import { castArt, castArtKey, coverPrompt, pageArtKey, pagePrompt, pagesArt, pagesArtKey, portraitPrompt, redoScene, reviseCast, sheetPrompt, type CastArt, type PageFix, type PagesArt } from "../plan/art";
 import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_FIX_EN, REDO_REASONS, cleanNote, isRedoReason, type RedoReason } from "./feedback";
 import { fichaHash, normalizeFicha } from "../plan/ficha";
 import { blockedWord, contactData } from "../plan/moderation";
@@ -523,7 +523,12 @@ export async function notifyBookReady(
 export async function pendingPageJobs(store: GenStore, bookId: string): Promise<string[]> {
   const book = await store.findBook({ publicId: bookId });
   if (!book) return [];
-  return (await store.listJobs(book.id)).filter((j) => j.kind === "page" && v2Of(j) && j.status === "pending").sort((a, b) => (a.page_n ?? 0) - (b.page_n ?? 0)).map((j) => j.id);
+  // primero las 12 páginas y después los retratos de los personajes
+  const order = (j: GenJob) => (j.kind === "page" ? 0 : 100) + (j.page_n ?? 0);
+  return (await store.listJobs(book.id))
+    .filter((j) => (j.kind === "page" || j.kind === "portrait") && v2Of(j) && j.status === "pending")
+    .sort((a, b) => order(a) - order(b))
+    .map((j) => j.id);
 }
 
 /* ------------------------------ tras el pago: páginas ------------------------------ */
@@ -552,6 +557,78 @@ function currentPageJobs(jobs: GenJob[], d: BookDraftV2, n: number, sheetJobId: 
   const page = d.plan.pages[n - 1];
   const prefix = pageArtKey(d.castArt!, page);
   return jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j) && sheetRefOf(j) === sheetJobId && j.job_key.endsWith(hashString(`${prefix}|${j.prompt}|${sheetJobId}`)));
+}
+
+/* ------------------------------ tras el pago: retratos de los personajes ------------------------------ */
+
+/**
+ * Página «así son los personajes» (25 oct): un retrato por personaje recurrente (page_n = posición en el reparto, desde
+ * 1), cuadrado y a 1K, con la hoja aprobada como referencia. Va en vez de la hoja con todas las vistas. Si falla dos
+ * veces, el libro usa la hoja (la maqueta nunca deja el hueco).
+ */
+export const MAX_PORTRAIT_JOBS = 2;
+
+function portraitRow(book: BookRecord, d: BookDraftV2, i: number, variant: number, sheetJobId: string): NewJob {
+  const style = getStyle(d.ficha.styleId)!;
+  const prompt = portraitPrompt(d.castArt!.cast[i], style);
+  return {
+    book_id: book.id,
+    kind: "portrait",
+    page_n: i + 1,
+    variant,
+    job_key: jobKey("portrait", i + 1, variant, hashString(`${prompt}|${sheetJobId}`)),
+    style_id: style.id,
+    prompt,
+    references: [{ kind: "sheet", job_id: sheetJobId }, { kind: "anchor", style_id: style.id }, spec("1:1", "1K")] as unknown as NewJob["references"],
+    paid: true,
+  };
+}
+
+/** Retratos del personaje `i` que siguen valiendo: misma hoja y mismo personaje (si cambió el reparto, ya no). */
+function currentPortraitJobs(jobs: GenJob[], d: BookDraftV2, i: number, sheetJobId: string): GenJob[] {
+  const c = d.castArt?.cast[i];
+  const style = getStyle(d.ficha.styleId);
+  if (!c || !style) return [];
+  const want = hashString(`${portraitPrompt(c, style)}|${sheetJobId}`);
+  return jobs.filter((j) => j.kind === "portrait" && j.page_n === i + 1 && v2Of(j) && sheetRefOf(j) === sheetJobId && j.job_key.endsWith(want));
+}
+
+/**
+ * Encola los retratos que falten (o reabre el que falló). No puede impedir las páginas: si algo falla aquí (presupuesto,
+ * la base sin el tipo «portrait»), se avisa en el log y el libro sale con la hoja.
+ */
+async function ensurePortraits(store: GenStore, book: BookRecord, d: BookDraftV2, sheetJobId: string, adapter: Pick<GenerationAdapter, "name">): Promise<string[]> {
+  try {
+    const jobs = await store.listJobs(book.id);
+    const wanted: NewJob[] = [];
+    const reopened: string[] = [];
+    for (let i = 0; i < (d.castArt?.cast.length ?? 0); i++) {
+      const cur = currentPortraitJobs(jobs, d, i, sheetJobId);
+      if (cur.some((j) => j.status !== "failed")) continue;
+      const retry = cur.find((j) => j.attempts < MAX_ATTEMPTS);
+      if (retry) {
+        if (await store.reopen(retry)) reopened.push(retry.id);
+        continue;
+      }
+      const all = jobs.filter((j) => j.kind === "portrait" && j.page_n === i + 1);
+      if (all.length >= MAX_PORTRAIT_JOBS) continue;
+      wanted.push(portraitRow(book, d, i, all.length + 1, sheetJobId));
+    }
+    if (wanted.length > 0) {
+      const gate = await gateSpend(store.db, { leadId: book.id, images: wanted.length, provider: adapter.name, paid: true, size: "1K" });
+      if (!gate.ok) {
+        console.warn(`[retratos] sin presupuesto: ${gate.reason}`);
+        return reopened;
+      }
+      await store.insertJobs(wanted);
+    }
+    const keys = new Set(wanted.map((w) => w.job_key));
+    const created = wanted.length ? (await store.listJobs(book.id)).filter((j) => keys.has(j.job_key)).map((j) => j.id) : [];
+    return [...created, ...reopened];
+  } catch (e) {
+    console.warn(`[retratos] ${e instanceof Error ? e.message.slice(0, 200) : "error"}`);
+    return [];
+  }
 }
 
 export async function requestPages(
@@ -643,7 +720,9 @@ export async function requestPages(
       .addFeedback({ book_id: book.id, job_id: created[0].id, kind: "redo", page_n: created[0].page_n!, variant: created[0].variant, reason: redo.reason, note: redo.note, style_id: created[0].style_id })
       .catch((e) => console.warn(`[redo] feedback: ${e instanceof Error ? e.message.slice(0, 160) : "error"}`));
   }
-  return { ok: true, bookId: book.public_id, jobs: [...created.map((j) => j.id), ...reopenedIds], created: wanted.length };
+  // con el libro entero (no con «Otra versión» de una página), también los retratos de la página de personajes
+  const portraits = input.page === undefined ? await ensurePortraits(store, book, d, sheet.id, adapter) : [];
+  return { ok: true, bookId: book.public_id, jobs: [...created.map((j) => j.id), ...reopenedIds, ...portraits], created: wanted.length };
 }
 
 /**
@@ -686,7 +765,7 @@ export async function reportPage(
 
 export interface BookJobView {
   id: string;
-  kind: "sheet" | "cover" | "page";
+  kind: "sheet" | "cover" | "page" | "portrait";
   page: number | null;
   variant: number;
   status: GenJob["status"];
@@ -712,7 +791,13 @@ export interface BookView {
   reported: number[];
   jobs: BookJobView[];
   /** Lo que va al libro: portada de la hoja aprobada (o la última) y la versión elegida de cada página. */
-  chosen: { sheet: string | null; cover: string | null; pages: Record<number, string | null> };
+  chosen: {
+    sheet: string | null;
+    cover: string | null;
+    pages: Record<number, string | null>;
+    /** Un retrato por personaje del reparto, en orden (job o null si aún no está). Vacío sin reparto. */
+    portraits: { name: string; job: string | null }[];
+  };
   /** Edición pagada (null sin pagar). */
   edition: PaidEdition | null;
   /** Pagado en PDF: lo que cuesta pasar a tapa dura y hasta cuándo se puede (null si no se puede). La ruta lo quita si aquí no hay imprenta. */
@@ -754,7 +839,12 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
   const out: BookJobView[] = [];
   for (const j of jobs) {
     const sheetId = sheetRefOf(j);
-    const current = j.kind === "page" && d.castArt && d.pagesArt && sheetId ? currentPageJobs([j], d, j.page_n!, sheetId).length > 0 : true;
+    const current =
+      j.kind === "page" && d.castArt && d.pagesArt && sheetId
+        ? currentPageJobs([j], d, j.page_n!, sheetId).length > 0
+        : j.kind === "portrait"
+          ? !!sheetId && currentPortraitJobs([j], d, (j.page_n ?? 0) - 1, sheetId).length > 0
+          : true;
     out.push({
       id: j.id,
       kind: j.kind as BookJobView["kind"],
@@ -777,6 +867,10 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     const pick = options.find((j) => j.id === d.pageChoice?.[n]) ?? options[options.length - 1] ?? null;
     pages[n] = pick?.id ?? null;
   }
+  const portraits = (d.castArt?.cast ?? []).map((c, i) => {
+    const done = out.filter((j) => j.kind === "portrait" && j.page === i + 1 && j.status === "done" && j.current && j.sheetJobId === sheet?.id);
+    return { name: c.name, job: done[done.length - 1]?.id ?? null };
+  });
   const order = await store.getOrder(book.id);
   const feedback = await store.listFeedback(book.id).catch(() => []);
   return {
@@ -796,6 +890,6 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     approvedSheetJobId: d.approvedSheetJobId ?? null,
     sheetsLeft: Math.max(0, MAX_SHEETS - sheets.length),
     jobs: out,
-    chosen: { sheet: sheet?.id ?? null, cover: cover?.id ?? null, pages },
+    chosen: { sheet: sheet?.id ?? null, cover: cover?.id ?? null, pages, portraits },
   };
 }

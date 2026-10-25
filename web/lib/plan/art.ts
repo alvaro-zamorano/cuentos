@@ -343,6 +343,22 @@ export function sheetPrompt(art: CastArt, style: StyleDef): string {
   ].join(" ");
 }
 
+/**
+ * Retrato de un personaje para la página «así son los personajes» del libro (25 oct): uno por imagen, de frente y de
+ * cuerpo entero, sobre fondo liso. El nombre no va en la imagen: lo pone la maqueta debajo. Se pinta tras el pago.
+ */
+export function portraitPrompt(c: ArtCast, style: StyleDef): string {
+  return [
+    `Single character portrait for a children's picture book, ${style.promptStyle}.`,
+    `Square image. ${castLine(c)}.`,
+    `${c.name} stands alone, full body, facing the viewer, with a gentle warm expression and a relaxed natural pose, centred, feet visible, with generous empty margin all around.`,
+    `Plain warm white paper background with only a soft ground shadow: no scenery, no other characters, no frame.`,
+    sameAsSheet([c]),
+    STYLE_REF_ONLY,
+    NO_TEXT,
+  ].join(" ");
+}
+
 const LIGHT: Record<string, string> = { dia: "soft daylight", atardecer: "warm golden late-afternoon light", noche: "night, gentle warm lamplight and deep blue shadows" };
 const FRAMING: Record<string, string> = { general: "wide shot that shows the whole place", medio: "medium shot, characters full body or waist up", cerca: "close-up on faces and hands" };
 

@@ -149,11 +149,14 @@ test("tras el pago: 12 páginas en segundo plano y el email de «listo» una sol
   const r = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(r.ok && r.created === 12);
   const ids = await pendingPageJobs(store, start.bookId);
-  assert.equal(ids.length, 12);
+  // las 12 páginas y, detrás, un retrato por personaje (25 oct)
+  const cast = (await bookView(store, start.bookId) as { chosen: { portraits: unknown[] } }).chosen.portraits.length;
+  assert.ok(cast >= 1);
+  assert.equal(ids.length, 12 + cast);
   assert.equal(await notifyBookReady(store, start.bookId, link, send), false, "a medias no se avisa");
 
   const out = await paintAll(store, dryRunAdapter, ids, { concurrency: 3, deadline: Date.now() + 30_000 });
-  assert.equal(Object.values(out).filter((o) => o === "done").length, 12);
+  assert.equal(Object.values(out).filter((o) => o === "done").length, 12 + cast);
   assert.deepEqual(await pendingPageJobs(store, start.bookId), []);
 
   assert.equal(await notifyBookReady(store, start.bookId, link, send), true);

@@ -112,7 +112,11 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
   const view = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
   const kinds = (view.jobs as { kind: string }[]).reduce<Record<string, number>>((a, j) => ({ ...a, [j.kind]: (a[j.kind] ?? 0) + 1 }), {});
-  expect(kinds).toEqual({ sheet: 2, cover: 2, page: 12 });
+  // un retrato por personaje para la página de personajes del libro (25 oct)
+  const cast = (view.chosen.portraits as { job: string | null }[]).length;
+  expect(cast).toBeGreaterThan(0);
+  expect((view.chosen.portraits as { job: string | null }[]).every((p) => p.job)).toBe(true);
+  expect(kinds).toEqual({ sheet: 2, cover: 2, page: 12, portrait: cast });
   const sheet2 = (view.jobs as { id: string; kind: string; variant: number }[]).find((j) => j.kind === "sheet" && j.variant === 2)!;
   expect(view.approvedSheetJobId).toBe(sheet2.id);
   expect(view.payment).toBe("dry-run");
@@ -140,7 +144,7 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
   expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);
 
-  // PDF del libro como el impreso: portada, personajes, dedicatoria, 12 dobles (ilustración + texto), «Fin» y colofón (29 A4 apaisados)
+  // PDF del libro como el impreso: portada, personajes, dedicatoria, 12 dobles (ilustración + texto), «Fin» y la marca (29 A4 apaisados)
   const res = await page.request.get(`/api/libro/pdf?b=${bookId}&kind=full`);
   if (res.status() === 503) test.info().annotations.push({ type: "pdf", description: "sin Chromium local: PDF no comprobado" });
   else {

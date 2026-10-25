@@ -198,7 +198,7 @@ test("PDF que se descarga: A4 apaisado con la maqueta del libro; el gratis sin l
     if (sec.includes("https://img/p")) assert.equal(page % 2, 0, `ilustración en la página ${page}: a la izquierda con la portada sola`);
   });
   const free = pdfBookHtml(input, "free");
-  assert.equal(free.pages, 17);
+  assert.equal(free.pages, 16, "sin retratos (antes del pago) el gratis no lleva página de personajes");
   assert.doesNotMatch(free.html, /https:\/\/img\/p\d/, "sin las ilustraciones de pago");
   assert.match(free.html, /cover\.jpg/);
   // última página (25 oct): solo la marca y la web; el libro no explica cómo se hizo
@@ -394,4 +394,48 @@ test("borrado: un libro impreso sin mandar a la imprenta no se borra al caducar"
   assert.equal(r.keptForPrint, 1);
   assert.equal(r.scrubbedPaid, 1);
   assert.deepEqual(kept, ["borrado:books/b/x.jpg", "vaciado:b"]);
+});
+
+test("personajes (25 oct): tras el pago, un retrato por personaje con la hoja como referencia; sin pagar, ninguno", async () => {
+  const { store, bookId } = await paidHardcover();
+  const before = await bookView(store, bookId);
+  assert.ok(before.ok);
+  assert.ok(before.jobs.every((j) => j.kind !== "portrait"), "nunca antes del pago");
+  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  await paintPages(store, bookId);
+  const view = await bookView(store, bookId);
+  assert.ok(view.ok);
+  const portraits = view.jobs.filter((j) => j.kind === "portrait");
+  assert.ok(view.chosen.portraits.length >= 1);
+  assert.equal(portraits.length, view.chosen.portraits.length, "uno por personaje");
+  assert.ok(view.chosen.portraits.every((p) => p.job), "todos pintados");
+  assert.ok(portraits.every((j) => j.sheetJobId === view.chosen.sheet), "con la hoja aprobada como referencia");
+  assert.equal(view.chosen.portraits[0].name, ficha.hero.name);
+  // pedir otra vez no duplica
+  await paintPages(store, bookId);
+  const again = await bookView(store, bookId);
+  assert.ok(again.ok);
+  assert.equal(again.jobs.filter((j) => j.kind === "portrait").length, portraits.length);
+});
+
+test("personajes en la maqueta: retratos con su nombre debajo; sin retratos, la hoja (el gratis quita la página)", () => {
+  const base = { plan, heroName: "Vera", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
+  const portraits = [
+    { name: "Vera", url: "https://img/r1.jpg" },
+    { name: "Toby", url: "https://img/r2.jpg" },
+  ];
+  const full = pdfBookHtml({ ...base, portraits }, "full");
+  assert.equal(full.pages, 29);
+  assert.match(full.html, /r1\.jpg[^]*Vera[^]*r2\.jpg[^]*Toby/, "cada retrato con su nombre debajo, en orden");
+  assert.doesNotMatch(full.html, /sheet\.jpg/, "sin la hoja con todas las vistas");
+  const inner = printInteriorHtml({ ...base, portraits }, { trimWidth: 280, trimHeight: 210, bleed: 4 });
+  assert.equal(inner.pages, 30);
+  assert.doesNotMatch(inner.html, /sheet\.jpg/);
+  // falta un retrato: el impreso no pierde la página
+  const partial = printInteriorHtml({ ...base, portraits: [portraits[0], { name: "Toby", url: null }] }, { trimWidth: 280, trimHeight: 210, bleed: 4 });
+  assert.equal(partial.pages, 30);
+  assert.match(partial.html, /sheet\.jpg/);
+  const free = pdfBookHtml(base, "free");
+  assert.doesNotMatch(free.html, /sheet\.jpg|Así son los personajes/, "el gratis, sin hoja");
+  assert.equal(pdfBookHtml({ ...base, portraits }, "free").pages, 17);
 });
