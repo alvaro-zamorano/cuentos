@@ -44,6 +44,7 @@ function Crear() {
   const params = useSearchParams();
   const b = params.get("b");
   const pagado = params.get("pagado") === "1";
+  const mejora = pagado && params.get("mejora") === "1";
   const ideaParam = params.get("idea");
   const [recovering, setRecovering] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
@@ -151,7 +152,7 @@ function Crear() {
                   update({ bookId: id, email });
                   track({ name: "libro_empezado" });
                 }} onNext={() => go(5)} />}
-            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
+            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} upgrading={mejora && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
           </div>
         </div>
         {aside && <BookAside s={s} />}

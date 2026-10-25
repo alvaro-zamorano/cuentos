@@ -43,7 +43,7 @@ async function paintPages(store: ReturnType<typeof memoryStore>, bookId: string)
 function fakeDeps(over: Partial<PrintDeps> = {}) {
   const mails: string[] = [];
   const orders: Parameters<PrintDeps["createOrder"]>[0][] = [];
-  let gelato: GelatoOrder = { id: "gel-0001-abcd", status: "created", orderReferenceId: null, trackingUrl: null };
+  let gelato: GelatoOrder = { id: "gel-0001-abcd", status: "created", orderReferenceId: null, trackingUrl: null, trackingCode: null, method: null, etaFrom: null, etaTo: null };
   const deps: PrintDeps = {
     mode: "dry-run",
     orderType: "draft",
@@ -65,6 +65,7 @@ function fakeDeps(over: Partial<PrintDeps> = {}) {
       reminder: async (to) => (mails.push(`recordatorio|${to}`), { sent: true }),
     },
     link: (id) => `https://www.erasesuvez.com/crear?b=${id}`,
+    trackLink: (id) => `https://www.erasesuvez.com/seguimiento/${id}`,
     ...over,
   };
   return { deps, mails, orders, setGelato: (g: Partial<GelatoOrder>) => (gelato = { ...gelato, ...g }) };
@@ -327,7 +328,7 @@ test("imprenta real (doble): pedido con el PDF, aviso, seguimiento y un solo ema
   const v = await bookView(store, bookId);
   assert.ok(v.ok && v.print?.status === "shipped" && v.print.trackingUrl === "https://track.example/ES123");
   assert.equal(await refreshPrint(store, (await store.getOrderById(s.orderId))!, deps), "unchanged");
-  assert.deepEqual(mails.filter((m) => m.startsWith("enviado")), [`enviado|${email}|https://track.example/ES123`]);
+  assert.deepEqual(mails.filter((m) => m.startsWith("enviado")), [`enviado|${email}|https://www.erasesuvez.com/seguimiento/${s.orderId}`], "el email lleva a nuestra página");
 });
 
 test("imprenta real: sin producto o sin medidas de cubierta no se manda, y se puede reintentar", async () => {
