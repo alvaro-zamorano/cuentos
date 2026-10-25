@@ -1,12 +1,13 @@
 # ESTADO — cuentos
 
-Actualizado: 2026-10-24 (pasar a tapa dura desde el PDF pagando la diferencia) · Antes: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
+Actualizado: 2026-10-25 (auditoría de los PR #29 a #34, arreglos y salida a producción con el PR #39; migración 0007 aplicada) · Antes: 2026-10-24 (pasar a tapa dura desde el PDF pagando la diferencia) · Antes: 2026-10-20, noche (web publicada con la app cerrada; «Muy pronto», páginas de ocasión y legales sin titular para salir con la landing; Gelato elige el apaisado; CI en Ubuntu 24.04) · Fase: B1–B5 hechos (a B5 le faltan las claves de Stripe) · B6 en parte · B7 en curso · B8 código hecho (Gelato en marcha)
 
 La memoria entre sesiones. Se actualiza en el momento, no al final. El log de decisiones (§2) es append-only: nunca se borra, solo se añade. Mapa de documentos y accesos: `INDICE.md`. Plan, bloques y abiertos (E#): `PLAN.md`.
 
 ## 1. Foco actual
 
-- **Ahora (20 oct, noche):** la landing, las páginas de ocasión y los legales están en producción (`www.erasesuvez.com`, PR #1 unido a `main`) con la app cerrada. Siguiente: abrir la app (§5).
+- **Ahora (25 oct):** producción (`main`, PR #39) lleva Next 16.4.3, PostHog con consentimiento revocable, la mejora a tapa dura, el seguimiento propio y los arreglos del 22 al 24 oct, todavía con la app cerrada. Migración 0007 (`cuentos_orders.print_info`) aplicada en Supabase el 25 oct, con el visto bueno de Álvaro. Comprobado en producción: portada, ocasiones y legales 200; `/crear` a `/#pronto`; `/api/libro/*` 404; `/privacidad` con la fecha del 25 oct. Falta firmar el DPA de PostHog. Siguiente: abrir la app (§5).
+- **Antes (20 oct, noche):** la landing, las páginas de ocasión y los legales están en producción (`www.erasesuvez.com`, PR #1 unido a `main`) con la app cerrada. Siguiente: abrir la app (§5).
 - **Después (18 oct, noche):** MVP con family and friends en producción. La preview ya tiene Stripe (test), Resend y Gelato (borradores), con todas las comprobaciones en verde (§3). Falta: la compra de prueba completa en la preview, Stripe real en Production (§4.29), `SITE_URL`, `LEGAL_NAME`, `LEGAL_NIF` y `LEGAL_ADDRESS` en Production y la prueba con tres personas. El correo de `hola@` ya funciona. Después, unir el PR #1 a `main`.
 - **Producto (18 oct, D7):** se sale con el libro de tapa dura (34,90 €, envío a la Península y Baleares, PDF incluido). La conexión con Gelato está en el PR de B8; falta que Álvaro cree la cuenta, ponga la clave en Preview y pida la muestra (`IMPRESION.md` §7).
 - **Después:** unir el PR #1 a `main` (salida a producción).
@@ -223,6 +224,13 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Sin comprobar:** la mejora con Stripe de verdad (cobro de 20,00 € y vuelta con `?mejora=1`). En la preview, con la tarjeta de prueba, en la próxima compra de prueba.
 - **Margen (cálculo de Claude, 24 oct):** tapa dura ≈ 15,25 € por venta (33,56 € sin IVA − Gelato 11,86 − envío 4,80 − Stripe 0,77 − IA ≈ 0,87); PDF ≈ 13 €; PDF y después mejora ≈ 15 €. Sin captación, cuota de autónomo ni Vercel Pro. Envío a Baleares sin mirar.
 - **Aviso del build:** `npm run build` paró una vez con un aviso de Next.js de que la 16.4.0 tiene una vulnerabilidad conocida y recomienda actualizar; al repetirlo, compiló. No se ha actualizado nada.
+
+### 25 oct (auditoría y salida)
+
+- **Revisión de los PR #29 a #34 antes de unirlos:** tres tenían bloqueantes. #29 mandaba el texto de los botones de `/crear` (con el nombre del niño) en las rabietas de PostHog; #33 tenía un test que dependía de la hora real y necesitaba la migración 0007; #34 dejaba pasar a tapa dura un PDF pagado en prueba. Arreglados en sus ramas (§2, 25 oct) y unidos tras el CI.
+- **Next 16.4.0 tenía avisos críticos** (dos ejecuciones remotas de código y una denegación de servicio) y `next build` se paraba en local con `SecurityFatalError`. Subido a 16.4.3 (#35).
+- **Con Cache Components, `notFound()` en `/seguimiento/[id]` responde 200** con la página de no encontrado y `noindex` (también `/seguimiento/ejemplo` en producción). No enseña datos; pendiente decidir si se fuerza el 404 como en las ocasiones (`proxy.ts`).
+- **Playwright en local sin `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` en la ejecución** (no solo en el build) no encuentra el botón de pago: el servidor lee la variable al arrancar.
 
 ## 4. Preguntas abiertas (priorizadas)
 
