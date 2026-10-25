@@ -128,7 +128,7 @@ export default function Privacidad() {
         </li>
         <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
         <li>
-          Impresión y envío del libro de tapa dura: Gelato (Noruega, en el Espacio Económico Europeo),
+          Impresión y envío del libro de tapa dura: Gelato ASA (Oslo, Noruega, en el Espacio Económico Europeo),
           que encarga la impresión a una imprenta de su red, normalmente cerca de tu casa. Recibe el libro, el nombre, la dirección, el email y,
           si lo das, el teléfono.
         </li>
