@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Condiciones" };
 export default function Condiciones() {
   const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="20 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="25 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
         {holderLine(t)}, <ContactEmail value={t.email} />. Datos completos en el{" "}
@@ -19,23 +19,23 @@ export default function Condiciones() {
       <ul>
         <li>
           <strong>Gratis</strong>: el cuento escrito, la hoja de personajes y la portada ilustrada, y un PDF para imprimir en casa con la portada y
-          el texto. La hoja y la portada se pintan cuando nos das tu email.
+          el texto.
         </li>
         <li>
           <strong>Libro ilustrado</strong>: las doce páginas ilustradas en un PDF A4 apaisado. De pago; el precio final, con IVA, se indica antes de pagar.
         </li>
         <li>
           <strong>Tapa dura</strong>: el libro apaisado de tapa dura con las doce ilustraciones, enviado a casa (Península y Baleares), y el PDF
-          ilustrado. De pago; el precio final, con IVA y envío, se indica antes de pagar. Plazos y entrega en el punto 8.
+          ilustrado. De pago; el precio final, con IVA y envío, se indica antes de pagar. Plazos y entrega en el punto 8. Si has comprado el libro
+          ilustrado, puedes pasarlo a tapa dura pagando solo la diferencia mientras el libro esté guardado, hasta un día antes de que se borre.
         </li>
       </ul>
 
       <h2>3. Cómo se hace el libro</h2>
       <ol className="list-decimal pl-5">
-        <li>Cuentas la idea y cómo es el niño o la niña.</li>
-        <li>Escribimos el cuento con IA. Puedes cambiar cualquier texto o pedir que se reescriba una página con una frase.</li>
-        <li>Con tu email pintamos la hoja de personajes y la portada. Puedes pedir hasta dos cambios con palabras.</li>
-        <li>Al pagar se pintan las doce páginas. Si una ilustración no te convence, nos dices qué cambiar y pintamos otra: hasta dos versiones más por página. Si aun así no queda bien, nos avisas desde esa página y la arreglamos nosotros.</li>
+        <li>Nos cuentas la idea y cómo es el niño o la niña, y te damos el cuento escrito. Puedes cambiar cualquier texto.</li>
+        <li>Con tu email creamos la hoja de personajes y la portada. Al pagar, las doce páginas ilustradas.</li>
+        <li>Puedes pedir cambios y otras versiones de las ilustraciones, con los límites que se indican en cada paso.</li>
         <li>Descargas el PDF.</li>
         <li>
           Si has comprado el libro de tapa dura, lo revisas y pulsas «Mandar a imprimir». No lo imprimimos hasta entonces, y después ya no se

@@ -237,6 +237,53 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   expect(errors).toEqual([]);
 });
 
+test("PDF primero y después tapa dura: pagas la diferencia, el panel de imprenta aparece y nada se repinta", async ({ page }) => {
+  test.setTimeout(300_000);
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("vera@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await page.getByTestId("approve").click();
+  await page.getByTestId("edition-illustrated").click();
+  await page.getByTestId("waiver").check();
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId("print-panel")).toHaveCount(0);
+
+  // la oferta: la diferencia y la fecha límite
+  const card = page.getByTestId("upgrade-card");
+  await expect(card).toContainText("20,00 €");
+  await expect(card).toContainText(/hasta el \d{1,2} de \p{L}+/u);
+  const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
+  const before = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
+  expect(before.edition).toBe("illustrated");
+  expect(before.upgrade.cents).toBe(2000);
+
+  await page.getByTestId("upgrade-open").click();
+  await expect(page.getByTestId("upgrade-pay")).toBeDisabled();
+  await page.getByTestId("ship-name").fill("Ana García López");
+  await page.getByTestId("ship-line1").fill("Calle Mayor 12");
+  await page.getByTestId("ship-postcode").fill("07001");
+  await page.getByTestId("ship-city").fill("Palma");
+  await page.getByTestId("upgrade-waiver").check();
+  await expect(page.getByTestId("upgrade-pay")).toHaveText(/20,00 €/);
+  await page.getByTestId("upgrade-pay").click();
+
+  const panel = page.getByTestId("print-panel");
+  await expect(panel).toHaveAttribute("data-status", "awaiting_approval", { timeout: 30_000 });
+  await expect(page.getByTestId("print-address")).toContainText("Calle Mayor 12, 07001 Palma");
+  await expect(card).toHaveCount(0);
+  const after = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
+  expect(after.edition).toBe("hardcover");
+  expect(after.upgrade).toBeNull();
+  expect(after.jobs.length).toBe(before.jobs.length);
+  // una segunda mejora no se cobra
+  expect((await page.request.post("/api/libro/pay", { data: { bookId, upgrade: true, waiver: true, shipping: { name: "Ana García López", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid" } } })).status()).toBe(409);
+  expect(errors).toEqual([]);
+});
+
 test("Ficha pobre: tres preguntas rápidas antes de escribir; lo contestado llega al cuento y no se repiten", async ({ page }) => {
   await page.getByTestId("hero-name").fill("Olivia");
   await page.getByTestId("hero-age").selectOption("2");

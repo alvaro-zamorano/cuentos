@@ -42,6 +42,16 @@ export function gelatoPageCount(env: Env = process.env): number {
   return Number.isInteger(v) && v > 0 ? v : PRINT_INNER_PAGES;
 }
 
+/**
+ * Método de envío que se pide a Gelato (24 oct, Álvaro): económico fijo para salir. Sin `shipmentMethodUid`, Gelato
+ * elige el más barato; lo mandamos explícito para que no dependa de eso. GELATO_SHIPMENT_METHOD lo cambia («express» o
+ * un uid de su API de presupuestos); el exprés como extra de pago queda para la campaña de Navidad.
+ */
+export function gelatoShipmentMethod(env: Env = process.env): string {
+  const v = env.GELATO_SHIPMENT_METHOD?.trim();
+  return v && /^[a-z0-9_,:-]{2,80}$/i.test(v) ? v : "normal";
+}
+
 const ORDER_API = "https://order.gelatoapis.com/v4";
 const PRODUCT_API = "https://product.gelatoapis.com/v3";
 
@@ -272,20 +282,46 @@ export interface GelatoOrder {
   status: string;
   orderReferenceId: string | null;
   trackingUrl: string | null;
+  /** Número de seguimiento del transportista. */
+  trackingCode: string | null;
+  /** Nombre del método de envío que da Gelato (lo más parecido al transportista que da su API). */
+  method: string | null;
+  /** Entrega estimada, AAAA-MM-DD. */
+  etaFrom: string | null;
+  etaTo: string | null;
 }
 
 interface RawOrder {
   id?: string;
   orderReferenceId?: string;
   fulfillmentStatus?: string;
-  shipment?: { packages?: { trackingUrl?: string; trackingCode?: string }[] } | null;
+  shipment?: {
+    shipmentMethodName?: string;
+    minDeliveryDate?: string;
+    maxDeliveryDate?: string;
+    packages?: { trackingUrl?: string; trackingCode?: string }[];
+  } | null;
   items?: { fulfillments?: { trackingUrl?: string }[] }[];
 }
 
+const day = (s: unknown): string | null => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null);
+const short = (s: unknown, max: number): string | null => (typeof s === "string" && s.trim() ? s.trim().slice(0, max) : null);
+
 export function parseOrder(o: RawOrder): GelatoOrder | null {
   if (!o?.id) return null;
-  const tracking = o.shipment?.packages?.find((p) => p.trackingUrl)?.trackingUrl ?? o.items?.flatMap((i) => i.fulfillments ?? []).find((x) => x.trackingUrl)?.trackingUrl ?? null;
-  return { id: o.id, status: o.fulfillmentStatus ?? "created", orderReferenceId: o.orderReferenceId ?? null, trackingUrl: tracking && /^https:\/\//.test(tracking) ? tracking : null };
+  const pkg = o.shipment?.packages?.find((p) => p.trackingUrl || p.trackingCode);
+  const tracking = pkg?.trackingUrl ?? o.items?.flatMap((i) => i.fulfillments ?? []).find((x) => x.trackingUrl)?.trackingUrl ?? null;
+  const code = short(pkg?.trackingCode, 60);
+  return {
+    id: o.id,
+    status: o.fulfillmentStatus ?? "created",
+    orderReferenceId: o.orderReferenceId ?? null,
+    trackingUrl: tracking && /^https:\/\//.test(tracking) ? tracking : null,
+    trackingCode: code && /^[A-Za-z0-9 _./-]+$/.test(code) ? code : null,
+    method: short(o.shipment?.shipmentMethodName, 80),
+    etaFrom: day(o.shipment?.minDeliveryDate),
+    etaTo: day(o.shipment?.maxDeliveryDate),
+  };
 }
 
 export async function createGelatoOrder(i: GelatoOrderInput, env: Env = process.env, f: Fetch = fetch): Promise<GelatoOrder | { error: string }> {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
+import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
 import { MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
 import type { Plan, PlanPage } from "@/lib/plan/types";
@@ -15,6 +16,7 @@ import type { Book3DData } from "@/lib/book3d/scene";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
 import { PrintPanel } from "./PrintPanel";
+import { UpgradeCard } from "./UpgradeCard";
 import { ShippingForm, type ShippingDraft } from "./ShippingForm";
 import { ErrorNote, Status } from "./ui";
 
@@ -38,7 +40,7 @@ function paintingCopy(v: BookView | null): string {
  * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
  * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
-export function StepBook({ bookId, confirming = false, onPlan }: { bookId: string; confirming?: boolean; onPlan: (p: Plan) => void }) {
+export function StepBook({ bookId, confirming = false, upgrading = false, onPlan }: { bookId: string; confirming?: boolean; upgrading?: boolean; onPlan: (p: Plan) => void }) {
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +115,18 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
         }
       }
       if (!v.paid) return;
+      if (confirming && !upgrading) trackPaid(bookId, v.edition ?? "illustrated");
+      if (upgrading && v.edition !== "hardcover") {
+        // vuelta de Stripe tras pasar a tapa dura: el webhook crea el pedido en unos segundos
+        setBusy("Confirmando el pago de la tapa dura…");
+        for (let i = 0; i < 40 && v.edition !== "hardcover" && !c.cancelled; i++) {
+          await sleep(3000);
+          v = (await refresh()) ?? v;
+        }
+        setBusy(null);
+        if (v.edition !== "hardcover") setError("El pago de la tapa dura aún no nos ha llegado. Si ya se ha cobrado, aparecerá aquí en unos minutos: recarga esta página o vuelve con tu enlace.");
+      }
+      if (upgrading && v.edition === "hardcover") trackPaid(bookId, "mejora");
       // con Stripe las páginas las encola el webhook: se le da un momento antes de pedirlas desde aquí
       if (v.payment === "stripe" && !v.jobs.some(isPage)) {
         setBusy("Preparando las ilustraciones…");
@@ -126,7 +140,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       if (needsRequest(v)) await paintPages();
       else await drive();
     })();
-  }, [confirming, drive, paintPages, refresh]);
+  }, [bookId, confirming, upgrading, drive, paintPages, refresh]);
 
   if (!view)
     return (
@@ -222,6 +236,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
       {view.paid && view.print && (
         <PrintPanel view={view} allDone={allDone} onSend={sendToPrint} onShipping={(shipping) => setView({ ...view, print: { ...view.print!, shipping } })} />
       )}
+      {view.paid && !view.print && view.edition === "illustrated" && view.upgrade && !showBusy && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
 
       {view.paid ? (
         <ol className="m-0 grid list-none gap-8 p-0">
@@ -350,6 +365,7 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
     setField(null);
     const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body());
     if (r.status === 200 && r.json.url) {
+      track({ name: "pago_iniciado", props: { edicion: edition } }, { beacon: true });
       window.location.assign(r.json.url);
       return;
     }
@@ -626,4 +642,16 @@ function ReportForm({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (n
       {err && <p className="text-sm text-danger">{err}</p>}
     </form>
   );
+}
+
+/** Un «pago_confirmado» por libro y pestaña: recargar la vuelta de Stripe no cuenta dos veces. */
+function trackPaid(bookId: string, edicion: string) {
+  const key = `cuentos:paid-tracked:${bookId}:${edicion}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+  } catch {
+    /* sin almacenamiento: se manda igual */
+  }
+  track({ name: "pago_confirmado", props: { edicion } });
 }
