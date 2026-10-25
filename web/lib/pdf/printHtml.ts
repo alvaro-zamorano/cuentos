@@ -49,6 +49,13 @@ const MOON = "#fbf3df";
 const STAR = "#f2b84b";
 const TEJA = "#c8492c";
 
+/**
+ * Estrella de la marca en SVG (la misma de la web). No vale el carácter «✦»: Lora y Figtree no lo tienen y el Chromium
+ * de Vercel no trae fuentes del sistema, así que salía un cuadradito en la contracubierta y el colofón (22 oct).
+ * Regla: en la maqueta, solo caracteres que tengan Lora o Figtree; los adornos, en SVG.
+ */
+export const STAR_SVG = `<svg class="star" aria-hidden="true" viewBox="0 0 24 24"><path fill="${STAR}" d="M12 0C12.9 7.2 16.8 11.1 24 12C16.8 12.9 12.9 16.8 12 24C11.1 16.8 7.2 12.9 0 12C7.2 11.1 11.1 7.2 12 0Z"/></svg>`;
+
 /** Página de texto: un poco más pequeña cuanto más largo es el texto, para que quepa con margen. */
 export function textSize(t: string): number {
   const n = t.length;
@@ -99,7 +106,7 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
 .colo { font-size: 10.5pt; line-height: 1.6; color: ${SOFT}; max-width: 130mm; }
 .colo strong { color: ${INK}; font-weight: 600; }
 .brand { font-family: Lora, Georgia, serif; font-size: 11pt; color: ${INK}; margin-top: 8mm; }
-.brand span { color: ${STAR}; }
+.brand .star { width: .8em; height: .8em; vertical-align: -0.05em; margin-right: .15em; }
 .cover { background: ${NIGHT}; }
 .cover .shade { position: absolute; inset: 0 0 auto; height: 58%; background: linear-gradient(to bottom, rgba(15,20,40,.62), rgba(15,20,40,0)); }
 .cover .head { position: absolute; top: ${safe}mm; left: ${safe + 4}mm; right: 34%; color: ${MOON}; text-shadow: 0 1mm 4mm rgba(10,20,50,.55); }
@@ -134,7 +141,7 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
   }
   pages.push(`<section class="pg"><div class="center"><div class="fin">Fin</div></div></section>`);
   pages.push(
-    `<section class="pg"><div class="center"><p class="colo">Este libro se escribió y se ilustró para <strong>${esc(heroName)}</strong> en ${esc(monthYear(date))}. El texto y las ilustraciones los hizo una inteligencia artificial, y quien lo regala los revisó página a página.</p><div class="brand"><span>&#10022;</span> Érase su vez</div></div></section>`,
+    `<section class="pg"><div class="center"><p class="colo">Este libro se escribió y se ilustró para <strong>${esc(heroName)}</strong> en ${esc(monthYear(date))}. El texto y las ilustraciones los hizo una inteligencia artificial, y quien lo regala los revisó página a página.</p><div class="brand">${STAR_SVG} Érase su vez</div></div></section>`,
   );
   if (kind === "print") pages.push(`<section class="pg"></section>`);
   return { css, pages };
@@ -192,7 +199,7 @@ body { background: ${NIGHT}; font-family: Lora, Georgia, serif; }
 .back { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #e4e8f2; padding: ${pad}mm ${pad + 20}mm ${pad + 24}mm; }
 .back p { font-size: 15pt; line-height: 1.6; text-wrap: balance; }
 .back .brand { font-size: 15pt; color: ${MOON}; margin-top: 10mm; }
-.back .brand span { color: ${STAR}; }
+.back .brand .star { width: .8em; height: .8em; vertical-align: -0.05em; margin-right: .15em; }
 .back .web { font-family: Figtree, sans-serif; font-size: 8pt; letter-spacing: .14em; text-transform: uppercase; color: #b9c1da; margin-top: 2mm; }
 .spine { display: flex; align-items: center; justify-content: center; }
 .spine div { transform: rotate(90deg); white-space: nowrap; font-size: ${spineFont}pt; color: ${MOON}; font-weight: 600; letter-spacing: .02em; }
@@ -201,7 +208,7 @@ body { background: ${NIGHT}; font-family: Lora, Georgia, serif; }
 ${coverUrl ? `<img class="front-img" src="${esc(coverUrl)}">` : ""}
 <div class="shade"></div>
 <div class="head"><div class="title">${esc(plan.title)}</div><div class="for">Un cuento para <strong>${esc(heroName)}</strong></div>${from ? `<div class="from">De parte de ${esc(from)}</div>` : ""}</div>
-<div class="area back" style="${box(b)}"><p>Un cuento escrito e ilustrado para ${esc(heroName)}. Nadie más tiene uno igual.</p><div class="brand"><span>&#10022;</span> Érase su vez</div><div class="web">${SITE_DOMAIN}</div></div>
+<div class="area back" style="${box(b)}"><p>Un cuento escrito e ilustrado para ${esc(heroName)}. Nadie más tiene uno igual.</p><div class="brand">${STAR_SVG} Érase su vez</div><div class="web">${SITE_DOMAIN}</div></div>
 ${spineText ? `<div class="area spine" style="${box(s)}"><div>${esc(plan.title.length > 48 ? `${plan.title.slice(0, 46)}…` : plan.title)}</div></div>` : ""}
 </div></body></html>`;
   return { html, widthMm: cover.width, heightMm: cover.height };
