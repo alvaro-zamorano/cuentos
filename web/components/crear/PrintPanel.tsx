@@ -109,10 +109,16 @@ export function PrintPanel({ view, allDone, onSend, onShipping }: { view: BookVi
         </>
       )}
 
-      {print.trackingUrl && (
-        <a className="btn-ghost justify-self-start" href={print.trackingUrl} target="_blank" rel="noopener noreferrer" data-testid="print-tracking">
-          Seguir el envío
+      {print.trackPath ? (
+        <a className="btn-ghost justify-self-start" href={print.trackPath} data-testid="print-tracking">
+          Seguir mi pedido
         </a>
+      ) : (
+        print.trackingUrl && (
+          <a className="btn-ghost justify-self-start" href={print.trackingUrl} target="_blank" rel="noopener noreferrer" data-testid="print-tracking">
+            Seguir el envío
+          </a>
+        )
       )}
       {simulated && !open && <p className="text-[13px] text-mute">Imprenta simulada en esta prueba: no se imprime ni se envía nada.</p>}
     </section>
