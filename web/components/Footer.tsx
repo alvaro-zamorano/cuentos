@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Wordmark } from "./SiteHeader";
 import { OCASIONES, OCASIONES_PATH, ocasionPath } from "@/lib/ocasiones";
+import { POSTHOG_ENABLED } from "@/lib/analytics";
+import { CookieSettingsLink } from "./CookieConsent";
 
 /** Footer común con los enlaces legales. No sale al imprimir. */
 export function Footer() {
@@ -34,6 +36,7 @@ export function Footer() {
           <Link href="/aviso-legal" className="hover:text-ink hover:underline">
             Aviso legal
           </Link>
+          {POSTHOG_ENABLED && <CookieSettingsLink className="hover:text-ink hover:underline" />}
         </nav>
       </div>
     </footer>
