@@ -99,9 +99,19 @@ test("Cookies: PostHog solo tras aceptar (si el build lleva NEXT_PUBLIC_POSTHOG_
   await expect(page.getByTestId("cookie-consent")).toHaveCount(0);
   await page.waitForTimeout(1500);
   expect(posthogCalls, "nada de PostHog tras rechazar").toEqual([]);
-  await page.evaluate(() => localStorage.removeItem("cuentos:consent:analytics"));
-  await page.reload();
+  // la elección se cambia desde «Cookies» en el pie
+  await page.getByTestId("cookie-settings").click();
   await page.getByTestId("cookie-accept").click();
   await expect(page.getByTestId("cookie-consent")).toHaveCount(0);
   await expect.poll(() => posthogCalls.length, { message: "PostHog arranca tras aceptar" }).toBeGreaterThan(0);
+  // retirar: la página se recarga, PostHog no vuelve a cargar y no queda nada suyo en el navegador
+  await page.getByTestId("cookie-settings").click();
+  await Promise.all([page.waitForEvent("load"), page.getByTestId("cookie-reject").click()]);
+  const tras = posthogCalls.length;
+  await page.waitForTimeout(1500);
+  expect(posthogCalls.length, "nada de PostHog tras retirar").toBe(tras);
+  const cookies = (await page.context().cookies()).map((c) => c.name).filter((n) => n.startsWith("ph_"));
+  expect(cookies).toEqual([]);
+  const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("ph_") || k.startsWith("__ph")));
+  expect(keys).toEqual([]);
 });

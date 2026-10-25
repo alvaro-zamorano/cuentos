@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CaptureResult } from "posthog-js";
-import { beforeSend, posthogKeyOk, scrubUrl, track } from "../../lib/analytics";
+import { beforeSend, CONSENT_MAX_AGE_MS, parseConsent, posthogKeyOk, scrubUrl, track } from "../../lib/analytics";
 
 test("scrubUrl: enmascara b en URL absolutas y relativas y deja el resto igual", () => {
   assert.equal(scrubUrl("https://erasesuvez.es/crear?b=abc12345&pagado=1"), "https://erasesuvez.es/crear?b=%3CMASKED%3E&pagado=1");
@@ -16,11 +16,26 @@ test("scrubUrl: enmascara b en URL absolutas y relativas y deja el resto igual",
 const ev = (event: string, properties: Record<string, unknown>, extra: Partial<CaptureResult> = {}) =>
   ({ uuid: "u", event, properties, ...extra }) as CaptureResult;
 
-test("beforeSend: sin clics automáticos en /crear; sí en el resto", () => {
-  assert.equal(beforeSend(ev("$autocapture", { $pathname: "/crear" })), null);
-  assert.equal(beforeSend(ev("$autocapture", { $pathname: "/crear/x" })), null);
-  assert.notEqual(beforeSend(ev("$autocapture", { $pathname: "/" })), null);
+test("beforeSend: ningún evento de clic en ningún sitio (25 oct); los propios y las páginas vistas sí", () => {
+  for (const name of ["$autocapture", "$rageclick", "$dead_click", "$$heatmap"]) {
+    assert.equal(beforeSend(ev(name, { $pathname: "/crear" })), null, name);
+    assert.equal(beforeSend(ev(name, { $pathname: "/" })), null, name);
+  }
+  // cualquier evento que traiga elementos de la página (texto del botón, enlaces con el b del libro), fuera
+  const conTexto = { $pathname: "/crear", $el_text: "Dibujar a Lucía", $elements_chain: 'a:attr__href="/api/libro/pdf?b=abc12345"' };
+  assert.equal(beforeSend(ev("$algo_nuevo", conTexto)), null);
   assert.notEqual(beforeSend(ev("crear_paso", { $pathname: "/crear", paso: 2 })), null, "los eventos propios sí salen");
+  assert.notEqual(beforeSend(ev("$pageview", { $pathname: "/" })), null, "las páginas vistas sí salen");
+});
+
+test("consentimiento: se guarda con fecha y caduca a los 24 meses", () => {
+  const now = Date.parse("2026-10-25T10:00:00Z");
+  assert.equal(parseConsent("accepted|2026-10-25T09:00:00.000Z", now), "accepted");
+  assert.equal(parseConsent("rejected|2026-10-01T09:00:00.000Z", now), "rejected");
+  assert.equal(parseConsent(`accepted|${new Date(now - CONSENT_MAX_AGE_MS - 1000).toISOString()}`, now), null, "caducado: se vuelve a preguntar");
+  assert.equal(parseConsent("accepted", now), null, "el formato viejo, sin fecha (el de Clarity), no vale");
+  assert.equal(parseConsent(null, now), null);
+  assert.equal(parseConsent("quizá|2026-10-25T09:00:00.000Z", now), null);
 });
 
 test("beforeSend: quita b de las URL del evento y de $set_once", () => {

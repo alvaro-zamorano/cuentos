@@ -8,25 +8,48 @@
  *   - Nunca se identifica a nadie (sin identify, sin email). Los eventos son anónimos.
  *   - Ningún evento lleva datos del niño ni del cuento: solo el paso, la edición y tiempos.
  *   - El parámetro `b` de /crear?b=… abre un libro: se enmascara en todas las URL que salen.
- *   - En /crear no se mandan clics automáticos: su texto puede ser el cuento.
+ *   - Sin clics automáticos en ningún sitio (autocapture, rabietas, clics muertos): su texto puede ser el nombre del
+ *     niño o el enlace del libro. Tampoco heatmaps, excepciones, web vitals ni extensiones descargadas: todo apagado
+ *     aquí, porque si no lo decide el panel de PostHog (25 oct).
+ *   - El consentimiento se puede retirar desde el pie («Cookies»): se para PostHog y se borra lo que guardó.
  */
 import type { BeforeSendFn, PostHog } from "posthog-js";
 
-export const CONSENT_KEY = "cuentos:consent:analytics";
+/**
+ * v2 (25 oct): la clave anterior era la del aviso de Clarity. Quien aceptó aquel aviso no aceptó PostHog, así que se
+ * vuelve a preguntar. La elección caduca a los 24 meses (recomendación de la AEPD).
+ */
+export const CONSENT_KEY = "cuentos:consent:analytics:v2";
+const OLD_CONSENT_KEY = "cuentos:consent:analytics";
+export const CONSENT_MAX_AGE_MS = 730 * 24 * 3600 * 1000;
 export type Consent = "accepted" | "rejected";
+
+/** Si el navegador no deja guardar, la elección vale para esta visita. */
+let memoryChoice: Consent | null = null;
+
+/** Lee un valor guardado («accepted|2026-10-25T…»). Exportada para los tests. */
+export function parseConsent(raw: string | null, now = Date.now()): Consent | null {
+  if (!raw) return null;
+  const [v, at] = raw.split("|");
+  if (v !== "accepted" && v !== "rejected") return null;
+  const t = Date.parse(at ?? "");
+  if (!Number.isFinite(t) || now - t > CONSENT_MAX_AGE_MS) return null;
+  return v;
+}
 
 export function readConsent(): Consent | null {
   try {
-    const v = localStorage.getItem(CONSENT_KEY);
-    return v === "accepted" || v === "rejected" ? v : null;
+    if (localStorage.getItem(OLD_CONSENT_KEY) !== null) localStorage.removeItem(OLD_CONSENT_KEY);
+    return parseConsent(localStorage.getItem(CONSENT_KEY)) ?? memoryChoice;
   } catch {
-    return null;
+    return memoryChoice;
   }
 }
 
 export function saveConsent(v: Consent) {
+  memoryChoice = v;
   try {
-    localStorage.setItem(CONSENT_KEY, v);
+    localStorage.setItem(CONSENT_KEY, `${v}|${new Date().toISOString()}`);
   } catch {
     /* sin almacenamiento: la elección vale para esta visita */
   }
@@ -64,12 +87,18 @@ export function scrubUrl(value: unknown): unknown {
 
 const URL_PROPS = ["$current_url", "$referrer", "$initial_referrer", "$initial_current_url", "$session_entry_url", "$prev_pageview_url"];
 
-/** Última barrera antes de enviar: sin clics automáticos en /crear y sin `b` en ninguna URL. */
+/** Propiedades que solo traen los eventos de clic (texto y enlaces de la página). */
+const ELEMENT_PROPS = ["$elements", "$elements_chain", "$el_text", "$element_selectors"];
+
+/**
+ * Última barrera antes de enviar: ningún evento con elementos de la página (clics automáticos, rabietas, clics
+ * muertos, heatmaps), aunque el panel de PostHog los encienda, y sin `b` en ninguna URL.
+ */
 export const beforeSend: BeforeSendFn = (event) => {
   if (!event) return event;
   const props = event.properties ?? {};
-  const path = typeof props.$pathname === "string" ? props.$pathname : "";
-  if (event.event === "$autocapture" && (path === "/crear" || path.startsWith("/crear/"))) return null;
+  if (event.event === "$autocapture" || event.event === "$rageclick" || event.event === "$dead_click" || event.event === "$$heatmap") return null;
+  if (ELEMENT_PROPS.some((k) => k in props)) return null;
   for (const bag of [props, event.$set, event.$set_once, props.$set, props.$set_once]) {
     if (!bag || typeof bag !== "object") continue;
     const b = bag as Record<string, unknown>;
@@ -94,8 +123,19 @@ export function startPostHog(): Promise<void> {
       person_profiles: "identified_only",
       mask_personal_data_properties: true,
       custom_personal_data_properties: SECRET_PARAMS,
+      // todo lo que no sean páginas vistas y los eventos propios, apagado aquí (el panel no lo puede encender)
+      autocapture: false,
+      rageclick: false,
+      capture_dead_clicks: false,
+      capture_heatmaps: false,
+      capture_exceptions: false,
+      capture_performance: false,
       disable_surveys: true,
       disable_session_recording: true,
+      disable_product_tours: true,
+      disable_conversations: true,
+      disable_web_experiments: true,
+      disable_external_dependency_loading: true,
       before_send: beforeSend,
     });
     posthog.register({ entorno: process.env.NEXT_PUBLIC_VERCEL_ENV ?? "local" });
@@ -104,6 +144,43 @@ export function startPostHog(): Promise<void> {
   });
   return loading;
 }
+
+/** Borra lo que PostHog guarda en este navegador (cookies y claves `ph_`/`__ph`). */
+export function clearPostHogStorage() {
+  try {
+    for (const c of document.cookie.split(";")) {
+      const name = c.split("=")[0].trim();
+      if (!name.startsWith("ph_") && !name.startsWith("__ph")) continue;
+      const host = location.hostname;
+      const root = host.split(".").slice(-2).join(".");
+      for (const domain of ["", `; domain=${host}`, `; domain=.${root}`]) document.cookie = `${name}=; Max-Age=0; path=/${domain}`;
+    }
+  } catch {
+    /* sin cookies */
+  }
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith("ph_") || k.startsWith("__ph")) localStorage.removeItem(k);
+    for (const k of Object.keys(sessionStorage)) if (k.startsWith("ph_") || k.startsWith("__ph")) sessionStorage.removeItem(k);
+  } catch {
+    /* sin almacenamiento */
+  }
+}
+
+/**
+ * Retirar el consentimiento: PostHog deja de enviar al momento, se borra lo que guardó y, si ya estaba cargado, se
+ * recarga la página para que el SDK no siga en memoria (sin consentimiento ya no se vuelve a cargar).
+ */
+export function withdrawConsent() {
+  saveConsent("rejected");
+  pending.length = 0;
+  const wasLoaded = !!client;
+  if (client) client.opt_out_capturing();
+  clearPostHogStorage();
+  if (wasLoaded) location.reload();
+}
+
+/** Abre el aviso de cookies otra vez (enlace «Cookies» del pie). */
+export const OPEN_CONSENT_EVENT = "cuentos:abrir-cookies";
 
 /**
  * Eventos del embudo. Nombres en castellano y propiedades sin datos personales (nada del niño, del cuento ni del email).

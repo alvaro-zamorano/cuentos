@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Política de privacidad" };
 export default function Privacidad() {
   const t = titular();
   return (
-    <LegalPage title="Política de privacidad" updated="20 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="25 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
         Responsable del tratamiento: {holderLine(t)}. Contacto para privacidad: <ContactEmail value={t.email} />.
@@ -34,8 +34,9 @@ export default function Privacidad() {
           transportista.
         </li>
         <li>
-          <strong>Si aceptas la medición</strong>: cómo usas la web (páginas, clics y pasos del cuento), el navegador y el dispositivo. Sin
-          tu nombre ni tu email, y sin grabar la pantalla.
+          <strong>Si aceptas la medición</strong>: qué páginas ves y por qué pasos del cuento vas, el navegador y el dispositivo, la
+          dirección IP (de ella sale el país y la ciudad aproximados) y un identificador al azar guardado en una cookie. Sin tu nombre ni
+          tu email, sin grabar la pantalla y sin registrar tus clics ni lo que escribes.
         </li>
         <li>No pedimos fotos, apellidos ni fecha de nacimiento. No usamos reconocimiento facial.</li>
       </ul>
@@ -81,7 +82,9 @@ export default function Privacidad() {
         </li>
         <li>
           Medición de uso de la web (PostHog), para saber qué pasos cuestan más y mejorarlos: <strong>solo si lo aceptas</strong> en el aviso
-          de cookies (consentimiento, art. 22.2 LSSI). Si lo rechazas, no se carga y no se instala ninguna cookie de medición. Puedes cambiar tu elección borrando los datos de este sitio en tu navegador.
+          de cookies (consentimiento, art. 22.2 LSSI). Si lo rechazas, no se carga y no se instala ninguna cookie de medición. Puedes cambiar tu
+          elección cuando quieras desde «Cookies», al pie de cada página: si la retiras, la medición se para y se borra lo que guardó en tu
+          navegador. Volvemos a preguntarte a los dos años.
         </li>
       </ul>
 
@@ -104,7 +107,11 @@ export default function Privacidad() {
           El email que nos das para recibir el enlace del libro se borra a los 30 días, con el libro, si no has aceptado recibir novedades. Si
           compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
         </li>
-        <li>Los datos de medición de PostHog se guardan un año.</li>
+        <li>
+          Los datos de medición de PostHog se guardan un año. Las cookies de medición (las que empiezan por <code>ph_</code>, propias de este sitio)
+          guardan el identificador al azar y duran como mucho un año; hay una copia en el almacenamiento local del navegador. Solo se
+          instalan si aceptas.
+        </li>
         <li>Si nos escribes, guardamos tu mensaje el tiempo necesario para atenderte y, si es sobre un pedido, con el pedido.</li>
         <li>
           El motivo de «otra versión» y lo que escribas se guardan con el libro. A los 30 días se borra lo que escribiste y el motivo se
@@ -114,7 +121,7 @@ export default function Privacidad() {
 
       <h2>7. Proveedores</h2>
       <p>
-        Estos proveedores tratan datos por encargo nuestro, con un contrato de encargo (DPA) que forma parte de sus condiciones. Cuando los datos
+        Estos proveedores tratan datos por encargo nuestro, con un contrato de encargo (DPA). Cuando los datos
         salen del Espacio Económico Europeo, la transferencia se ampara en cláusulas contractuales tipo de la Comisión Europea y, cuando el
         proveedor está certificado, en el Marco de Privacidad de Datos UE-EE. UU.:
       </p>
@@ -132,8 +139,8 @@ export default function Privacidad() {
         </li>
         <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
         <li>
-          Medición de uso, solo si la aceptas: PostHog, Inc. (EE. UU.), con los datos alojados en Fráncfort (UE), cláusulas tipo y Marco de
-          Privacidad. No recibe tu nombre, tu email ni lo que escribes sobre el niño, y el enlace de tu libro se tapa en las direcciones.
+          Medición de uso, solo si la aceptas: PostHog, Inc. (EE. UU.), con los datos alojados en Fráncfort (UE) y cláusulas tipo. No recibe
+          tu nombre, tu email ni lo que escribes sobre el niño, y el enlace de tu libro se tapa en las direcciones.
         </li>
         <li>
           Impresión y envío del libro de tapa dura: Gelato ASA (Oslo, Noruega, en el Espacio Económico Europeo),
