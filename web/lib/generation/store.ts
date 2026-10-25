@@ -87,6 +87,8 @@ export interface GenStore {
   markIllustrating(bookId: string): Promise<void>;
   /** Flujo nuevo: crea o actualiza el libro con su borrador v2. */
   saveBook(b: SaveBook): Promise<BookRecord>;
+  /** Retrasa la caducidad del libro hasta `until` (nunca la adelanta). */
+  extendBook(bookId: string, until: string): Promise<void>;
   /** Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`. */
   addPaidOrder(bookId: string, o: NewPaidOrder): Promise<void>;
   /** El pedido pagado del libro (el más reciente), con su estado en la imprenta. */
@@ -286,6 +288,10 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       }
       throw new Error("books: id_collision");
     },
+    async extendBook(bookId, until) {
+      const { error } = await db.from("cuentos_books").update({ expires_at: until }).eq("id", bookId).lt("expires_at", until);
+      if (error) throw new Error(`books: ${error.message}`);
+    },
     async addPaidOrder(bookId, { amountCents, edition, sessionId, shipping, printStatus }) {
       const { error } = await db.from("cuentos_orders").insert({
         book_id: bookId,
@@ -381,6 +387,10 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       const book: BookRecord = { id: publicId, public_id: publicId, email: email ?? prev?.email ?? null, draft, raw: draft, expiresAt: prev?.expiresAt ?? memoryExpiry() };
       state.books.set(publicId, book);
       return book;
+    },
+    async extendBook(bookId, until) {
+      const b = state.books.get(bookId);
+      if (b && (!b.expiresAt || b.expiresAt < until)) b.expiresAt = until;
     },
     async saveBook({ publicId, email, draft }) {
       const id = publicId && state.books.has(publicId) ? publicId : newPublicId();

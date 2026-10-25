@@ -20,6 +20,19 @@ export function paidEdition(v: unknown): PaidEdition | null {
  * cuando el borrado ya se ha llevado las ilustraciones.
  */
 export const UPGRADE_CENTS = PRICE_CENTS.hardcover - PRICE_CENTS.illustrated;
+/** Lo mínimo que cobra Stripe en euros. */
+export const MIN_UPGRADE_CENTS = 50;
+
+/**
+ * Lo que se cobra al pasar a tapa dura (25 oct): el precio de hoy de la tapa dura menos lo que se pagó de verdad por el
+ * PDF, no el precio de hoy del PDF. null si no queda nada que cobrar (por ejemplo, si el PDF se pagó más caro).
+ * UPGRADE_CENTS es solo la diferencia con los precios de hoy, para los textos de la landing.
+ */
+export function upgradeCents(paidCents: number | null | undefined): number | null {
+  if (typeof paidCents !== "number" || !Number.isFinite(paidCents)) return null;
+  const diff = PRICE_CENTS.hardcover - Math.round(paidCents);
+  return diff >= MIN_UPGRADE_CENTS ? diff : null;
+}
 export const UPGRADE_CLOSES_BEFORE_MS = 24 * 3600 * 1000;
 
 /** Último momento para pasar a tapa dura, o null si ya no se puede (o no se sabe cuándo caduca el libro). */

@@ -24,8 +24,12 @@ import { planFromClient } from "../plan/planner";
 import { validatePlan } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping } from "../print/shipping";
-import { PRICE_CENTS as PRICES, UPGRADE_CENTS, paidEdition, upgradeDeadline } from "../print/prices";
-import { LOCKED_PRINT_STATUSES, type PaidEdition, type PrintView, type Shipping } from "../print/types";
+import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
+import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping } from "../print/types";
+import { printableInEnv } from "../stripe";
+
+/** Pagada la tapa dura (también la mejora), el libro se guarda al menos este tiempo para poder mandarlo a imprimir. */
+const KEEP_AFTER_HARDCOVER_MS = 30 * 24 * 3600 * 1000;
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
 export const MAX_PAGE_JOBS = 1 + MAX_PAGE_REDOS + 1; // la incluida + 2 versiones con motivo + 1 por si el padre cambia la escena
@@ -390,7 +394,12 @@ export async function prepareCheckout(store: GenStore, input: { bookId?: unknown
  * Pasar a tapa dura un libro ya pagado en PDF (24 oct): se cobra solo la diferencia. Hace falta un pedido PDF pagado, que
  * no haya ya uno de tapa dura, la dirección válida y que falte más de un día para que el libro caduque.
  */
-export async function prepareUpgrade(store: GenStore, input: { bookId?: unknown; shipping?: unknown }, now = Date.now()): Promise<CheckoutPrep | Fail> {
+export async function prepareUpgrade(
+  store: GenStore,
+  input: { bookId?: unknown; shipping?: unknown },
+  now = Date.now(),
+  env: Record<string, string | undefined> = process.env,
+): Promise<CheckoutPrep | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   let { book } = loaded;
@@ -398,13 +407,18 @@ export async function prepareUpgrade(store: GenStore, input: { bookId?: unknown;
   const order = await store.getOrder(book.id);
   if (!order) return fail(402, "not_paid");
   if (order.edition === "hardcover") return fail(409, "already_hardcover");
+  // 25 oct: el PDF tiene que haberse cobrado de verdad en este entorno. La base es la misma que la de la preview: un PDF
+  // pagado allí con la tarjeta de prueba no puede pasar a tapa dura impresa en producción pagando solo la diferencia
+  if (!printableInEnv(order.sessionId, env)) return fail(409, "test_order", "Este libro se pagó en modo de prueba.");
+  const amountCents = upgradeCents(order.amountCents);
+  if (amountCents === null) return fail(409, "upgrade_unavailable");
   if (!upgradeDeadline(book.expiresAt, now)) return fail(409, "upgrade_closed");
   const s = cleanShipping(input.shipping);
   if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
+  // la edición del libro no cambia hasta que llega el pago (si se abandona, sigue siendo el PDF)
   d.shipping = s.shipping;
-  d.edition = "hardcover";
-  book = await save(store, book, d, "hardcover");
-  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents: UPGRADE_CENTS, upgrade: true };
+  book = await save(store, book, d, d.edition ?? "illustrated");
+  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true };
 }
 
 /** Cambiar la dirección de la tapa dura ya pagada, mientras no haya salido hacia la imprenta. */
@@ -439,14 +453,14 @@ export type PaymentOutcome =
  * Registra el pedido de un `checkout.session.completed` (o `async_payment_succeeded`) ya verificado.
  * Idempotente: la misma sesión dos veces (Stripe reintenta) no crea otro pedido.
  */
-export async function recordStripePayment(store: GenStore, event: PaidEvent): Promise<PaymentOutcome> {
+export async function recordStripePayment(store: GenStore, event: PaidEvent, env: Record<string, string | undefined> = process.env): Promise<PaymentOutcome> {
   if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return { action: "ignored", reason: event.type };
   const s = event.data?.object ?? {};
   if (s.payment_status !== "paid") return { action: "ignored", reason: `payment_status:${s.payment_status ?? "?"}` };
   const bookId = s.metadata?.bookId ?? s.client_reference_id ?? null;
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
-  if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s);
+  if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
   if (await store.hasPaidOrder(loaded.book.id)) return { action: "duplicate", bookId: loaded.book.public_id };
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
@@ -460,14 +474,25 @@ export async function recordStripePayment(store: GenStore, event: PaidEvent): Pr
  * Las páginas ya están pintadas. Si el libro no tenía el PDF pagado o ya era de tapa dura, se ignora: lo que se cobró hay
  * que devolverlo a mano (el webhook avisa).
  */
-async function recordUpgrade(store: GenStore, { book, d }: { book: BookRecord; d: BookDraftV2 }, s: PaidEvent["data"]["object"]): Promise<PaymentOutcome> {
+async function recordUpgrade(
+  store: GenStore,
+  { book, d }: { book: BookRecord; d: BookDraftV2 },
+  s: PaidEvent["data"]["object"],
+  env: Record<string, string | undefined>,
+): Promise<PaymentOutcome> {
   const order = await store.getOrder(book.id);
   if (order?.edition === "hardcover") {
     return order.sessionId && order.sessionId === s.id ? { action: "duplicate", bookId: book.public_id } : { action: "ignored", reason: "upgrade:already_hardcover" };
   }
   if (!order) return { action: "ignored", reason: "upgrade:not_paid" };
-  const amount = typeof s.amount_total === "number" ? s.amount_total : UPGRADE_CENTS;
+  if (!printableInEnv(order.sessionId, env)) return { action: "ignored", reason: "upgrade:test_order" };
+  const amount = typeof s.amount_total === "number" ? s.amount_total : (upgradeCents(order.amountCents) ?? 0);
   await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
+  // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
+  // caducara al pedir la mejora
+  await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_HARDCOVER_MS).toISOString());
+  d.edition = "hardcover";
+  await save(store, book, d, "hardcover").catch(() => null);
   return { action: "upgraded", bookId: book.public_id };
 }
 
@@ -708,10 +733,16 @@ export interface UpgradeOffer {
   until: string;
 }
 
-export function upgradeOffer(book: Pick<BookRecord, "expiresAt">, edition: PaidEdition | null, now = Date.now()): UpgradeOffer | null {
-  if (edition !== "illustrated") return null;
+export function upgradeOffer(
+  book: Pick<BookRecord, "expiresAt">,
+  order: Pick<PaidOrder, "edition" | "amountCents" | "sessionId"> | null,
+  now = Date.now(),
+  env: Record<string, string | undefined> = process.env,
+): UpgradeOffer | null {
+  if (order?.edition !== "illustrated" || !printableInEnv(order.sessionId, env)) return null;
+  const cents = upgradeCents(order.amountCents);
   const until = upgradeDeadline(book.expiresAt, now);
-  return until ? { cents: UPGRADE_CENTS, until } : null;
+  return cents !== null && until ? { cents, until } : null;
 }
 
 export async function bookView(store: GenStore, bookId: unknown): Promise<BookView | Fail> {
@@ -757,7 +788,7 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     plan: d.plan,
     paid: await store.hasPaidOrder(book.id),
     edition: order?.edition ?? null,
-    upgrade: upgradeOffer(book, order?.edition ?? null),
+    upgrade: upgradeOffer(book, order ?? null),
     print:
       order?.edition === "hardcover" && order.printStatus
         ? { status: order.printStatus, shipping: order.shipping ?? d.shipping ?? null, trackingUrl: order.trackingUrl, sentAt: order.sentAt }

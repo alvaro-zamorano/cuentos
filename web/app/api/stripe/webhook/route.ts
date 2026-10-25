@@ -35,7 +35,9 @@ export async function POST(req: Request) {
     console.log(`[stripe] ${event.type} → ${r.action}${r.action === "ignored" ? ` (${r.reason})` : ""}`);
     const s = event.data.object;
     if (r.action === "ignored" && s.metadata?.upgrade === "1" && s.payment_status === "paid") {
-      // mejora a tapa dura cobrada que no se ha podido registrar (libro caducado, sin PDF pagado o ya en tapa dura): devolverla a mano
+      // mejora a tapa dura cobrada que no se ha podido registrar (libro caducado, sin PDF pagado, PDF de prueba o ya en
+      // tapa dura): devolverla a mano. El error queda en los logs aunque falle el aviso por email
+      console.error(`[stripe] mejora cobrada sin registrar: ${r.reason} · libro ${s.metadata?.bookId ?? "?"} · sesión ${s.id ?? "?"} · ${s.amount_total ?? "?"} céntimos`);
       await sendSupportNotice(
         "Mejora a tapa dura cobrada sin registrar",
         `Stripe cobró una mejora a tapa dura que no se ha podido registrar (${r.reason}).\nLibro: ${s.metadata?.bookId ?? "?"}\nSesión: ${s.id ?? "?"}\nImporte: ${((s.amount_total ?? 0) / 100).toFixed(2)} €\n\nRevísala y devuélvela desde el panel de Stripe si hace falta.`,

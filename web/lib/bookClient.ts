@@ -112,6 +112,8 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return "Este libro ya es de tapa dura. Recarga la página.";
     case "upgrade_closed":
       return "Ya no se puede pasar a tapa dura: el libro se borra en menos de un día.";
+    case "upgrade_unavailable":
+      return "Este libro no se puede pasar a tapa dura desde aquí. Escríbenos y lo vemos.";
     case "reason":
       return json.reason ?? "Dinos qué no te gusta de esta ilustración.";
     case "already_reported":
