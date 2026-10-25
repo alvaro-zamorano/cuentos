@@ -2,6 +2,8 @@
  * Emails transaccionales con Resend (B5). Sin RESEND_API_KEY o sin MAIL_FROM no se envía nada y se devuelve
  * `{ sent: false }`: la app funciona igual (el enlace para volver se enseña en pantalla). Solo servidor.
  */
+import { dayMonth, eur } from "./print/prices";
+
 export interface MailResult {
   sent: boolean;
   reason?: string;
@@ -50,12 +52,26 @@ export function sendBookLink(to: string, bookTitle: string, link: string): Promi
 }
 
 /** Cuando las 12 ilustraciones están pintadas tras el pago. Con la tapa dura, el libro espera a que el padre lo mande a imprimir. */
-export function sendBookReady(to: string, bookTitle: string, link: string, edition: "hardcover" | "illustrated" = "illustrated"): Promise<MailResult> {
+export function sendBookReady(
+  to: string,
+  bookTitle: string,
+  link: string,
+  edition: "hardcover" | "illustrated" = "illustrated",
+  upgrade?: { cents: number; until: string } | null,
+): Promise<MailResult> {
   const body =
     edition === "hardcover"
       ? "Las doce ilustraciones están terminadas. Revisa cada página y cambia lo que quieras. Cuando esté como lo quieres, pulsa «Mandar a imprimir»: no lo imprimimos hasta que nos lo digas."
       : "Las doce ilustraciones están terminadas. Revisa cada página, cambia lo que quieras y descarga el PDF para imprimirlo en casa.";
-  return send(to, `Tu libro está listo: «${bookTitle}»`, layout(bookTitle, body, link, edition === "hardcover" ? "Revisar y mandar a imprimir" : "Ver mi libro"), `${bookTitle}\n\n${body}\n\nTu libro: ${link}`);
+  // pagado en PDF y con imprenta: la oferta de pasar a tapa dura (lo decide la ruta)
+  const extra = edition === "illustrated" && upgrade ? upgradeLine(upgrade) : "";
+  const full = extra ? `${body} ${extra}` : body;
+  return send(to, `Tu libro está listo: «${bookTitle}»`, layout(bookTitle, esc(full), link, edition === "hardcover" ? "Revisar y mandar a imprimir" : "Ver mi libro"), `${bookTitle}\n\n${full}\n\nTu libro: ${link}`);
+}
+
+/** «¿Lo quieres en tapa dura? …»: la mejora desde el PDF, con su precio y su fecha límite. */
+export function upgradeLine({ cents, until }: { cents: number; until: string }): string {
+  return `¿Lo quieres también en tapa dura? Desde tu libro pagas solo la diferencia, ${eur(cents)}, con el envío a casa incluido. Puedes pedirlo hasta el ${dayMonth(until)}.`;
 }
 
 /** Tapa dura pagada, ilustraciones hechas y sin mandar a imprimir (el cron diario, a los 2 y a los 7 días). */

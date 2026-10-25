@@ -26,7 +26,8 @@ export default function Condiciones() {
         </li>
         <li>
           <strong>Tapa dura</strong>: el libro apaisado de tapa dura con las doce ilustraciones, enviado a casa (Península y Baleares), y el PDF
-          ilustrado. De pago; el precio final, con IVA y envío, se indica antes de pagar. Plazos y entrega en el punto 8.
+          ilustrado. De pago; el precio final, con IVA y envío, se indica antes de pagar. Plazos y entrega en el punto 8. Si has comprado el libro
+          ilustrado, puedes pasarlo a tapa dura pagando solo la diferencia mientras el libro esté guardado, hasta un día antes de que se borre.
         </li>
       </ul>
 

@@ -9,6 +9,10 @@ export async function GET(req: Request) {
   const b = new URL(req.url).searchParams.get("b");
   return withContext("view", async (store) => {
     const v = await bookView(store, b);
-    return v.ok ? { ...v, payment: paymentMode(), printMode: printMode(), mail: mailEnabled(), background: backgroundPaint() } : v;
+    if (!v.ok) return v;
+    const print = printMode();
+    // pasar a tapa dura solo si aquí hay imprenta (real o simulada) y forma de pagar
+    const payment = paymentMode();
+    return { ...v, upgrade: print !== "none" && payment !== "none" ? v.upgrade : null, payment, printMode: print, mail: mailEnabled(), background: backgroundPaint() };
   });
 }
