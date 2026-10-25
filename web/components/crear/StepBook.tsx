@@ -175,10 +175,12 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     dedication: plan.dedication,
     coverUrl: cover?.url ?? null,
     sheetUrl: sheetUrl ?? null,
+    sheetKey: view.chosen.sheet,
     locked: !view.paid,
     pages: plan.pages.map((p) => {
       const chosen = view.chosen.pages[p.n];
-      return { n: p.n, text: p.text, scene: p.scene, imageUrl: view.paid && chosen ? byId.get(chosen)?.url ?? null : null };
+      const url = view.paid && chosen ? byId.get(chosen)?.url ?? null : null;
+      return { n: p.n, text: p.text, scene: p.scene, imageUrl: url, imageKey: url ? chosen : null };
     }),
   };
   const coverEl = (tilt: number, className: string) => (

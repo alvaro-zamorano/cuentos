@@ -14,6 +14,8 @@ export interface Book3DPage {
   text: string;
   /** Ilustración ya pintada. Sin ella (antes del pago o en pruebas) va papel con «se pintará: …». */
   imageUrl?: string | null;
+  /** Qué imagen es (el id del job). La URL firmada cambia en cada consulta; la clave no, y solo si cambia se recarga. */
+  imageKey?: string | null;
   scene?: string;
 }
 
@@ -24,6 +26,7 @@ export interface Book3DData {
   dedication?: string;
   coverUrl?: string | null;
   sheetUrl?: string | null;
+  sheetKey?: string | null;
   pages: Book3DPage[];
   /** Páginas sin pintar todavía porque falta el pago: llevan la etiqueta «Al pagar». */
   locked?: boolean;
@@ -43,6 +46,11 @@ export interface Book3DHandle {
   prev: () => void;
   /** Media vuelta de presentación (una vez), para enseñar el lomo. */
   intro: () => void;
+  /**
+   * Cambios en caliente (25 oct), sin rehacer la escena ni perder la página: textos, dedicatoria, «Al pagar» e imágenes
+   * nuevas (por su clave). Devuelve false si cambia algo que obliga a rehacer el libro (título, nombre, portada, nº de páginas).
+   */
+  update: (next: Book3DData) => boolean;
   dispose: () => void;
 }
 
@@ -261,7 +269,8 @@ export async function createBook3D(opts: {
         if (data.locked) {
           x.fillStyle = C.card;
           x.beginPath();
-          x.roundRect(side === "left" ? TEX_W - 290 : 60, 52, 230, 64, 32);
+          if (typeof x.roundRect === "function") x.roundRect(side === "left" ? TEX_W - 290 : 60, 52, 230, 64, 32);
+          else x.rect(side === "left" ? TEX_W - 290 : 60, 52, 230, 64); // Safari 15 no tiene roundRect
           x.fill();
           x.fillStyle = C.ink;
           x.font = ui(600, 30);
@@ -673,6 +682,7 @@ export async function createBook3D(opts: {
         ensureTextures(turned);
       }
     }
+    kick(300);
   }
 
   function bendLeaf(L: Leaf, e: number, dir: number) {
@@ -722,12 +732,14 @@ export async function createBook3D(opts: {
     }
     ensureTextures(turned);
     opts.onStep(turned);
+    kick();
   }
   const next = () => go(turned === MAXTURN ? 0 : turned + 1);
   const prev = () => go(turned - 1);
 
   let down: { x: number; y: number; id: number } | null = null;
   const onDown = (e: PointerEvent) => {
+    kick();
     down = { x: e.clientX, y: e.clientY, id: e.pointerId };
     orbit.intro = null;
     if (turned === 0 && items[0].p === 0) {
@@ -742,6 +754,7 @@ export async function createBook3D(opts: {
     }
   };
   const onMove = (e: PointerEvent) => {
+    kick(800);
     pointer.x = e.clientX / window.innerWidth - 0.5;
     pointer.y = e.clientY / window.innerHeight - 0.5;
     if (!orbit.dragging || !down || e.pointerId !== down.id) return;
@@ -815,7 +828,11 @@ export async function createBook3D(opts: {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
-  const ro = new ResizeObserver(resize);
+  // el callback llega después de montar (kick ya está listo)
+  const ro = new ResizeObserver(() => {
+    resize();
+    kick(300);
+  });
   ro.observe(parent);
   resize();
 
@@ -825,9 +842,15 @@ export async function createBook3D(opts: {
   let started = false;
   let disposed = false;
   let visible = true;
+  // render bajo demanda (25 oct): solo mientras algo se mueve o justo después (el encuadre se asienta), no en reposo
+  let settleUntil = 0;
+  function kick(ms = 1500) {
+    settleUntil = Math.max(settleUntil, performance.now() + ms);
+    if (visible && !raf && !disposed) raf = requestAnimationFrame(frame);
+  }
   const io = new IntersectionObserver(([e]) => {
     visible = e.isIntersecting;
-    if (visible && !raf && !disposed) raf = requestAnimationFrame(frame);
+    if (visible) kick();
   });
   io.observe(canvas);
 
@@ -877,7 +900,7 @@ export async function createBook3D(opts: {
 
     // encuadre: cerrado, centrado en la tapa; abierto, en el lomo
     book.position.x = (-BW / 2) * (1 - ec);
-    book.position.y = reduceMotion ? 0 : Math.sin((now / 1000 / 7) * Math.PI * 2) * 0.012;
+    book.position.y = 0;
     const par = reduceMotion || orbit.dragging ? 0 : ec; // balanceo con el puntero, solo abierto
     const tgtRy = pointer.x * 0.12 * par;
     const tgtRx = THREE.MathUtils.lerp(TILT_CLOSED, TILT_OPEN, ec) + pointer.y * 0.06 * par;
@@ -907,11 +930,13 @@ export async function createBook3D(opts: {
 
     renderer.render(scene, camera);
     started = true;
-    if (visible) raf = requestAnimationFrame(frame);
+    const moving = items.some((it) => it.p !== it.target) || orbit.dragging || orbit.intro !== null;
+    if (moving) settleUntil = Math.max(settleUntil, now + 1500);
+    if (visible && now < settleUntil) raf = requestAnimationFrame(frame);
   }
 
   ensureTextures(0);
-  raf = requestAnimationFrame(frame);
+  kick();
 
   return {
     steps: MAXTURN,
@@ -919,7 +944,58 @@ export async function createBook3D(opts: {
     next,
     prev,
     intro: () => {
-      if (!reduceMotion && turned === 0) orbit.intro = performance.now() + 300;
+      if (!reduceMotion && turned === 0) {
+        orbit.intro = performance.now() + 300;
+        kick();
+      }
+    },
+    update: (next: Book3DData) => {
+      if (next.title !== data.title || next.name !== data.name || next.from !== data.from || next.pages.length !== P) return false;
+      if ((next.coverUrl ? 1 : 0) !== (data.coverUrl ? 1 : 0)) return false;
+      const dirty = new Set<number>();
+      const leavesWith = (pred: (f: Face) => boolean) => LEAVES.forEach((pair, i) => pair.some(pred) && dirty.add(i));
+      if (next.dedication !== data.dedication) {
+        data.dedication = next.dedication;
+        leavesWith((f) => f.k === "dedicatoria");
+      }
+      if (!!next.locked !== !!data.locked) {
+        data.locked = next.locked;
+        LEAVES.forEach((_, i) => dirty.add(i));
+      }
+      const reload = (key: string, url: string | null | undefined) => {
+        pics.delete(key);
+        for (const i of facesUsing.get(key) ?? []) dirty.add(i);
+        if (url)
+          void loadImage(url).then((img) => {
+            if (!img || disposed) return;
+            pics.set(key, img);
+            refreshFacesUsing(key);
+          });
+      };
+      if ((next.sheetKey ?? null) !== (data.sheetKey ?? null)) {
+        data.sheetKey = next.sheetKey;
+        data.sheetUrl = next.sheetUrl;
+        reload("sheet", next.sheetUrl);
+      }
+      next.pages.forEach((np, i) => {
+        const cur = data.pages[i];
+        if (np.text !== cur.text || np.scene !== cur.scene) {
+          cur.text = np.text;
+          cur.scene = np.scene;
+          leavesWith((f) => (f.k === "texto" || f.k === "ilus") && f.n === cur.n);
+        }
+        if ((np.imageKey ?? null) !== (cur.imageKey ?? null)) {
+          cur.imageKey = np.imageKey;
+          cur.imageUrl = np.imageUrl;
+          reload(`p${cur.n}`, np.imageUrl);
+        }
+      });
+      for (const i of dirty) freeLeafTex(leaves[i]);
+      if (dirty.size) {
+        ensureTextures(turned);
+        kick(300);
+      }
+      return true;
     },
     dispose: () => {
       disposed = true;
@@ -935,6 +1011,8 @@ export async function createBook3D(opts: {
       textures.forEach((t) => t.dispose());
       disposables.forEach((d) => d.dispose());
       renderer.dispose();
+      // libera el contexto WebGL ya (el navegador solo deja unos pocos vivos a la vez)
+      renderer.forceContextLoss();
     },
   };
 }

@@ -17,10 +17,22 @@ function stepInfo(s: number, data: Book3DData): { label: string; text: string } 
 function hasWebGL(): boolean {
   try {
     const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+    const gl = (c.getContext("webgl2") || c.getContext("webgl")) as WebGLRenderingContext | null;
+    // la prueba no se queda con un contexto vivo (el navegador solo deja unos pocos)
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    return !!gl;
   } catch {
     return false;
   }
+}
+
+/** Lo que obliga a rehacer el libro entero. El resto (textos, imágenes por su clave) se actualiza en caliente. */
+function structureKey(d: Book3DData): string {
+  return JSON.stringify([d.title, d.name, d.from ?? null, !!d.coverUrl, d.pages.length]);
+}
+/** Lo que se actualiza sin rehacer: no usa las URL firmadas (cambian en cada consulta), sino las claves de imagen. */
+function contentKey(d: Book3DData): string {
+  return JSON.stringify([d.dedication ?? null, !!d.locked, d.sheetKey ?? null, d.pages.map((p) => [p.text, p.scene ?? null, p.imageKey ?? null])]);
 }
 
 function fontVar(name: string, fallback: string): string {
@@ -40,8 +52,16 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
   const handle = useRef<Book3DHandle | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const [step, setStep] = useState(0);
-  // el libro se rehace si cambian el texto o las imágenes (p. ej. una página repintada)
-  const dataKey = JSON.stringify(data);
+  // 25 oct: antes el libro se rehacía con cada tecla y con cada refresco de la vista (las URL firmadas cambian). Ahora
+  // se crea una vez por estructura y el resto se actualiza en caliente, sin perder la página que se está viendo
+  const latest = useRef(data);
+  useEffect(() => {
+    latest.current = data;
+  });
+  const stepRef = useRef(0);
+  const [rebuild, setRebuild] = useState(0);
+  const sKey = structureKey(data);
+  const cKey = contentKey(data);
 
   useEffect(() => {
     const el = stage.current;
@@ -67,18 +87,26 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
         };
         const h = await createBook3D({
           canvas: cv,
-          data: JSON.parse(dataKey) as Book3DData,
+          // copia: el visor la va actualizando con update()
+          data: JSON.parse(JSON.stringify(latest.current)) as Book3DData,
           fonts,
           reduceMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-          onStep: (n) => setStep(n),
+          onStep: (n) => {
+            stepRef.current = n;
+            setStep(n);
+          },
         });
         if (cancelled) {
           h.dispose();
           return;
         }
         handle.current = h;
-        setStep(0);
         setState("ready");
+        // si se rehace (cambió el título o la portada), vuelve a la página que se estaba viendo
+        if (stepRef.current > 0) {
+          introDone = true;
+          h.go(stepRef.current);
+        } else setStep(0);
         // la media vuelta de presentación, cuando el libro está a la vista
         seen = new IntersectionObserver(
           ([e]) => {
@@ -113,7 +141,16 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
       handle.current?.dispose();
       handle.current = null;
     };
-  }, [dataKey]);
+  }, [sKey, rebuild]);
+
+  // textos e imágenes nuevas, en caliente y con un poco de retardo (no en cada tecla)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const h = handle.current;
+      if (h && !h.update(JSON.parse(JSON.stringify(latest.current)) as Book3DData)) setRebuild((n) => n + 1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [cKey]);
 
   const ready = state === "ready";
   const steps = data.pages.length + 3;
@@ -127,6 +164,7 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
         </div>
         <canvas
           ref={canvas}
+          role="img"
           tabIndex={ready ? 0 : -1}
           aria-label={`Libro de tapa dura «${data.title}» en 3D. Usa las flechas para pasar las páginas.`}
           className={`absolute inset-0 block h-full w-full cursor-pointer touch-pan-y rounded-[14px] transition-opacity duration-500 outline-none focus-visible:shadow-[0_0_0_3px_var(--accent)] ${ready ? "opacity-100" : "opacity-0"}`}
@@ -158,7 +196,7 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
               <Icon.next />
             </button>
           </div>
-          {info.text && <p className="story m-0 rounded-[18px] bg-card px-5 py-4 text-[16.5px] leading-[1.6] whitespace-pre-line text-ink sm:hidden">{info.text}</p>}
+          {info.text && <p className="story m-0 rounded-[18px] bg-card px-5 py-4 text-[16.5px] leading-[1.6] whitespace-pre-line text-ink">{info.text}</p>}
           {step === 0 && <p className="hand m-0 text-center text-[18px] text-ink-soft">{hint}</p>}
         </>
       )}
