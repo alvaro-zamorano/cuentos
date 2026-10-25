@@ -530,10 +530,10 @@ export async function notifyBookReady(
 export async function pendingPageJobs(store: GenStore, bookId: string): Promise<string[]> {
   const book = await store.findBook({ publicId: bookId });
   if (!book) return [];
-  // primero las 12 páginas y después los retratos de los personajes
-  const order = (j: GenJob) => (j.kind === "page" ? 0 : 100) + (j.page_n ?? 0);
+  // primero la portada que falte (ya pagada), después las 12 páginas y los retratos de los personajes
+  const order = (j: GenJob) => (j.kind === "cover" ? -1 : j.kind === "page" ? 0 : 100) + (j.page_n ?? 0);
   return (await store.listJobs(book.id))
-    .filter((j) => (j.kind === "page" || j.kind === "portrait") && v2Of(j) && j.status === "pending")
+    .filter((j) => (j.kind === "page" || j.kind === "portrait" || (j.kind === "cover" && j.paid)) && v2Of(j) && j.status === "pending")
     .sort((a, b) => order(a) - order(b))
     .map((j) => j.id);
 }
@@ -564,6 +564,38 @@ function currentPageJobs(jobs: GenJob[], d: BookDraftV2, n: number, sheetJobId: 
   const page = d.plan.pages[n - 1];
   const prefix = pageArtKey(d.castArt!, page);
   return jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j) && sheetRefOf(j) === sheetJobId && j.job_key.endsWith(hashString(`${prefix}|${j.prompt}|${sheetJobId}`)));
+}
+
+/* ------------------------------ tras el pago: la portada, si falta ------------------------------ */
+
+/**
+ * 26 oct: un libro pagado nunca se queda sin portada. Si la de su hoja falló (o no existe), se encarga otra como trabajo
+ * pagado (sin tope por lead), como los retratos. Si algo falla aquí, se avisa en el log y el resto del libro sigue.
+ */
+async function ensureCover(store: GenStore, book: BookRecord, d: BookDraftV2, sheetJobId: string, adapter: Pick<GenerationAdapter, "name">): Promise<string[]> {
+  try {
+    const jobs = await store.listJobs(book.id);
+    const mine = coverJobs(jobs).filter((j) => sheetRefOf(j) === sheetJobId);
+    if (mine.some((j) => j.status !== "failed")) return [];
+    const retry = mine.find((j) => j.attempts < MAX_ATTEMPTS && j.paid);
+    if (retry) return (await store.reopen(retry)) ? [retry.id] : [];
+    const variant = coverJobs(jobs).length + 1;
+    if (variant > DB_MAX_VARIANT) {
+      console.warn(`[portada] ${book.public_id}: sin portada y sin versiones libres`);
+      return [];
+    }
+    const row: NewJob = { ...coverRow(book, d, variant, sheetJobId), paid: true };
+    const gate = await gateSpend(store.db, { leadId: book.id, images: 1, provider: adapter.name, paid: true, size: "2K" });
+    if (!gate.ok) {
+      console.warn(`[portada] sin presupuesto: ${gate.reason}`);
+      return [];
+    }
+    await store.insertJobs([row]);
+    return (await store.listJobs(book.id)).filter((j) => j.job_key === row.job_key).map((j) => j.id);
+  } catch (e) {
+    console.warn(`[portada] ${e instanceof Error ? e.message.slice(0, 200) : "error"}`);
+    return [];
+  }
 }
 
 /* ------------------------------ tras el pago: retratos de los personajes ------------------------------ */
@@ -738,7 +770,8 @@ export async function requestPages(
   }
   // con el libro entero (no con «Otra versión» de una página), también los retratos de la página de personajes
   const portraits = input.page === undefined ? await ensurePortraits(store, book, d, sheet.id, adapter) : [];
-  return { ok: true, bookId: book.public_id, jobs: [...created.map((j) => j.id), ...reopenedIds, ...portraits], created: wanted.length };
+  const coverIds = input.page === undefined ? await ensureCover(store, book, d, sheet.id, adapter) : [];
+  return { ok: true, bookId: book.public_id, jobs: [...created.map((j) => j.id), ...reopenedIds, ...portraits, ...coverIds], created: wanted.length };
 }
 
 /**
@@ -791,6 +824,8 @@ export interface BookJobView {
   /** Sigue siendo la imagen de la escena actual (si el padre cambió la página después, ya no). */
   current: boolean;
   sheetJobId: string | null;
+  /** Encargada tras el pago (las páginas, los retratos y una portada que faltaba). */
+  paid: boolean;
 }
 
 export interface BookView {
@@ -877,6 +912,7 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
       error: j.status === "failed" ? (j.error?.startsWith("presupuesto") ? "budget" : "error") : null,
       current,
       sheetJobId: sheetId,
+      paid: !!j.paid,
     });
   }
   const doneSheets = out.filter((j) => j.kind === "sheet" && j.status === "done");
