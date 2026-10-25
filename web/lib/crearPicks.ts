@@ -9,9 +9,11 @@ export interface Pick {
   id: string;
   label: string;
   src: string;
+  /** Máscara del pelo de la miniatura (solo peinados): ver scripts/crear_hair_masks.py. */
+  mask?: string;
 }
 
-export const HAIR_PICKS: Pick[] = HAIR_SHAPES.map((h) => ({ id: h.id, label: h.label, src: `/crear/hair/${h.id}.webp` }));
+export const HAIR_PICKS: Pick[] = HAIR_SHAPES.map((h) => ({ id: h.id, label: h.label, src: `/crear/hair/${h.id}.webp`, mask: `/crear/hair/${h.id}.mask.png` }));
 
 export const GLASSES_PICKS: Pick[] = GLASSES.map((g) => ({ id: g.id, label: g.label, src: `/crear/glasses/${g.id}.webp` }));
 
@@ -27,7 +29,14 @@ const OUTFIT_TEXT: Record<string, string> = {
   verano: "camiseta amarilla y bañador azul",
 };
 
-export const OUTFIT_PICKS: (Pick & { text: string })[] = GARMENTS.map((g) => ({ id: g.id, label: g.label, src: `/crear/outfit/${g.id}.webp`, text: OUTFIT_TEXT[g.id] }));
+/**
+ * Guiones blandos para las etiquetas que no caben enteras en las tarjetas de ropa (cuatro por fila en el móvil): sin
+ * ellos, «Chubasquero» se partía por cualquier letra.
+ */
+const SOFT_HYPHENS: Record<string, string> = { Chubasquero: "Chubas\u00adquero", Camiseta: "Cami\u00adseta", Plumífero: "Plumí\u00adfero" };
+const hyphenate = (label: string) => label.replace(/\p{L}+/gu, (w) => SOFT_HYPHENS[w] ?? w);
+
+export const OUTFIT_PICKS: (Pick & { text: string })[] = GARMENTS.map((g) => ({ id: g.id, label: hyphenate(g.label), src: `/crear/outfit/${g.id}.webp`, text: OUTFIT_TEXT[g.id] }));
 
 /** Texto de «Cómo es» y relación por defecto de cada mascota. */
 const PET_TEXT: Record<string, { text: string; relation: string }> = {

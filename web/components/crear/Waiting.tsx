@@ -8,8 +8,9 @@ import { firstSentence } from "@/lib/waiting";
 
 /**
  * Esperas de las imágenes (docs/ESTILO.md §4). Dos reglas: el estado que se enseña es el real (los jobs), nunca un
- * porcentaje inventado; y lo que entretiene es su propio cuento o algo que se puede ignorar, nunca un juego que
- * compita con el resultado. Sin coste de generación: todo es SVG y CSS, quieto con «reducir movimiento».
+ * porcentaje inventado; y lo que entretiene es su propio cuento, nunca un juego que compita con el resultado. Sin coste
+ * de generación: todo es SVG y CSS, quieto con «reducir movimiento». La constelación para unir con el dedo se quitó el
+ * 25 oct: en el móvil no se sabía por qué estrella empezar y parecía rota.
  */
 
 const TINTS = ["var(--peach)", "var(--sky)", "var(--butter)", "var(--sage)"];
@@ -78,114 +79,11 @@ function StoryLines({ pages }: { pages: PlanPage[] }) {
   );
 }
 
-const POINTS: [number, number][] = [
-  [28, 44],
-  [66, 30],
-  [100, 56],
-  [138, 48],
-  [168, 86],
-  [206, 70],
-  [222, 118],
-];
-
-/** Constelación para unir con el dedo, estrella a estrella. Opcional: no bloquea nada y no tiene puntos. */
-function Constellation({ name }: { name: string }) {
-  const [lit, setLit] = useState(0);
-  const done = lit === POINTS.length;
-  return (
-    <div className="mx-auto w-full max-w-[300px]" data-testid="constellation">
-      <div className="relative">
-        <svg aria-hidden viewBox="0 0 250 150" className="block w-full">
-          {POINTS.slice(1, Math.max(lit, 1)).map(([x, y], k) => {
-            const [px, py] = POINTS[k];
-            return (
-              <line
-                key={k}
-                x1={px}
-                y1={py}
-                x2={x}
-                y2={y}
-                stroke="var(--star)"
-                strokeWidth={1.4}
-                strokeLinecap="round"
-                className="rise"
-              />
-            );
-          })}
-          {[
-            [14, 120],
-            [120, 12],
-            [236, 24],
-            [70, 132],
-          ].map(([x, y], k) => (
-            <circle
-              key={k}
-              cx={x}
-              cy={y}
-              r={1.2}
-              fill="var(--moon)"
-              className={k % 2 ? "twinkle-slow" : "twinkle"}
-            />
-          ))}
-        </svg>
-        {POINTS.map(([x, y], k) => {
-          const on = k < lit;
-          const next = k === lit;
-          return (
-            <button
-              key={k}
-              type="button"
-              aria-label={
-                on
-                  ? `Estrella ${k + 1}, encendida`
-                  : `Estrella ${k + 1} de ${POINTS.length}`
-              }
-              disabled={!next}
-              onClick={() => setLit(k + 1)}
-              className="absolute grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full disabled:cursor-default"
-              style={{
-                left: `${(x / 250) * 100}%`,
-                top: `${(y / 150) * 100}%`,
-              }}
-            >
-              <Sparkle
-                size={on ? 18 : 13}
-                color={on ? "var(--star)" : "rgba(247,230,181,0.45)"}
-                className={next ? "twinkle" : ""}
-              />
-            </button>
-          );
-        })}
-      </div>
-      <p
-        className="hand mt-1 min-h-[1.5em] text-center text-[16px] text-star"
-        aria-live="polite"
-      >
-        {done
-          ? `La constelación de ${name}`
-          : lit === 0
-            ? "Une las estrellas mientras tanto"
-            : ""}
-      </p>
-      {done && (
-        <button
-          type="button"
-          className="mx-auto block text-[13px] text-moon-soft underline underline-offset-2"
-          onClick={() => setLit(0)}
-        >
-          Otra vez
-        </button>
-      )}
-    </div>
-  );
-}
-
 /**
- * Espera del paso 4 (personajes y portada, uno o dos minutos): qué se está pintando de verdad, frases de su cuento,
- * la constelación y, si el servidor sigue pintando aunque se cierre la página, el permiso para irse.
+ * Espera del paso 4 mientras se pintan los personajes (la portada va detrás y se espera ya viéndolos): qué se está
+ * pintando de verdad, frases de su cuento y, si el servidor sigue pintando aunque se cierre la página, el permiso para irse.
  */
 export function WaitCard({
-  name,
   sheet,
   cover,
   pages,
@@ -193,7 +91,6 @@ export function WaitCard({
   mail,
   testId,
 }: {
-  name: string;
   sheet?: BookJobView;
   cover?: BookJobView;
   pages: PlanPage[];
@@ -211,32 +108,29 @@ export function WaitCard({
       aria-label="Pintando"
       data-testid={testId}
     >
-      <div className="grid gap-6 sm:grid-cols-[1fr_1fr] sm:items-center sm:gap-8">
-        <div className="grid gap-5">
-          <ul className="grid max-w-[22rem] gap-0" aria-live="polite">
-            {rows.map(([label, job]) => (
-              <li
-                key={label}
-                className="flex items-center justify-between gap-3 border-b border-white/12 py-2.5 text-[15px] last:border-0"
-                data-testid={`wait-${label === "La portada" ? "cover" : "sheet"}`}
+      <div className="grid gap-5">
+        <ul className="grid max-w-[22rem] gap-0" aria-live="polite">
+          {rows.map(([label, job]) => (
+            <li
+              key={label}
+              className="flex items-center justify-between gap-3 border-b border-white/12 py-2.5 text-[15px] last:border-0"
+              data-testid={`wait-${label === "La portada" ? "cover" : "sheet"}`}
+            >
+              <span>{label}</span>
+              <span
+                className={`hand flex items-center gap-1.5 text-[17px] ${job?.status === "done" ? "text-moon" : "text-star"}`}
               >
-                <span>{label}</span>
-                <span
-                  className={`hand flex items-center gap-1.5 text-[17px] ${job?.status === "done" ? "text-moon" : "text-star"}`}
-                >
-                  {job?.status === "done" ? (
-                    <Icon.check size={15} />
-                  ) : job?.status === "running" ? (
-                    <Icon.brush size={15} className="pen-write" />
-                  ) : null}
-                  {job ? STATE[job.status] : "en cola"}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <StoryLines pages={pages} />
-        </div>
-        <Constellation name={name} />
+                {job?.status === "done" ? (
+                  <Icon.check size={15} />
+                ) : job?.status === "running" ? (
+                  <Icon.brush size={15} className="brush-dab" />
+                ) : null}
+                {job ? STATE[job.status] : "en cola"}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <StoryLines pages={pages} />
       </div>
       <p className="mt-5 text-[13px] leading-snug text-moon-soft">
         {background

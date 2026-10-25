@@ -1,7 +1,7 @@
 /**
  * Miniaturas del paso 2 de /crear (pelo, gafas, ropa, mascotas) a partir del catálogo gouache ya existente
  * (public/catalog/gouache). Salida: public/crear/<grupo>/<id>.webp, ~10–20 KB cada una.
- * Uso: node scripts/crear-thumbs.mjs
+ * Uso: node scripts/crear-thumbs.mjs (si cambian los peinados, después: python3 scripts/crear_hair_masks.py desde la raíz)
  */
 import sharp from "sharp";
 import fs from "node:fs";
