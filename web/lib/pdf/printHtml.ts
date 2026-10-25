@@ -12,7 +12,7 @@ export const SITE_DOMAIN = "erasesuvez.com";
  *
  * - "print": interior de la tapa dura (Gelato, ≈ 280×210 mm con 4 mm de sangre), 30 páginas (página 1 = derecha):
  *     1 portadilla · 2 «así son los personajes» · 3 dedicatoria · 4–27 las 12 escenas (ilustración en par, texto en
- *     impar) · 28 «Fin» · 29 colofón · 30 en blanco (la imprenta puede poner ahí su código de montaje)
+ *     impar) · 28 «Fin» · 29 marca y web · 30 en blanco (la imprenta puede poner ahí su código de montaje)
  * - "full": PDF ilustrado en A4 apaisado: portada, personajes, dedicatoria, 12 dobles, «Fin» y colofón (29). Con la
  *     portada sola, las dobles caen como en el libro (ilustración a la izquierda) en la vista de dos páginas.
  * - "free" (D3): PDF casero en A4 apaisado: portada, personajes, dedicatoria, 12 páginas de texto, «Fin» y colofón.
@@ -25,7 +25,7 @@ export interface PrintBookInput {
   coverUrl: string | null;
   sheetUrl: string | null;
   pageUrls: Record<number, string | null>;
-  /** Fecha del colofón («octubre de 2026»). */
+  /** Fecha de la edición. Ya no se imprime (la última página solo lleva la marca, 25 oct). */
   date: Date;
 }
 
@@ -80,7 +80,7 @@ function storyHtml(t: string): string {
  * cada lado (0 en los PDF): los márgenes de seguridad se cuentan desde el corte.
  */
 export function bookPages(input: PrintBookInput, kind: BookKind, W: number, H: number, bleed: number): { css: string; pages: string[] } {
-  const { plan, heroName, from, coverUrl, sheetUrl, pageUrls, date } = input;
+  const { plan, heroName, from, coverUrl, sheetUrl, pageUrls } = input;
   const safe = bleed + 14;
   const css = `${FONTS}
 @page { size: ${W}mm ${H}mm; margin: 0; }
@@ -103,9 +103,9 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
 .cap { float: left; font-size: 3.1em; line-height: .82; font-weight: 600; color: ${TEJA}; margin: 1.2mm 2mm 0 0; }
 .num { position: absolute; bottom: ${bleed + 8}mm; left: 0; right: 0; text-align: center; font-family: Figtree, sans-serif; font-size: 8pt; letter-spacing: .12em; color: #8a7d6e; }
 .fin { font-size: 26pt; font-weight: 600; }
-.colo { font-size: 10.5pt; line-height: 1.6; color: ${SOFT}; max-width: 130mm; }
-.colo strong { color: ${INK}; font-weight: 600; }
-.brand { font-family: Lora, Georgia, serif; font-size: 11pt; color: ${INK}; margin-top: 8mm; }
+.colo { position: absolute; left: 0; right: 0; bottom: ${safe + 6}mm; text-align: center; color: ${SOFT}; }
+.brand { font-family: Lora, Georgia, serif; font-size: 11pt; color: ${SOFT}; }
+.colo .web { font-family: Figtree, sans-serif; font-size: 7.5pt; letter-spacing: .14em; text-transform: uppercase; color: #8a7d6e; margin-top: 1.5mm; }
 .brand .star { width: .8em; height: .8em; vertical-align: -0.05em; margin-right: .15em; }
 .cover { background: ${NIGHT}; }
 .cover .shade { position: absolute; inset: 0 0 auto; height: 58%; background: linear-gradient(to bottom, rgba(15,20,40,.62), rgba(15,20,40,0)); }
@@ -140,9 +140,9 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
     pages.push(textPage(p.n, p.text));
   }
   pages.push(`<section class="pg"><div class="center"><div class="fin">Fin</div></div></section>`);
-  pages.push(
-    `<section class="pg"><div class="center"><p class="colo">Este libro se escribió y se ilustró para <strong>${esc(heroName)}</strong> en ${esc(monthYear(date))}. El texto y las ilustraciones los hizo una inteligencia artificial, y quien lo regala los revisó página a página.</p><div class="brand">${STAR_SVG} Érase su vez</div></div></section>`,
-  );
+  // Última página (25 oct): solo la marca y la web, pequeñas y abajo. Sin explicar cómo se hizo el libro.
+  pages.push(`<section class="pg"><div class="colo"><div class="brand">${STAR_SVG} Érase su vez</div><div class="web">${SITE_DOMAIN}</div></div></section>`);
+
   if (kind === "print") pages.push(`<section class="pg"></section>`);
   return { css, pages };
 }

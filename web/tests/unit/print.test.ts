@@ -166,7 +166,8 @@ test("maqueta: 30 páginas interiores apaisadas (280×210 + sangre), ilustració
   assert.equal((inner.html.match(/<section class="pg/g) ?? []).length, 30);
   assert.equal((inner.html.match(/class="ill"/g) ?? []).length, 12, "una ilustración por escena");
   assert.match(inner.html, /size: 288mm 218mm/);
-  assert.match(inner.html, /octubre de 2026/);
+  assert.match(inner.html, /erasesuvez\.com/, "la última página lleva la web");
+  assert.doesNotMatch(inner.html, /octubre de 2026|inteligencia artificial/, "sin fecha ni explicación de cómo se hizo");
   assert.match(inner.html, /De parte de los abuelos/);
   // cada ilustración en una página par (izquierda) y su texto enfrente: portadilla 1, personajes 2, dedicatoria 3, escena 1 en la 4
   const sections = inner.html.split('<section class="pg').slice(1);
@@ -200,6 +201,11 @@ test("PDF que se descarga: A4 apaisado con la maqueta del libro; el gratis sin l
   assert.equal(free.pages, 17);
   assert.doesNotMatch(free.html, /https:\/\/img\/p\d/, "sin las ilustraciones de pago");
   assert.match(free.html, /cover\.jpg/);
+  // última página (25 oct): solo la marca y la web; el libro no explica cómo se hizo
+  const last = sections[sections.length - 1];
+  assert.match(last, /Érase su vez/);
+  assert.match(last, /erasesuvez\.com/);
+  for (const html of [full.html, free.html]) assert.doesNotMatch(html, /inteligencia artificial|\bIA\b/i, "sin mencionar la IA dentro del libro");
 });
 
 test("maqueta: solo caracteres que tienen Lora y Figtree (en Vercel no hay fuentes del sistema; «✦» salía como un cuadradito)", () => {
