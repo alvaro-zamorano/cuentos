@@ -193,6 +193,11 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 - **Sin comprobar todavía:** dónde pone Gelato el código de barras de la trasera (su API de cubiertas no da esa zona) y si la guarda final se pega a la tapa. Lo dirá la muestra.
 - **A vigilar:** si el nombre del niño o el texto del cuento traen un carácter que no tengan Lora o Figtree (por ejemplo, un emoji o una letra no latina), saldrá igual de mal en el impreso. El test solo cubre la maqueta.
 
+### 24 oct (validador y valores)
+
+- **Falso positivo de nombres tras una comilla de cierre:** `disallowedNames` tomaba por nombre propio la mayúscula que sigue a un diálogo cerrado con «?» o «!» (`«¿Juegas?» El niño…`, `«¡Otra vez!» Y…`). Lo usan el motor antiguo y el planificador (`lib/plan/validate.ts`), así que cada caso pedía una corrección de más. Arreglado con test en `story.test.ts` (rama `fix/validador-comilla-cierre`).
+- **Prueba de valores hecha sobre el motor antiguo, no sobre el planificador:** 8 cuentos de cumpleaños, uno por valor, con `lib/story` y Sonnet. En 6 de 8 el valor se ve en un gesto, sin moraleja. Hay que repetirla con el planificador antes de decidir nada. Detalle en el documento «Cuentos con valores: prueba de 8».
+
 ## 4. Preguntas abiertas (priorizadas)
 
 1. ~~**Imágenes reales en la preview**~~: hecho el 13 oct. Álvaro cambió `GENERATION_PROVIDER` y la preview pinta con Nano Banana 2.1. Falta confirmar que la variable está solo en **Preview**: si también está en Production, la versión antigua de `main` gastaría en cuanto se vuelva a desplegar.
