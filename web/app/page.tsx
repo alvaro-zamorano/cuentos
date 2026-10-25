@@ -8,6 +8,7 @@ import { paymentMode } from "@/lib/stripe";
 import { printMode } from "@/lib/print/gelato";
 import { MUESTRA, muestraImage } from "@/lib/muestra";
 import { PRICE_HARDCOVER, PRICE_ILLUSTRATED } from "@/lib/pricing";
+import { UPGRADE_CENTS, eur } from "@/lib/print/prices";
 import { appOpen } from "@/lib/appOpen";
 import { titular } from "@/lib/legal";
 import { ocasionForStarter, ocasionPath } from "@/lib/ocasiones";
@@ -77,6 +78,10 @@ const FAQ = [
   {
     q: "¿Llega a tiempo para Navidad o Reyes?",
     a: "El libro impreso tarda una o dos semanas desde que lo mandas a imprimir. Si vas justo de tiempo, el PDF está listo en unos minutos y el libro llega después.",
+  },
+  {
+    q: "¿Puedo comprar el PDF y pedir la tapa dura después?",
+    a: `Sí. Desde tu libro pagas solo la diferencia, ${eur(UPGRADE_CENTS)}, y te lo enviamos a casa. Puedes pedirlo mientras tu libro esté guardado, hasta un día antes de que se borre.`,
   },
   {
     q: "¿Qué datos del niño pedís?",

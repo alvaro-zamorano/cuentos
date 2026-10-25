@@ -10,6 +10,7 @@ import { StepHero } from "@/components/crear/StepHero";
 import { StepStory } from "@/components/crear/StepStory";
 import { StepCast } from "@/components/crear/StepCast";
 import { StepBook } from "@/components/crear/StepBook";
+import { track } from "@/lib/analytics";
 import { fetchView, postJson } from "@/lib/bookClient";
 import { fichaHash, TONES } from "@/lib/plan/ficha";
 import { STARTERS, starterIdea } from "@/lib/plan/starters";
@@ -43,6 +44,7 @@ function Crear() {
   const params = useSearchParams();
   const b = params.get("b");
   const pagado = params.get("pagado") === "1";
+  const mejora = pagado && params.get("mejora") === "1";
   const ideaParam = params.get("idea");
   const [recovering, setRecovering] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
@@ -111,6 +113,12 @@ function Crear() {
     return () => clearTimeout(t);
   }, [bookId, plan]);
 
+  // embudo (lib/analytics.ts): un evento cada vez que se ve un paso; sin datos del niño
+  const step = s?.step;
+  useEffect(() => {
+    if (step) track({ name: "crear_paso", props: { paso: step } });
+  }, [step]);
+
   if (!s || recovering) return null;
   const go = (step: Step) => {
     setCrear((x) => ({ ...x, step }));
@@ -123,7 +131,7 @@ function Crear() {
   const aside = s.step <= 3;
 
   return (
-    <main className="min-h-dvh pb-16" data-clarity-mask="True">
+    <main className="min-h-dvh pb-16">
       <h1 className="sr-only">Crear su cuento</h1>
       <CrearHeader step={s.step} reachable={reachable} go={go} dirty={dirty} />
       <div className={`mx-auto w-full px-4 pt-6 sm:px-6 lg:pt-10 ${aside ? "max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-14" : "max-w-3xl"}`}>
@@ -140,8 +148,11 @@ function Crear() {
             {s.step === 1 && <StepIdea ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(2)} />}
             {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
             {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(4)} />}
-            {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => update({ bookId: id, email })} onNext={() => go(5)} />}
-            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
+            {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => {
+                  update({ bookId: id, email });
+                  track({ name: "libro_empezado" });
+                }} onNext={() => go(5)} />}
+            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} upgrading={mejora && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
           </div>
         </div>
         {aside && <BookAside s={s} />}

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
-import { prepareCheckout } from "@/lib/book/service";
+import { prepareCheckout, prepareUpgrade } from "@/lib/book/service";
 import type { Fail } from "@/lib/generation/service";
 import { printMode } from "@/lib/print/gelato";
 import { clientIp, envInt, rateLimit } from "@/lib/rateLimit";
@@ -9,7 +9,7 @@ import { bad, readJson, withContext } from "../_shared";
 
 /**
  * POST /api/libro/checkout { bookId, waiver: true, edition: "hardcover" | "illustrated", shipping? } → { url } de Stripe
- * Checkout. La tapa dura pide la dirección (Península y Baleares) y solo se ofrece si hay imprenta aquí. Sin la renuncia
+ * Checkout. Con `upgrade: true` y la dirección, pasar a tapa dura un libro ya pagado en PDF (se cobra la diferencia). La tapa dura pide la dirección (Península y Baleares) y solo se ofrece si hay imprenta aquí. Sin la renuncia
  * al desistimiento marcada, 400. El pedido lo crea el webhook (/api/stripe/webhook) cuando Stripe confirma el cobro.
  */
 export async function POST(req: Request) {
@@ -17,15 +17,16 @@ export async function POST(req: Request) {
   const body = await readJson(req, 4_000);
   if (!body) return bad();
   if (!waiverAccepted(body)) return bad("waiver_required");
-  if (body.edition === "hardcover" && printMode() === "none") return NextResponse.json({ ok: false, error: "print_unavailable" }, { status: 501 });
+  const upgrade = body.upgrade === true;
+  if ((upgrade || body.edition === "hardcover") && printMode() === "none") return NextResponse.json({ ok: false, error: "print_unavailable" }, { status: 501 });
   const waiverAt = new Date().toISOString();
   const limit = rateLimit(`checkout:${clientIp(req)}`, envInt("CHECKOUT_RATE_PER_HOUR", 20));
   if (!limit.ok) return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   const origin = publicOrigin(req);
   return withContext("checkout", async (store) => {
-    const info = await prepareCheckout(store, body);
+    const info = upgrade ? await prepareUpgrade(store, body) : await prepareCheckout(store, body);
     if (!info.ok) return info;
-    const r = await createCheckout({ bookId: info.bookId, email: info.email, title: info.title, amountCents: info.amountCents, edition: info.edition, origin, waiverAt });
+    const r = await createCheckout({ bookId: info.bookId, email: info.email, title: info.title, amountCents: info.amountCents, edition: info.edition, origin, waiverAt, upgrade });
     if ("error" in r) {
       console.error("[libro/checkout]", r.error);
       return { ok: false, status: 502, error: "stripe" } satisfies Fail;

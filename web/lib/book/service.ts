@@ -24,8 +24,12 @@ import { planFromClient } from "../plan/planner";
 import { validatePlan } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping } from "../print/shipping";
-import { PRICE_CENTS as PRICES, paidEdition } from "../print/prices";
-import { LOCKED_PRINT_STATUSES, type PaidEdition, type PrintView, type Shipping } from "../print/types";
+import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
+import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping } from "../print/types";
+import { printableInEnv } from "../stripe";
+
+/** Pagada la tapa dura (también la mejora), el libro se guarda al menos este tiempo para poder mandarlo a imprimir. */
+const KEEP_AFTER_HARDCOVER_MS = 30 * 24 * 3600 * 1000;
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
 export const MAX_PAGE_JOBS = 1 + MAX_PAGE_REDOS + 1; // la incluida + 2 versiones con motivo + 1 por si el padre cambia la escena
@@ -330,7 +334,15 @@ export async function choosePage(store: GenStore, input: { bookId?: unknown; job
 
 /* ------------------------------ pago simulado ------------------------------ */
 
-export async function payDryRun(store: GenStore, input: { bookId?: unknown; edition?: unknown; shipping?: unknown }): Promise<{ ok: true } | Fail> {
+export async function payDryRun(store: GenStore, input: { bookId?: unknown; edition?: unknown; shipping?: unknown; upgrade?: unknown }): Promise<{ ok: true } | Fail> {
+  if (input.upgrade === true) {
+    const up = await prepareUpgrade(store, input);
+    if (!up.ok) return up;
+    const loaded = await loadBook(store, input.bookId);
+    if (isFail(loaded)) return loaded;
+    await store.addPaidOrder(loaded.book.id, newOrder("hardcover", up.amountCents, `dry-run-mejora:${loaded.book.public_id}`, loaded.d.shipping));
+    return { ok: true };
+  }
   const prep = await prepareCheckout(store, input);
   if (!prep.ok) return prep;
   const loaded = await loadBook(store, input.bookId);
@@ -353,6 +365,8 @@ export interface CheckoutPrep {
   title: string;
   edition: PaidEdition;
   amountCents: number;
+  /** Pasar a tapa dura un libro ya pagado en PDF: se cobra solo la diferencia. */
+  upgrade?: boolean;
 }
 
 /**
@@ -374,6 +388,37 @@ export async function prepareCheckout(store: GenStore, input: { bookId?: unknown
   d.edition = edition;
   book = await save(store, book, d, edition === "hardcover" ? "hardcover" : "illustrated");
   return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition, amountCents: PRICES[edition] };
+}
+
+/**
+ * Pasar a tapa dura un libro ya pagado en PDF (24 oct): se cobra solo la diferencia. Hace falta un pedido PDF pagado, que
+ * no haya ya uno de tapa dura, la dirección válida y que falte más de un día para que el libro caduque.
+ */
+export async function prepareUpgrade(
+  store: GenStore,
+  input: { bookId?: unknown; shipping?: unknown },
+  now = Date.now(),
+  env: Record<string, string | undefined> = process.env,
+): Promise<CheckoutPrep | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  let { book } = loaded;
+  const { d } = loaded;
+  const order = await store.getOrder(book.id);
+  if (!order) return fail(402, "not_paid");
+  if (order.edition === "hardcover") return fail(409, "already_hardcover");
+  // 25 oct: el PDF tiene que haberse cobrado de verdad en este entorno. La base es la misma que la de la preview: un PDF
+  // pagado allí con la tarjeta de prueba no puede pasar a tapa dura impresa en producción pagando solo la diferencia
+  if (!printableInEnv(order.sessionId, env)) return fail(409, "test_order", "Este libro se pagó en modo de prueba.");
+  const amountCents = upgradeCents(order.amountCents);
+  if (amountCents === null) return fail(409, "upgrade_unavailable");
+  if (!upgradeDeadline(book.expiresAt, now)) return fail(409, "upgrade_closed");
+  const s = cleanShipping(input.shipping);
+  if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
+  // la edición del libro no cambia hasta que llega el pago (si se abandona, sigue siendo el PDF)
+  d.shipping = s.shipping;
+  book = await save(store, book, d, d.edition ?? "illustrated");
+  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true };
 }
 
 /** Cambiar la dirección de la tapa dura ya pagada, mientras no haya salido hacia la imprenta. */
@@ -400,6 +445,7 @@ export interface PaidEvent {
 
 export type PaymentOutcome =
   | { action: "paid"; bookId: string }
+  | { action: "upgraded"; bookId: string }
   | { action: "duplicate"; bookId: string }
   | { action: "ignored"; reason: string };
 
@@ -407,13 +453,14 @@ export type PaymentOutcome =
  * Registra el pedido de un `checkout.session.completed` (o `async_payment_succeeded`) ya verificado.
  * Idempotente: la misma sesión dos veces (Stripe reintenta) no crea otro pedido.
  */
-export async function recordStripePayment(store: GenStore, event: PaidEvent): Promise<PaymentOutcome> {
+export async function recordStripePayment(store: GenStore, event: PaidEvent, env: Record<string, string | undefined> = process.env): Promise<PaymentOutcome> {
   if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return { action: "ignored", reason: event.type };
   const s = event.data?.object ?? {};
   if (s.payment_status !== "paid") return { action: "ignored", reason: `payment_status:${s.payment_status ?? "?"}` };
   const bookId = s.metadata?.bookId ?? s.client_reference_id ?? null;
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
+  if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
   if (await store.hasPaidOrder(loaded.book.id)) return { action: "duplicate", bookId: loaded.book.public_id };
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
@@ -423,17 +470,49 @@ export async function recordStripePayment(store: GenStore, event: PaidEvent): Pr
 
 
 /**
+ * La mejora a tapa dura pagada: un segundo pedido, de tapa dura, que espera a «Mandar a imprimir» como cualquier otro.
+ * Las páginas ya están pintadas. Si el libro no tenía el PDF pagado o ya era de tapa dura, se ignora: lo que se cobró hay
+ * que devolverlo a mano (el webhook avisa).
+ */
+async function recordUpgrade(
+  store: GenStore,
+  { book, d }: { book: BookRecord; d: BookDraftV2 },
+  s: PaidEvent["data"]["object"],
+  env: Record<string, string | undefined>,
+): Promise<PaymentOutcome> {
+  const order = await store.getOrder(book.id);
+  if (order?.edition === "hardcover") {
+    return order.sessionId && order.sessionId === s.id ? { action: "duplicate", bookId: book.public_id } : { action: "ignored", reason: "upgrade:already_hardcover" };
+  }
+  if (!order) return { action: "ignored", reason: "upgrade:not_paid" };
+  if (!printableInEnv(order.sessionId, env)) return { action: "ignored", reason: "upgrade:test_order" };
+  const amount = typeof s.amount_total === "number" ? s.amount_total : (upgradeCents(order.amountCents) ?? 0);
+  await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
+  // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
+  // caducara al pedir la mejora
+  await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_HARDCOVER_MS).toISOString());
+  d.edition = "hardcover";
+  await save(store, book, d, "hardcover").catch(() => null);
+  return { action: "upgraded", bookId: book.public_id };
+}
+
+/**
  * Cuando las 12 páginas están pintadas, manda una vez el email de «tu libro está listo» (el envío se inyecta: Resend en
  * la ruta, un doble en los tests). Devuelve si lo ha mandado.
  */
-export async function notifyBookReady(store: GenStore, bookId: string, link: (id: string) => string, send: (to: string, title: string, link: string, edition: PaidEdition) => Promise<{ sent: boolean }>): Promise<boolean> {
+export async function notifyBookReady(
+  store: GenStore,
+  bookId: string,
+  link: (id: string) => string,
+  send: (to: string, title: string, link: string, edition: PaidEdition, upgrade?: UpgradeOffer | null) => Promise<{ sent: boolean }>,
+): Promise<boolean> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return false;
   const { book, d } = loaded;
   if (d.readyMailedAt || !book.email) return false;
   const view = await bookView(store, bookId);
   if (!view.ok || !view.paid || !Object.values(view.chosen.pages).every(Boolean)) return false;
-  const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated");
+  const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated", view.upgrade);
   if (!r.sent) return false;
   const fresh = draftV2((await store.findBook({ publicId: bookId })) ?? book) ?? d;
   await save(store, book, { ...fresh, readyMailedAt: Date.now() });
@@ -636,6 +715,8 @@ export interface BookView {
   chosen: { sheet: string | null; cover: string | null; pages: Record<number, string | null> };
   /** Edición pagada (null sin pagar). */
   edition: PaidEdition | null;
+  /** Pagado en PDF: lo que cuesta pasar a tapa dura y hasta cuándo se puede (null si no se puede). La ruta lo quita si aquí no hay imprenta. */
+  upgrade: UpgradeOffer | null;
   /** Libro de tapa dura: dirección, estado en la imprenta y seguimiento (el modo lo pone la ruta). */
   print: Omit<PrintView, "mode"> | null;
   /** Los pone la ruta /api/libro/view: cómo se paga aquí, si se mandan emails y si se pinta en segundo plano. */
@@ -644,6 +725,24 @@ export interface BookView {
   printMode?: PrintView["mode"];
   mail?: boolean;
   background?: boolean;
+}
+
+export interface UpgradeOffer {
+  cents: number;
+  /** Último momento para pedirla (ISO). */
+  until: string;
+}
+
+export function upgradeOffer(
+  book: Pick<BookRecord, "expiresAt">,
+  order: Pick<PaidOrder, "edition" | "amountCents" | "sessionId"> | null,
+  now = Date.now(),
+  env: Record<string, string | undefined> = process.env,
+): UpgradeOffer | null {
+  if (order?.edition !== "illustrated" || !printableInEnv(order.sessionId, env)) return null;
+  const cents = upgradeCents(order.amountCents);
+  const until = upgradeDeadline(book.expiresAt, now);
+  return cents !== null && until ? { cents, until } : null;
 }
 
 export async function bookView(store: GenStore, bookId: unknown): Promise<BookView | Fail> {
@@ -689,6 +788,7 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     plan: d.plan,
     paid: await store.hasPaidOrder(book.id),
     edition: order?.edition ?? null,
+    upgrade: upgradeOffer(book, order ?? null),
     print:
       order?.edition === "hardcover" && order.printStatus
         ? {

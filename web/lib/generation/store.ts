@@ -52,6 +52,8 @@ export interface BookRecord {
   draft: Draft;
   /** El borrador tal como está guardado (el flujo nuevo guarda `{ v: 2, ficha, plan, … }`, ver lib/book). */
   raw: unknown;
+  /** Cuándo caduca (cuentos_books.expires_at, 30 días desde que se creó): el borrado se lo lleva. */
+  expiresAt?: string | null;
 }
 
 /** Libro del flujo nuevo para crear o actualizar (sin public_id se crea uno). */
@@ -85,6 +87,8 @@ export interface GenStore {
   markIllustrating(bookId: string): Promise<void>;
   /** Flujo nuevo: crea o actualiza el libro con su borrador v2. */
   saveBook(b: SaveBook): Promise<BookRecord>;
+  /** Retrasa la caducidad del libro hasta `until` (nunca la adelanta). */
+  extendBook(bookId: string, until: string): Promise<void>;
   /** Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`. */
   addPaidOrder(bookId: string, o: NewPaidOrder): Promise<void>;
   /** El pedido pagado del libro (el más reciente), con su estado en la imprenta. */
@@ -182,12 +186,13 @@ function asJob(row: Record<string, unknown>): GenJob {
 
 export function supabaseStore(db: SupabaseClient<Database>): GenStore {
   const jobs = () => db.from("cuentos_generation_jobs");
-  const toBook = (row: { id: string; public_id: string; email: string | null; draft: Json }): BookRecord => ({
+  const toBook = (row: { id: string; public_id: string; email: string | null; draft: Json; expires_at?: string | null }): BookRecord => ({
     id: row.id,
     public_id: row.public_id,
     email: row.email,
     draft: normalizeDraft(row.draft as unknown as Partial<Draft>),
     raw: row.draft,
+    expiresAt: row.expires_at ?? null,
   });
   return {
     mode: "supabase",
@@ -195,13 +200,13 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
     async findBook({ publicId, email }) {
       const now = new Date().toISOString();
       if (publicId) {
-        const { data } = await db.from("cuentos_books").select("id, public_id, email, draft").eq("public_id", publicId).gt("expires_at", now).maybeSingle();
+        const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("public_id", publicId).gt("expires_at", now).maybeSingle();
         return data ? toBook(data) : null;
       }
       if (email) {
         const { data } = await db
           .from("cuentos_books")
-          .select("id, public_id, email, draft")
+          .select("id, public_id, email, draft, expires_at")
           .eq("email", email)
           .gt("expires_at", now)
           .order("updated_at", { ascending: false })
@@ -212,7 +217,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       return null;
     },
     async getBookById(id) {
-      const { data } = await db.from("cuentos_books").select("id, public_id, email, draft").eq("id", id).maybeSingle();
+      const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("id", id).maybeSingle();
       return data ? toBook(data) : null;
     },
     async listJobs(bookId) {
@@ -270,7 +275,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
           .update({ draft: json, edition, ...(email ? { email } : {}) })
           .eq("public_id", publicId)
           .gt("expires_at", new Date().toISOString())
-          .select("id, public_id, email, draft")
+          .select("id, public_id, email, draft, expires_at")
           .maybeSingle();
         if (error) throw new Error(`books: ${error.message}`);
         if (data) return toBook(data);
@@ -279,12 +284,16 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
         const { data, error } = await db
           .from("cuentos_books")
           .insert({ public_id: newPublicId(), draft: json, edition, email })
-          .select("id, public_id, email, draft")
+          .select("id, public_id, email, draft, expires_at")
           .single();
         if (!error && data) return toBook(data);
         if (error && error.code !== "23505") throw new Error(`books: ${error.message}`);
       }
       throw new Error("books: id_collision");
+    },
+    async extendBook(bookId, until) {
+      const { error } = await db.from("cuentos_books").update({ expires_at: until }).eq("id", bookId).lt("expires_at", until);
+      if (error) throw new Error(`books: ${error.message}`);
     },
     async addPaidOrder(bookId, { amountCents, edition, sessionId, shipping, printStatus }) {
       const { error } = await db.from("cuentos_orders").insert({
@@ -351,6 +360,9 @@ interface MemoryState {
   feedback?: FeedbackRow[];
 }
 
+/** Como el `default` de cuentos_books.expires_at: 30 días desde que se crea el libro. */
+const memoryExpiry = () => new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+
 /** Estado en globalThis: las rutas de Next pueden cargar el módulo más de una vez en el mismo proceso. */
 function memoryState(): MemoryState {
   const g = globalThis as unknown as { __cuentosGen?: MemoryState };
@@ -375,21 +387,26 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async saveMemoryBook({ publicId, email, draft }) {
       const prev = state.books.get(publicId);
-      const book: BookRecord = { id: publicId, public_id: publicId, email: email ?? prev?.email ?? null, draft, raw: draft };
+      const book: BookRecord = { id: publicId, public_id: publicId, email: email ?? prev?.email ?? null, draft, raw: draft, expiresAt: prev?.expiresAt ?? memoryExpiry() };
       state.books.set(publicId, book);
       return book;
+    },
+    async extendBook(bookId, until) {
+      const b = state.books.get(bookId);
+      if (b && (!b.expiresAt || b.expiresAt < until)) b.expiresAt = until;
     },
     async saveBook({ publicId, email, draft }) {
       const id = publicId && state.books.has(publicId) ? publicId : newPublicId();
       const prev = state.books.get(id);
-      const book: BookRecord = { id, public_id: id, email: email ?? prev?.email ?? null, draft: normalizeDraft({}), raw: JSON.parse(JSON.stringify(draft)) };
+      const book: BookRecord = { id, public_id: id, email: email ?? prev?.email ?? null, draft: normalizeDraft({}), raw: JSON.parse(JSON.stringify(draft)), expiresAt: prev?.expiresAt ?? memoryExpiry() };
       state.books.set(id, book);
       return book;
     },
     async addPaidOrder(bookId, o) {
       (state.paid ??= new Set()).add(bookId);
       const orders = (state.orders ??= new Map());
-      if ([...orders.values()].some((x) => x.bookId === bookId)) return;
+      // como el `unique` de stripe_session_id; sin sesión, un pedido por edición (la mejora a tapa dura es un segundo pedido)
+      if ([...orders.values()].some((x) => (o.sessionId ? x.sessionId === o.sessionId : x.bookId === bookId && x.edition === o.edition))) return;
       const id = crypto.randomUUID();
       orders.set(id, {
         id,
