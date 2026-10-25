@@ -10,7 +10,7 @@
  */
 import { advances, DEFAULT_PRINT_SIZE, mapGelatoStatus, type CoverGeometry, type GelatoOrder, type GelatoOrderInput, type PrintMode, type PrintSize } from "../print/gelato";
 import { shippingLine } from "../print/shipping";
-import type { PaidOrder, PrintStatus } from "../print/types";
+import type { PaidOrder, PrintInfo, PrintStatus, PrintStep } from "../print/types";
 import type { GenStore } from "../generation/store";
 import type { Fail } from "../generation/service";
 import type { PrintBookInput } from "../pdf/printHtml";
@@ -21,6 +21,8 @@ export interface PrintDeps {
   mode: PrintMode;
   /** Pedidos de verdad o borradores (fuera de producción). */
   orderType: "order" | "draft";
+  /** Método de envío que se pide a la imprenta («normal» = económico). */
+  shipmentMethod?: string;
   pageCount: number;
   resolveProductUid(): Promise<string | null>;
   productSize(uid: string): Promise<PrintSize | null>;
@@ -30,11 +32,15 @@ export interface PrintDeps {
   createOrder(i: GelatoOrderInput): Promise<GelatoOrder | { error: string }>;
   getOrder(id: string): Promise<GelatoOrder | null>;
   mail: {
+    /** `link`: nuestra página de seguimiento. */
     sentToPrint(to: string, title: string, link: string, address: string): Promise<{ sent: boolean }>;
-    shipped(to: string, title: string, trackingUrl: string): Promise<{ sent: boolean }>;
+    /** `link`: nuestra página de seguimiento, que lleva al transportista. */
+    shipped(to: string, title: string, link: string): Promise<{ sent: boolean }>;
     reminder(to: string, title: string, link: string): Promise<{ sent: boolean }>;
   };
   link(bookId: string): string;
+  /** Página propia de seguimiento del pedido (cuentos_orders.id). */
+  trackLink(orderId: string): string;
   now?: () => Date;
 }
 
@@ -118,12 +124,14 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
 
     let printOrderId = `dry-run:${book.public_id}`;
     if (deps.mode === "gelato") {
-      const r = await deps.createOrder({ orderReferenceId: order.id, customerReferenceId: book.public_id, productUid, pageCount: deps.pageCount, fileUrl, shipping: order.shipping, email: book.email, orderType: deps.orderType });
+      const r = await deps.createOrder({ orderReferenceId: order.id, customerReferenceId: book.public_id, productUid, pageCount: deps.pageCount, fileUrl, shipping: order.shipping, email: book.email, orderType: deps.orderType, shipmentMethodUid: deps.shipmentMethod });
       if ("error" in r) return await failWith(r.error);
       printOrderId = r.id;
     }
-    await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null });
-    await deps.mail.sentToPrint(book.email, d.plan.title, deps.link(book.public_id), shippingLine(order.shipping)).catch(() => ({ sent: false }));
+    // un reintento tras «failed» es un pedido nuevo en la imprenta: nada del anterior (hitos, seguimiento, entrega)
+    const info: PrintInfo = { steps: { sent: now.toISOString() } };
+    await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null, trackingUrl: null, info });
+    await deps.mail.sentToPrint(book.email, d.plan.title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false }));
     console.log(`[imprenta] ${book.public_id} → ${printOrderId} (${deps.mode}, ${deps.orderType}, ${pdf.length} bytes)`);
     return { ok: true, printOrderId };
   } catch (e) {
@@ -133,24 +141,43 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
 
 export type RefreshOutcome = "updated" | "unchanged" | "not_found" | "skipped";
 
-/** Pregunta a la imprenta por el pedido y apunta el estado y el seguimiento; al salir, manda el email (una vez). */
+/** Hitos que se fechan cuando el estado llega a ellos. */
+const STEP_OF: Partial<Record<PrintStatus, PrintStep>> = { sent: "sent", in_production: "in_production", shipped: "shipped", delivered: "delivered" };
+
+/** Lo nuevo que cuenta la imprenta del envío, sobre lo que ya teníamos. null si no cambia nada. */
+export function mergeInfo(prev: PrintInfo | null, g: GelatoOrder, status: PrintStatus | null, now: Date): PrintInfo | null {
+  const next: PrintInfo = { ...(prev ?? {}), steps: { ...(prev?.steps ?? {}) } };
+  if (g.method) next.method = g.method;
+  if (g.etaFrom) next.etaFrom = g.etaFrom;
+  if (g.etaTo) next.etaTo = g.etaTo;
+  if (g.trackingCode) next.trackingCode = g.trackingCode;
+  const step = status ? STEP_OF[status] : undefined;
+  if (step && !next.steps![step]) next.steps![step] = now.toISOString();
+  return JSON.stringify(next) === JSON.stringify({ ...(prev ?? {}), steps: { ...(prev?.steps ?? {}) } }) ? null : next;
+}
+
+/** Pregunta a la imprenta por el pedido y apunta el estado, el seguimiento y la entrega estimada; al salir, manda el email (una vez). */
 export async function refreshPrint(store: GenStore, order: PaidOrder, deps: PrintDeps): Promise<RefreshOutcome> {
   if (deps.mode !== "gelato" || !order.printOrderId || order.printOrderId.startsWith("dry-run")) return "skipped";
   const g = await deps.getOrder(order.printOrderId);
   if (!g) return "not_found";
+  const now = deps.now?.() ?? new Date();
   const status: PrintStatus = mapGelatoStatus(g.status);
   const patch: Parameters<GenStore["updateOrder"]>[1] = {};
   if (advances(order.printStatus, status)) patch.printStatus = status;
   if (g.trackingUrl && g.trackingUrl !== order.trackingUrl) patch.trackingUrl = g.trackingUrl;
   if (status === "failed") patch.printError = `imprenta: ${g.status}`;
-  const tracking = patch.trackingUrl ?? order.trackingUrl;
+  const info = mergeInfo(order.info, g, patch.printStatus ?? null, now);
+  if (info) patch.info = info;
+  // el email de «va de camino» lleva a nuestra página, que ya cuenta el envío: no espera al número del transportista
+  // (el envío económico puede no traerlo)
   const nowShipped = (patch.printStatus ?? order.printStatus) === "shipped" || (patch.printStatus ?? order.printStatus) === "delivered";
-  if (nowShipped && tracking && !order.shippedMailedAt) {
+  if (nowShipped && !order.shippedMailedAt) {
     const book = await store.getBookById(order.bookId);
     const d = book ? draftV2(book) : null;
     if (book?.email) {
-      const r = await deps.mail.shipped(book.email, d?.plan.title ?? "Tu libro", tracking).catch(() => ({ sent: false }));
-      if (r.sent) patch.shippedMailedAt = (deps.now?.() ?? new Date()).toISOString();
+      const r = await deps.mail.shipped(book.email, d?.plan.title ?? "Tu libro", deps.trackLink(order.id)).catch(() => ({ sent: false }));
+      if (r.sent) patch.shippedMailedAt = now.toISOString();
     }
   }
   if (Object.keys(patch).length === 0) return "unchanged";
@@ -216,4 +243,65 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     if ((await refreshPrint(store, o, deps)) === "updated") report.refreshed++;
   }
   return report;
+}
+
+/* ------------------------------ página de seguimiento ------------------------------ */
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lo que enseña /seguimiento/<id>: sin la dirección completa (solo la población) ni el enlace al libro. */
+export interface TrackingView {
+  ok: true;
+  title: string;
+  status: PrintStatus;
+  city: string | null;
+  paidAt: string;
+  sentAt: string | null;
+  info: PrintInfo;
+  trackingUrl: string | null;
+  coverUrl: string | null;
+  /** Imprenta simulada (preview sin clave): no se imprime ni se envía nada. */
+  simulated: boolean;
+}
+
+/** Si el pedido sigue abierto y no sabemos nada de la imprenta desde hace un rato, se le pregunta al abrir la página. */
+const REFRESH_AFTER_MS = 30 * 60_000;
+
+export async function trackingView(store: GenStore, orderId: unknown, deps?: PrintDeps): Promise<TrackingView | Fail> {
+  if (typeof orderId !== "string" || !UUID.test(orderId)) return fail(404, "not_found");
+  let order = await store.getOrderById(orderId);
+  if (!order || order.edition !== "hardcover" || !order.printStatus) return fail(404, "not_found");
+  const open = order.printStatus === "sent" || order.printStatus === "in_production" || order.printStatus === "shipped";
+  // la última vez que se preguntó a la imprenta (25 oct): `checkedAt` se apunta aunque no cambie nada, para no llamar a
+  // Gelato en cada visita mientras el pedido está días en el mismo estado
+  const checked = Date.parse(order.info?.checkedAt ?? "");
+  const last = Number.isFinite(checked) ? checked : Date.parse(order.sentAt ?? order.createdAt);
+  const now = deps?.now?.() ?? new Date();
+  if (deps && open && !(now.getTime() - last < REFRESH_AFTER_MS)) {
+    const r = await refreshPrint(store, order, deps).catch(() => "skipped" as const);
+    if (r !== "skipped") {
+      const fresh = (await store.getOrderById(orderId)) ?? order;
+      const info: PrintInfo = { ...(fresh.info ?? {}), checkedAt: now.toISOString() };
+      await store.updateOrder(orderId, { info }).catch(() => null);
+      order = { ...fresh, info };
+    }
+  }
+  const book = await store.getBookById(order.bookId);
+  if (!book) return fail(404, "not_found");
+  // a los 30 días el borrado vacía el libro aunque el paquete siga de camino: la página sigue, sin título ni portada
+  const d = draftV2(book);
+  const view = d ? await bookView(store, book.public_id).catch(() => null) : null;
+  const coverUrl = view && view.ok && view.chosen.cover ? (view.jobs.find((j) => j.id === view.chosen.cover)?.url ?? null) : null;
+  return {
+    ok: true,
+    title: d?.plan.title ?? "Tu libro",
+    status: order.printStatus ?? "sent",
+    city: order.shipping?.city ?? null,
+    paidAt: order.createdAt,
+    sentAt: order.sentAt,
+    info: order.info ?? {},
+    trackingUrl: order.trackingUrl,
+    coverUrl,
+    simulated: !!order.printOrderId?.startsWith("dry-run"),
+  };
 }

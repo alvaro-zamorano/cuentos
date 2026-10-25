@@ -13,7 +13,7 @@ import { newPublicId } from "../ids";
 import { normalizeDraft } from "../story";
 import type { Database, Json } from "../supabase/types";
 import type { Draft } from "../types";
-import type { PaidEdition, PaidOrder, PrintStatus, Shipping } from "../print/types";
+import type { PaidEdition, PaidOrder, PrintInfo, PrintStatus, Shipping } from "../print/types";
 import type { JobKind } from "./keys";
 
 export const BUCKET = "cuentos";
@@ -132,10 +132,11 @@ export interface OrderPatch {
   remindedAt?: string | null;
   shippedMailedAt?: string | null;
   shipping?: Shipping | null;
+  info?: PrintInfo | null;
 }
 
 const ORDER_COLUMNS =
-  "id, book_id, edition, amount_cents, stripe_session_id, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, created_at";
+  "id, book_id, edition, amount_cents, stripe_session_id, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, print_info, created_at";
 
 function asOrder(r: Record<string, unknown>): PaidOrder {
   return {
@@ -154,6 +155,7 @@ function asOrder(r: Record<string, unknown>): PaidOrder {
     shippedMailedAt: (r.print_shipped_mailed_at as string | null) ?? null,
     createdAt: String(r.created_at ?? new Date(0).toISOString()),
     updatedAt: (r.print_updated_at as string | null) ?? null,
+    info: (r.print_info as PrintInfo | null) ?? null,
   };
 }
 
@@ -167,6 +169,7 @@ function orderRow(patch: OrderPatch): Database["public"]["Tables"]["cuentos_orde
   if (patch.remindedAt !== undefined) row.print_reminded_at = patch.remindedAt;
   if (patch.shippedMailedAt !== undefined) row.print_shipped_mailed_at = patch.shippedMailedAt;
   if (patch.shipping !== undefined) row.shipping = patch.shipping as unknown as Json;
+  if (patch.info !== undefined) row.print_info = patch.info as unknown as Json;
   row.print_updated_at = new Date().toISOString();
   return row;
 }
@@ -421,6 +424,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
         shippedMailedAt: null,
         createdAt: stamp(),
         updatedAt: null,
+        info: null,
       });
     },
     async getOrder(bookId) {
