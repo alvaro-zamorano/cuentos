@@ -60,7 +60,7 @@ Los tests simulan `/api/books` y `/api/jobs` en el navegador (sin Supabase) y fu
 
 ## Analítica
 
-Microsoft Clarity se carga desde `app/layout.tsx` solo si existe `NEXT_PUBLIC_CLARITY_ID` en el entorno del build (Vercel → Environment Variables). El valor no va en el repo. Pendiente: banner de cookies antes de activarlo en producción (ver `/privacidad`).
+PostHog Cloud EU (`NEXT_PUBLIC_POSTHOG_KEY`), solo tras «Aceptar» en el aviso de cookies (`components/CookieConsent.tsx`) y solo si la variable existe en el entorno del build (Vercel → Environment Variables; el valor no va en el repo). Eventos del embudo de `/crear`, sin grabaciones de sesión. Reglas y catálogo de eventos en `web/lib/analytics.ts`. Clarity se quitó el 21 oct.
 
 ## Correr en local
 
@@ -71,7 +71,7 @@ npm run dev        # http://localhost:3000
 npm run build && npx next start -p 3000
 ```
 
-Variables: copia `web/.env.example` a `web/.env.local` y rellena en local (nunca en el repo). `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` activa la demo de la edición ilustrada; `NEXT_PUBLIC_CLARITY_ID` activa Clarity. Sin `SUPABASE_SERVICE_ROLE_KEY` la app funciona: `/api/lead` responde ok sin persistir y `/api/books` responde 503 (no se muestra enlace).
+Variables: copia `web/.env.example` a `web/.env.local` y rellena en local (nunca en el repo). `NEXT_PUBLIC_DRY_RUN_PAYMENT=1` activa la demo de la edición ilustrada; `NEXT_PUBLIC_POSTHOG_KEY` activa PostHog (tras el aviso de cookies). Sin `SUPABASE_SERVICE_ROLE_KEY` la app funciona: `/api/lead` responde ok sin persistir y `/api/books` responde 503 (no se muestra enlace).
 
 Worker y comprobaciones (desde `web/`):
 
@@ -115,4 +115,4 @@ npx tsx scripts/avatar-sheet.tsx > avatares.html   # hoja de contacto de todos l
 3. Desplegar `web/` en Vercel (rama + PR, nunca a main directo) con `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `JOBS_API_SECRET`; probar `/api/books` real.
 4. Piezas pintadas para los otros cinco estilos (`public/pieces/<estilo>/` + `pieces.json`); mientras tanto se pintan en gouache con aviso. Las cabezas gouache traen el cuello de su prenda original y el corte inferior recto (visible en coletas y melena); la ropa no se recolorea y los ojos y las gafas del avatar no se pintan.
 5. Subir desde la máquina de Álvaro `web/public/styles/*.jpg` (6 anclas, ~0,9 MB) y `.github/workflows/ci.yml` (están en `cuentos-brief2-binarios.zip`): no entran por la API que usa el agente.
-6. Revisión legal de las tres páginas y relleno de los huecos entre corchetes; banner de cookies antes de activar Clarity.
+6. Revisión legal de las tres páginas y relleno de los huecos entre corchetes; banner de cookies (hecho; ahora para PostHog).

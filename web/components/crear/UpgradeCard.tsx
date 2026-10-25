@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { BookView } from "@/lib/book/service";
 import { errorMessage, postJson } from "@/lib/bookClient";
+import { track } from "@/lib/analytics";
 import { dayMonth, eur } from "@/lib/print/prices";
 import { Icon, Sparkle } from "@/components/brand";
 import { ShippingForm, type ShippingDraft } from "./ShippingForm";
@@ -33,6 +34,7 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
     if (payment === "stripe") {
       const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body);
       if (r.status === 200 && r.json.url) {
+        track({ name: "pago_iniciado", props: { edicion: "mejora" } }, { beacon: true });
         window.location.assign(r.json.url);
         return;
       }
