@@ -18,7 +18,7 @@ export const SAMPLE_PAGE = 9;
 export const MAX_SHEET_VERSIONS = 3; // la de la muestra + 2 «Otra versión de la hoja»
 export const MAX_PAGE_VERSIONS = 2; // la incluida + 1 «Otra versión» por página
 
-export type JobKind = "sheet" | "sample" | "page" | "cover";
+export type JobKind = "sheet" | "sample" | "page" | "cover" | "portrait";
 
 function companionKey(draft: Draft) {
   const c = draft.companion;

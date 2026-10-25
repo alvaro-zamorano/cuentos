@@ -5,6 +5,10 @@ import { holderLine, titular } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Política de privacidad" };
 
+/**
+ * Lo mínimo que piden los arts. 13 y 14 RGPD y el 22.2 LSSI, sin nombrar proveedores ni contar cómo funciona por dentro
+ * (decisión de Álvaro, 25 oct). Los proveedores van por categorías; la lista con nombres se da a quien la pida por email.
+ */
 export default function Privacidad() {
   const t = titular();
   return (
@@ -17,155 +21,89 @@ export default function Privacidad() {
       <h2>2. Qué datos tratamos</h2>
       <ul>
         <li>
-          <strong>Datos del niño o la niña protagonista</strong>: nombre, edad, si es niño o niña (solo para la concordancia del texto), aspecto
-          (pelo, piel, ojos, gafas, algún rasgo que le hace único), ropa habitual, la idea del cuento y los detalles que escribas. Aunque no
-          pedimos fotos, son datos personales de un menor y los tratamos como tales.
+          <strong>Del niño o la niña protagonista</strong>: nombre, edad, cómo es y lo que nos cuentes para el cuento. No pedimos fotos,
+          apellidos ni fecha de nacimiento.
         </li>
         <li>
-          <strong>Otras personas o mascotas del cuento</strong>: el nombre, la relación y una línea de aspecto de quienes añadas al reparto, y lo
-          que escribas sobre ellos en la idea o en los detalles. Añádelos solo si tienes permiso.
+          <strong>De otras personas o mascotas que añadas al cuento</strong>: nombre, relación y aspecto. Añádelos solo si tienes permiso.
         </li>
         <li>
-          <strong>Datos de quien crea o compra el libro</strong>: el email, si quieres o no recibir novedades y, si compras, los datos del
-          pedido. Los datos de la tarjeta los recoge Stripe; nosotros no los vemos.
+          <strong>De quien crea o compra el libro</strong>: el email, si quiere recibir novedades y los datos del pedido. Los datos de la
+          tarjeta los recoge la entidad de pago; nosotros no los vemos.
         </li>
         <li>
-          <strong>Si compras el libro impreso</strong>: el nombre y la dirección de quien lo recibe y, si lo das, un teléfono para el
-          transportista.
+          <strong>Si compras el libro impreso</strong>: nombre y dirección de entrega y, si lo das, un teléfono.
         </li>
         <li>
-          <strong>Si aceptas la medición</strong>: qué páginas ves y por qué pasos del cuento vas, el navegador y el dispositivo, la
-          dirección IP (de ella sale el país y la ciudad aproximados) y un identificador al azar guardado en una cookie. Sin tu nombre ni
-          tu email, sin grabar la pantalla y sin registrar tus clics ni lo que escribes.
-        </li>
-        <li>No pedimos fotos, apellidos ni fecha de nacimiento. No usamos reconocimiento facial.</li>
-      </ul>
-
-      <h2>3. Cómo usamos la inteligencia artificial</h2>
-      <ul>
-        <li>
-          El cuento lo escribe un modelo de IA de Anthropic (Claude) a partir de lo que pones en el formulario, incluido el nombre del niño.
-        </li>
-        <li>
-          Las ilustraciones las pinta un modelo de IA de Google (Gemini) a partir de una descripción en inglés del aspecto de los personajes y de
-          cada escena, con sus nombres. Un modelo de Anthropic revisa cada imagen antes de enseñártela.
-        </li>
-        <li>
-          La hoja de personajes y la portada se pintan cuando nos das tu email, antes de pagar. Las doce páginas, solo después del pago.
-        </li>
-        <li>
-          Anthropic y Google tratan estos datos por encargo nuestro. Ninguno de los dos los usa para entrenar ni mejorar sus modelos. Anthropic los
-          borra en 30 días y Google los guarda 55 días solo para detectar abusos.
+          <strong>Si aceptas la medición</strong>: qué páginas ves y qué pasos das, el navegador, el dispositivo, la dirección IP y un
+          identificador al azar guardado en una cookie. Nunca tu nombre, tu email ni lo que escribes.
         </li>
       </ul>
-
-      <h2>4. Declaración de quien crea el cuento</h2>
       <p>
-        Antes de pintar la hoja de personajes, quien crea el cuento marca una casilla obligatoria: «Declaro ser madre, padre o tutor legal del
-        menor, o contar con su autorización».
+        Quien crea el cuento declara, en una casilla obligatoria, ser madre, padre o tutor legal del menor, o contar con su autorización.
       </p>
 
-      <h2>5. Para qué y con qué base</h2>
+      <h2>3. Para qué y con qué base</h2>
       <ul>
-        <li>Escribir el cuento, pintar las ilustraciones y entregarte el libro (ejecución del servicio que pides).</li>
-        <li>Guardarte un enlace para volver a tu libro durante 30 días y mandártelo por email (ejecución del servicio que pides).</li>
-        <li>Cobrar y conservar el pedido (ejecución del contrato y obligaciones contables y fiscales).</li>
-        <li>Imprimir el libro y enviártelo a la dirección que indiques (ejecución del contrato).</li>
-        <li>Contestar lo que nos escribes (ejecución del contrato si es sobre un pedido; si no, tu consentimiento al escribirnos).</li>
         <li>
-          Cuando pides otra versión de una ilustración, guardamos el motivo y lo que escribas para pintarla mejor y para saber qué falla
-          (ejecución del servicio y, después, interés legítimo en mejorarlo).
+          Crear el cuento y sus ilustraciones con inteligencia artificial, guardarlo, mandarte el enlace, cobrar, imprimir y entregar el libro, y
+          contestar lo que nos escribes: ejecución del servicio que pides. Sin estos datos no podemos hacer el libro.
+        </li>
+        <li>Conservar los pedidos: obligaciones contables y fiscales.</li>
+        <li>
+          Mejorar el servicio con los motivos por los que se piden otras versiones de una ilustración. A los 30 días quedan sin relación
+          contigo: interés legítimo.
         </li>
         <li>
-          Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla separada y opcional (consentimiento, art. 21 LSSI). Puedes retirarlo
-          en cualquier momento desde el propio email o escribiéndonos.
+          Enviarte novedades: <strong>solo si lo marcas</strong> en una casilla opcional (consentimiento, art. 21 LSSI). Puedes darte de baja
+          desde el propio email o escribiéndonos.
         </li>
         <li>
-          Medición de uso de la web (PostHog), para saber qué pasos cuestan más y mejorarlos: <strong>solo si lo aceptas</strong> en el aviso
-          de cookies (consentimiento, art. 22.2 LSSI). Si lo rechazas, no se carga y no se instala ninguna cookie de medición. Puedes cambiar tu
-          elección cuando quieras desde «Cookies», al pie de cada página: si la retiras, la medición se para y se borra lo que guardó en tu
-          navegador. Volvemos a preguntarte a los dos años.
+          Medir el uso de la web para mejorarla: <strong>solo si lo aceptas</strong> en el aviso de cookies (consentimiento, art. 22.2 LSSI).
+          Si lo rechazas, no se carga nada. Puedes cambiar tu elección cuando quieras desde «Cookies», al pie de cada página.
+        </li>
+      </ul>
+      <p>No tomamos decisiones automatizadas que te afecten.</p>
+
+      <h2>4. Cuánto tiempo los guardamos</h2>
+      <ul>
+        <li>
+          El libro (lo que pones en el formulario, el cuento y las ilustraciones) se <strong>borra a los 30 días</strong> de empezarlo, también si
+          lo compras. Si has comprado el libro impreso y aún no lo has mandado a imprimir, se guarda hasta que lo hagas. La dirección de envío,
+          hasta que llega el paquete.
+        </li>
+        <li>
+          El email se borra con el libro. Si compras, se queda con el pedido; si aceptas novedades, hasta que te des de baja.
+        </li>
+        <li>El pedido (email, importe y fecha), el plazo que exige la normativa fiscal y mercantil.</li>
+        <li>Tus mensajes, el tiempo necesario para atenderte.</li>
+        <li>
+          Los datos de medición, un año. Las cookies de medición son propias de este sitio, duran como mucho un año y solo se instalan si
+          aceptas.
         </li>
       </ul>
 
-      <h2>6. Dónde se guardan y cuánto tiempo</h2>
-      <ul>
-        <li>
-          El libro (lo que pones en el formulario, el cuento y las ilustraciones) se guarda en nuestro servidor y se <strong>borra a los 30 días</strong>{" "}
-          de empezarlo. El cuento escrito también se guarda 30 días para no tener que escribirlo dos veces. Mientras lo creas, una copia se queda
-          además en tu navegador.
-        </li>
-        <li>
-          Si lo compras, a los 30 días se borran igualmente el formulario, el cuento y las ilustraciones. Conservamos el pedido (email, importe y
-          fecha) el plazo que exige la normativa fiscal y mercantil.
-        </li>
-        <li>
-          Si compras el libro impreso, no lo borramos mientras no lo mandes a imprimir: sin las ilustraciones no se puede imprimir. La dirección
-          de envío se borra con el libro, salvo que el paquete siga de camino; entonces, cuando llega.
-        </li>
-        <li>
-          El email que nos das para recibir el enlace del libro se borra a los 30 días, con el libro, si no has aceptado recibir novedades. Si
-          compras, se queda con el pedido. Si aceptas novedades, lo guardamos hasta que te des de baja.
-        </li>
-        <li>
-          Los datos de medición de PostHog se guardan un año. Las cookies de medición (las que empiezan por <code>ph_</code>, propias de este sitio)
-          guardan el identificador al azar y duran como mucho un año; hay una copia en el almacenamiento local del navegador. Solo se
-          instalan si aceptas.
-        </li>
-        <li>Si nos escribes, guardamos tu mensaje el tiempo necesario para atenderte y, si es sobre un pedido, con el pedido.</li>
-        <li>
-          El motivo de «otra versión» y lo que escribas se guardan con el libro. A los 30 días se borra lo que escribiste y el motivo se
-          queda sin relación con el libro ni contigo.
-        </li>
-      </ul>
-
-      <h2>7. Proveedores</h2>
+      <h2>5. Quién más trata los datos</h2>
       <p>
-        Estos proveedores tratan datos por encargo nuestro, con un contrato de encargo (DPA). Cuando los datos
-        salen del Espacio Económico Europeo, la transferencia se ampara en cláusulas contractuales tipo de la Comisión Europea y, cuando el
-        proveedor está certificado, en el Marco de Privacidad de Datos UE-EE. UU.:
+        Proveedores que trabajan por encargo nuestro, con contrato de encargo: alojamiento y base de datos, modelos de inteligencia artificial
+        que escriben el cuento y crean las ilustraciones, envío de emails, cobro, medición de uso e impresión y envío del libro. Los proveedores
+        de inteligencia artificial no usan estos datos para entrenar sus modelos.
       </p>
-      <ul>
-        <li>Alojamiento web: Vercel Inc. (EE. UU.), con los servidores de la web en Dublín (UE), cláusulas tipo y Marco de Privacidad.</li>
-        <li>
-          Base de datos y archivos: Supabase Pte. Ltd. (Singapur), con los datos alojados en Irlanda (UE) y
-          cláusulas tipo.
-        </li>
-        <li>Texto del cuento y revisión de las imágenes: Anthropic Ireland, Limited, con la API de Claude, y cláusulas tipo.</li>
-        <li>Ilustraciones: Google Cloud EMEA Limited (Irlanda), con la API de pago de Gemini, cláusulas tipo y Marco de Privacidad.</li>
-        <li>
-          Envío y recepción de emails: Resend (Plus Five Five, Inc., EE. UU.), con cláusulas tipo y Marco de Privacidad. Lo que nos escribes a
-          nuestra dirección pasa por Resend antes de llegar a nuestro buzón.
-        </li>
-        <li>Cobro: Stripe Payments Europe, Limited (Irlanda), con cláusulas tipo y Marco de Privacidad.</li>
-        <li>
-          Medición de uso, solo si la aceptas: PostHog, Inc. (EE. UU.), con los datos alojados en Fráncfort (UE) y cláusulas tipo. No recibe
-          tu nombre, tu email ni lo que escribes sobre el niño, y el enlace de tu libro se tapa en las direcciones.
-        </li>
-        <li>
-          Impresión y envío del libro de tapa dura: Gelato ASA (Oslo, Noruega, en el Espacio Económico Europeo),
-          que encarga la impresión a una imprenta de su red, normalmente cerca de tu casa. Recibe el libro, el nombre, la dirección, el email y,
-          si lo das, el teléfono.
-        </li>
-      </ul>
-      <p>Y estos los tratan como responsables independientes, con su propia política de privacidad:</p>
-      <ul>
-        <li>
-          Stripe, para prevenir el fraude y cumplir sus obligaciones legales (por ejemplo, contra el blanqueo de capitales).{" "}
-          <a href="https://stripe.com/es/privacy" className="link" target="_blank" rel="noopener noreferrer">
-            Política de Stripe
-          </a>
-          .
-        </li>
-        <li>
-          El transportista que entrega el libro impreso: recibe tu nombre, la dirección y, si lo das, el teléfono para hacer la entrega.
-        </li>
-      </ul>
-
-      <h2>8. Tus derechos</h2>
       <p>
-        Puedes pedir acceso, rectificación, supresión, oposición, limitación y portabilidad escribiendo a <ContactEmail value={t.email} />.
-        Si crees que no hemos atendido bien tu solicitud, puedes reclamar ante la Agencia Española de Protección de Datos (aepd.es).
+        Con su propia responsabilidad: la entidad de pago, para prevenir el fraude y cumplir sus obligaciones legales, y el transportista,
+        para entregar el libro.
+      </p>
+      <p>
+        Algunos proveedores están fuera del Espacio Económico Europeo o pueden acceder a los datos desde fuera. En esos casos la transferencia se
+        ampara en cláusulas contractuales tipo de la Comisión Europea o en el Marco de Privacidad de Datos UE-EE. UU. Puedes pedirnos la lista
+        de proveedores y una copia de esas garantías en <ContactEmail value={t.email} />.
+      </p>
+
+      <h2>6. Tus derechos</h2>
+      <p>
+        Puedes pedir acceso, rectificación, supresión, oposición, limitación y portabilidad, y retirar tu consentimiento cuando quieras,
+        escribiendo a <ContactEmail value={t.email} />. Si crees que no hemos atendido bien tu solicitud, puedes reclamar ante la Agencia
+        Española de Protección de Datos (aepd.es).
       </p>
 
       <p className="text-sm text-ink-soft">

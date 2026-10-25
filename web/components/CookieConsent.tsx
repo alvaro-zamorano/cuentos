@@ -55,7 +55,7 @@ export function CookieConsent({ enabled }: { enabled: boolean }) {
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-[60ch] leading-snug">
-          Usamos PostHog para medir cómo se usa la web y mejorarla. Solo si lo aceptas, y puedes cambiarlo cuando quieras desde «Cookies», al pie de la
+          Usamos cookies propias para medir cómo se usa la web y mejorarla. Solo si lo aceptas, y puedes cambiarlo cuando quieras desde «Cookies», al pie de la
           página.{choice ? ` Ahora: ${choice === "accepted" ? "aceptadas" : "rechazadas"}.` : ""} Más detalle en la{" "}
           <Link href="/privacidad" className="link">
             política de privacidad

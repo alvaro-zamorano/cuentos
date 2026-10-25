@@ -28,7 +28,7 @@ export function gelatoOrderType(env: Env = process.env): "order" | "draft" {
   return env.GELATO_ORDER_TYPE?.trim() === "order" ? "order" : "draft";
 }
 
-/** Páginas interiores del libro impreso (portadilla, personajes, dedicatoria, 12 dobles, fin, colofón y cortesía). */
+/** Páginas interiores del libro impreso (portadilla, personajes, dedicatoria, 12 dobles, fin, página de la marca y cortesía). */
 export const PRINT_INNER_PAGES = 30;
 
 /**

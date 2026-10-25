@@ -93,7 +93,7 @@ function isFail(v: unknown): v is Fail {
   return !!v && typeof v === "object" && (v as Fail).ok === false;
 }
 
-const KIND_ORDER: Record<JobKind, number> = { sheet: 0, sample: 1, page: 2, cover: 3 };
+const KIND_ORDER: Record<JobKind, number> = { sheet: 0, sample: 1, page: 2, cover: 3, portrait: 4 };
 
 /** Orden de ejecución: hojas, muestra, páginas por número y versión, portada. */
 export function sortJobs<T extends Pick<GenJob, "kind" | "page_n" | "variant" | "created_at">>(jobs: T[]): T[] {
@@ -309,7 +309,7 @@ export async function requestBook(
 
 /* ------------------------------ ejecutar un job ------------------------------ */
 
-const SPEND_KIND: Record<JobKind, SpendKind> = { sheet: "sheet", sample: "sample", page: "page", cover: "page" };
+const SPEND_KIND: Record<JobKind, SpendKind> = { sheet: "sheet", sample: "sample", page: "page", cover: "page", portrait: "page" };
 
 export function storagePath(bookId: string, job: Pick<GenJob, "kind" | "page_n" | "variant" | "job_key">, ext = "png", attempt?: number): string {
   // la huella al final evita pisar la imagen de una versión anterior si cambian los rasgos o el cuento

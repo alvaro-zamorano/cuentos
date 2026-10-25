@@ -12,10 +12,11 @@ export const SITE_DOMAIN = "erasesuvez.com";
  *
  * - "print": interior de la tapa dura (Gelato, ≈ 280×210 mm con 4 mm de sangre), 30 páginas (página 1 = derecha):
  *     1 portadilla · 2 «así son los personajes» · 3 dedicatoria · 4–27 las 12 escenas (ilustración en par, texto en
- *     impar) · 28 «Fin» · 29 colofón · 30 en blanco (la imprenta puede poner ahí su código de montaje)
- * - "full": PDF ilustrado en A4 apaisado: portada, personajes, dedicatoria, 12 dobles, «Fin» y colofón (29). Con la
+ *     impar) · 28 «Fin» · 29 marca y web · 30 en blanco (la imprenta puede poner ahí su código de montaje)
+ * - "full": PDF ilustrado en A4 apaisado: portada, personajes, dedicatoria, 12 dobles, «Fin» y la página de la marca (29). Con la
  *     portada sola, las dobles caen como en el libro (ilustración a la izquierda) en la vista de dos páginas.
- * - "free" (D3): PDF casero en A4 apaisado: portada, personajes, dedicatoria, 12 páginas de texto, «Fin» y colofón.
+ * - "free" (D3): PDF casero en A4 apaisado: portada, personajes (solo si ya hay retratos), dedicatoria, 12 páginas de
+ *     texto, «Fin» y la marca.
  * Cubierta del impreso: un pliego con trasera, lomo y portada, con las medidas que da la API de Gelato.
  */
 export interface PrintBookInput {
@@ -24,8 +25,10 @@ export interface PrintBookInput {
   from?: string;
   coverUrl: string | null;
   sheetUrl: string | null;
+  /** Un retrato por personaje, en orden (25 oct). Si falta alguno, la página usa la hoja; en el PDF gratis, se quita. */
+  portraits?: { name: string; url: string | null }[];
   pageUrls: Record<number, string | null>;
-  /** Fecha del colofón («octubre de 2026»). */
+  /** Fecha de la edición. Ya no se imprime (la última página solo lleva la marca, 25 oct). */
   date: Date;
 }
 
@@ -80,7 +83,7 @@ function storyHtml(t: string): string {
  * cada lado (0 en los PDF): los márgenes de seguridad se cuentan desde el corte.
  */
 export function bookPages(input: PrintBookInput, kind: BookKind, W: number, H: number, bleed: number): { css: string; pages: string[] } {
-  const { plan, heroName, from, coverUrl, sheetUrl, pageUrls, date } = input;
+  const { plan, heroName, from, coverUrl, sheetUrl, pageUrls, portraits = [] } = input;
   const safe = bleed + 14;
   const css = `${FONTS}
 @page { size: ${W}mm ${H}mm; margin: 0; }
@@ -95,6 +98,12 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
 .from { font-family: Figtree, sans-serif; font-size: 8.5pt; letter-spacing: .16em; text-transform: uppercase; color: ${SOFT}; margin-top: 12mm; }
 .label { font-family: Figtree, sans-serif; font-size: 8.5pt; letter-spacing: .16em; text-transform: uppercase; color: ${SOFT}; margin-bottom: 6mm; }
 .sheet { height: ${Math.round(H - 2 * safe - 18)}mm; max-width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 2mm; background: #efe8dc; }
+.cast { display: flex; justify-content: center; align-items: flex-start; gap: 12mm; }
+.who { display: flex; flex-direction: column; align-items: center; }
+/* el fondo del retrato se funde con el papel: multiplicar quita el blanco y la máscara difumina los bordes */
+.who img { display: block; object-fit: contain; mix-blend-mode: multiply;
+  -webkit-mask-image: radial-gradient(closest-side, #000 74%, transparent 100%); mask-image: radial-gradient(closest-side, #000 74%, transparent 100%); }
+.who .nm { font-size: 17pt; font-weight: 600; margin-top: 3mm; text-wrap: balance; text-align: center; }
 .ded p { font-size: 21pt; line-height: 1.55; color: #4a4140; text-wrap: balance; max-width: 170mm; }
 .ill { position: absolute; inset: 0; width: ${W}mm; height: ${H}mm; object-fit: cover; display: block; background: #efe8dc; }
 .txt { position: absolute; inset: ${safe}mm ${safe + 10}mm ${safe + 8}mm; display: flex; flex-direction: column; justify-content: center; align-items: center; }
@@ -103,9 +112,9 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
 .cap { float: left; font-size: 3.1em; line-height: .82; font-weight: 600; color: ${TEJA}; margin: 1.2mm 2mm 0 0; }
 .num { position: absolute; bottom: ${bleed + 8}mm; left: 0; right: 0; text-align: center; font-family: Figtree, sans-serif; font-size: 8pt; letter-spacing: .12em; color: #8a7d6e; }
 .fin { font-size: 26pt; font-weight: 600; }
-.colo { font-size: 10.5pt; line-height: 1.6; color: ${SOFT}; max-width: 130mm; }
-.colo strong { color: ${INK}; font-weight: 600; }
-.brand { font-family: Lora, Georgia, serif; font-size: 11pt; color: ${INK}; margin-top: 8mm; }
+.colo { position: absolute; left: 0; right: 0; bottom: ${safe + 6}mm; text-align: center; color: ${SOFT}; }
+.brand { font-family: Lora, Georgia, serif; font-size: 11pt; color: ${SOFT}; }
+.colo .web { font-family: Figtree, sans-serif; font-size: 7.5pt; letter-spacing: .14em; text-transform: uppercase; color: #8a7d6e; margin-top: 1.5mm; }
 .brand .star { width: .8em; height: .8em; vertical-align: -0.05em; margin-right: .15em; }
 .cover { background: ${NIGHT}; }
 .cover .shade { position: absolute; inset: 0 0 auto; height: 58%; background: linear-gradient(to bottom, rgba(15,20,40,.62), rgba(15,20,40,0)); }
@@ -128,9 +137,21 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
   } else {
     pages.push(cover());
   }
-  pages.push(
-    `<section class="pg"><div class="center"><div class="label">Así son los personajes</div>${sheetUrl ? `<img class="sheet" src="${esc(sheetUrl)}">` : `<div class="sheet"></div>`}</div></section>`,
-  );
+  // Personajes (25 oct): un retrato de cada uno con su nombre debajo, no la hoja con todas las vistas. Si falta algún
+  // retrato, el impreso y el PDF ilustrado usan la hoja (no pueden perder la página) y el gratis la quita.
+  const ready = portraits.length > 0 && portraits.every((p) => p.url);
+  if (ready) {
+    // dentro del margen de seguridad (25 oct): con 3 personajes en el impreso, 78 mm se salían 9 mm por cada lado
+    const avail = W - 2 * (safe + 6);
+    const n = portraits.length;
+    const side = Math.min(n === 1 ? 120 : n === 2 ? 100 : 78, Math.floor((avail - (n - 1) * 12) / n));
+    const who = portraits.map((p) => `<div class="who"><img src="${esc(p.url!)}" style="width:${side}mm;height:${side}mm"><div class="nm" style="max-width:${side}mm">${esc(p.name)}</div></div>`).join("");
+    pages.push(`<section class="pg"><div class="center"><div class="label">Así son los personajes</div><div class="cast">${who}</div></div></section>`);
+  } else if (kind !== "free") {
+    pages.push(
+      `<section class="pg"><div class="center"><div class="label">Así son los personajes</div>${sheetUrl ? `<img class="sheet" src="${esc(sheetUrl)}">` : `<div class="sheet"></div>`}</div></section>`,
+    );
+  }
   pages.push(`<section class="pg"><div class="center ded"><p>${esc(plan.dedication)}</p></div></section>`);
   for (const p of plan.pages) {
     if (kind !== "free") {
@@ -140,9 +161,9 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
     pages.push(textPage(p.n, p.text));
   }
   pages.push(`<section class="pg"><div class="center"><div class="fin">Fin</div></div></section>`);
-  pages.push(
-    `<section class="pg"><div class="center"><p class="colo">Este libro se escribió y se ilustró para <strong>${esc(heroName)}</strong> en ${esc(monthYear(date))}. El texto y las ilustraciones los hizo una inteligencia artificial, y quien lo regala los revisó página a página.</p><div class="brand">${STAR_SVG} Érase su vez</div></div></section>`,
-  );
+  // Última página (25 oct): solo la marca y la web, pequeñas y abajo. Sin explicar cómo se hizo el libro.
+  pages.push(`<section class="pg"><div class="colo"><div class="brand">${STAR_SVG} Érase su vez</div><div class="web">${SITE_DOMAIN}</div></div></section>`);
+
   if (kind === "print") pages.push(`<section class="pg"></section>`);
   return { css, pages };
 }
