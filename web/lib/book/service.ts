@@ -32,7 +32,13 @@ import { printableInEnv } from "../stripe";
 const KEEP_AFTER_HARDCOVER_MS = 30 * 24 * 3600 * 1000;
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
-export const MAX_PAGE_JOBS = 1 + MAX_PAGE_REDOS + 1; // la incluida + 2 versiones con motivo + 1 por si el padre cambia la escena
+/**
+ * Lo que admite la base (cuentos_generation_jobs_variant_check). Hoy 1..3; con docs/sql/cuentos_8_variant_hasta_4.sql
+ * aplicado, subir a 4. Sin este tope, la cuarta versión fallaba al guardarse (500) en vez de decir que no hay más.
+ */
+export const DB_MAX_VARIANT = 3;
+// la incluida + 2 versiones con motivo + 1 por si el padre cambia la escena, sin pasar de lo que admite la base
+export const MAX_PAGE_JOBS = Math.min(1 + MAX_PAGE_REDOS + 1, DB_MAX_VARIANT);
 /** Precio del PDF ilustrado (el de la tapa dura, en lib/print/prices.ts). */
 export const PRICE_CENTS = PRICES.illustrated;
 

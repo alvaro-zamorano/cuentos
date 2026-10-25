@@ -179,6 +179,8 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     coverUrl: cover?.url ?? null,
     sheetUrl: sheetUrl ?? null,
     sheetKey: view.chosen.sheet,
+    // los retratos de la página de personajes, como en el impreso (si falta alguno, la hoja)
+    portraits: view.paid ? view.chosen.portraits.map((p) => ({ name: p.name, url: p.job ? byId.get(p.job)?.url ?? null : null, key: p.job })) : [],
     locked: !view.paid,
     pages: plan.pages.map((p) => {
       const chosen = view.chosen.pages[p.n];

@@ -28,11 +28,11 @@ function hasWebGL(): boolean {
 
 /** Lo que obliga a rehacer el libro entero. El resto (textos, imágenes por su clave) se actualiza en caliente. */
 function structureKey(d: Book3DData): string {
-  return JSON.stringify([d.title, d.name, d.from ?? null, !!d.coverUrl, d.pages.length]);
+  return JSON.stringify([d.title, d.name, d.from ?? null, !!d.coverUrl, d.pages.length, (d.portraits ?? []).length]);
 }
 /** Lo que se actualiza sin rehacer: no usa las URL firmadas (cambian en cada consulta), sino las claves de imagen. */
 function contentKey(d: Book3DData): string {
-  return JSON.stringify([d.dedication ?? null, !!d.locked, d.sheetKey ?? null, d.pages.map((p) => [p.text, p.scene ?? null, p.imageKey ?? null])]);
+  return JSON.stringify([d.dedication ?? null, !!d.locked, d.sheetKey ?? null, (d.portraits ?? []).map((p) => [p.name, p.key]), d.pages.map((p) => [p.text, p.scene ?? null, p.imageKey ?? null])]);
 }
 
 function fontVar(name: string, fallback: string): string {
@@ -163,6 +163,8 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
           <div className="w-[64%] max-w-[420px]">{poster}</div>
         </div>
         <canvas
+          // un canvas nuevo cada vez que se rehace: el anterior ha soltado su contexto WebGL y no se puede reutilizar
+          key={`${sKey}|${rebuild}`}
           ref={canvas}
           role="img"
           tabIndex={ready ? 0 : -1}
