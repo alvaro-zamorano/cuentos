@@ -15,6 +15,7 @@ import { coverGeometry, findPhotobookProducts, gelatoOrderType, gelatoPageCount,
  *   Supabase: un count sobre cuentos_books · Anthropic: ficha del modelo configurado · Gemini: ficha del modelo de imagen.
  *   Gelato: el catálogo de fotolibros, el producto que se usaría, sus medidas y las de la cubierta (solo lectura).
  * Respuesta de cada comprobación: "ok", el código HTTP del proveedor o "error".
+ * En producción, todo esto solo con `?token=` igual a HEALTH_TOKEN; sin él, `{ ok: true }` (no enseña modelos ni proveedores).
  */
 type Check = "ok" | "skipped" | "error" | number | { status: number; type?: string; message?: string };
 
@@ -85,7 +86,10 @@ export async function GET(req: Request) {
   // En producción (E11): sin nombres de variables y la comprobación profunda solo con HEALTH_TOKEN.
   const prod = process.env.VERCEL_ENV === "production";
   const token = process.env.HEALTH_TOKEN?.trim();
-  const deep = url.searchParams.get("deep") === "1" && (!prod || (!!token && url.searchParams.get("token") === token));
+  const authorized = !prod || (!!token && url.searchParams.get("token") === token);
+  // 25 oct (Álvaro no quiere enseñar el stack): en producción, sin HEALTH_TOKEN solo se dice que responde
+  if (!authorized) return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  const deep = url.searchParams.get("deep") === "1";
   const { provider, requested } = selectProvider();
   const planLlm = selectLlm("plan");
   const storyModel = planLlm.model;
