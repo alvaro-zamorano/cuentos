@@ -10,6 +10,8 @@ import { EDITION_LABEL, PRICE_CENTS, eur } from "@/lib/print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition } from "@/lib/print/types";
 import { BookCover, BookSpread, Icon, Moon, Sparkle } from "@/components/brand";
 import { AutoTextarea } from "./AutoTextarea";
+import { Book3D } from "@/components/book3d/Book3D";
+import type { Book3DData } from "@/lib/book3d/scene";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
 import { PrintPanel } from "./PrintPanel";
@@ -148,6 +150,26 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
   const showBusy = busy && !(view.paid && allDone && !busy.startsWith("Pintando otra versión"));
   const locked = !!view.print && LOCKED_PRINT_STATUSES.includes(view.print.status);
   const hardcover = view.edition === "hardcover";
+  // El libro en 3D: antes de pagar, si se vende la tapa dura aquí (su portada y las páginas por pintar); con la tapa
+  // dura pagada y las doce páginas hechas, la última revisión antes de mandarlo a la imprenta.
+  const show3D = view.paid ? hardcover && allDone : !!view.printMode && view.printMode !== "none";
+  const sheetUrl = view.chosen.sheet ? byId.get(view.chosen.sheet)?.url : null;
+  const book3D: Book3DData = {
+    title: plan.title,
+    name,
+    from: view.ficha.from?.trim() || undefined,
+    dedication: plan.dedication,
+    coverUrl: cover?.url ?? null,
+    sheetUrl: sheetUrl ?? null,
+    locked: !view.paid,
+    pages: plan.pages.map((p) => {
+      const chosen = view.chosen.pages[p.n];
+      return { n: p.n, text: p.text, scene: p.scene, imageUrl: view.paid && chosen ? byId.get(chosen)?.url ?? null : null };
+    }),
+  };
+  const coverEl = (tilt: number, className: string) => (
+    <BookCover name={name} title={plan.title} from={view.ficha.from?.trim()} tilt={tilt} className={className} image={<BookImage job={cover} alt="Portada" testId="book-cover" box="absolute inset-0 overflow-hidden" />} />
+  );
 
   /** «Mandar a imprimir»: guarda los textos tal como están, lo manda y espera a que la imprenta lo acepte. */
   const sendToPrint = async (): Promise<string | null> => {
@@ -165,7 +187,7 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
 
   return (
     <div className="grid gap-8">
-      <div className="grid items-center gap-7 sm:grid-cols-[1fr_300px] sm:gap-10">
+      <div className={`grid items-center gap-7 ${show3D ? "" : "sm:grid-cols-[1fr_300px] sm:gap-10"}`}>
         <div className="grid gap-2">
           <p className="hand text-[20px] text-accent">{view.paid ? (locked ? "su libro, en marcha" : allDone ? "su libro, terminado" : "pintando su libro") : "así queda"}</p>
           <h2 className="display text-[32px] sm:text-[42px]">{plan.title}</h2>
@@ -177,15 +199,16 @@ export function StepBook({ bookId, confirming = false, onPlan }: { bookId: strin
               : "Portada, dedicatoria y doce páginas, que se pintarán con la hoja que has aprobado."}
           </p>
         </div>
-        <BookCover
-          name={name}
-          title={plan.title}
-          from={view.ficha.from?.trim()}
-          tilt={2}
-          className="w-[280px] justify-self-center sm:w-full"
-          image={<BookImage job={cover} alt="Portada" testId="book-cover" box="absolute inset-0 overflow-hidden" />}
-        />
+        {!show3D && coverEl(2, "w-[280px] justify-self-center sm:w-full")}
       </div>
+
+      {show3D && (
+        <section className="grid gap-2" aria-label="El libro en 3D" data-testid="book3d-section">
+          <p className="hand m-0 text-center text-[20px] text-accent">{view.paid ? (locked ? "así va impreso" : "así quedará impreso") : "así será en tapa dura"}</p>
+          <Book3D data={book3D} poster={coverEl(0, "w-full")} hint={view.paid ? "Arrastra para girarlo · toca para abrirlo y revisarlo" : "Arrastra para girarlo · toca para abrirlo"} />
+          {!view.paid && <p className="m-0 text-center text-sm text-ink-soft">Las ilustraciones se pintan al pagar. Hasta entonces ves su portada y el texto de cada página.</p>}
+        </section>
+      )}
 
       {/* el aviso se va en cuanto el libro está completo (el navegador puede seguir unos segundos esperando a jobs que ya ha terminado el servidor) */}
       {showBusy && (
