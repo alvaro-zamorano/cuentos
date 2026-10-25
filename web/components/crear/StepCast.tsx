@@ -113,9 +113,11 @@ export function StepCast({
         <p className="text-ink-soft">Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras.</p>
       </div>
 
+      {/* la tarjeta de espera, solo hasta que estén los personajes: la portada (otro minuto) se espera ya viéndolos */}
       {painting &&
+        current?.status !== "done" &&
         (view ? (
-          <WaitCard name={name} sheet={current} cover={current ? view.jobs.find((j) => j.kind === "cover" && j.sheetJobId === current.id) : undefined} pages={record.plan.pages} background={view.background} mail={view.mail} testId="painting" />
+          <WaitCard sheet={current} cover={current ? view.jobs.find((j) => j.kind === "cover" && j.sheetJobId === current.id) : undefined} pages={record.plan.pages} background={view.background} mail={view.mail} testId="painting" />
         ) : (
           <Status testId="painting">{painting}</Status>
         ))}
@@ -204,7 +206,9 @@ export function StepCast({
           Me gustan, ver el libro
           <Icon.arrow />
         </button>
-        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{ready ? "Gratis hasta aquí. Después decides si lo quieres ilustrado." : "En cuanto estén, podrás seguir."}</p>
+        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">
+          {!ready ? "En cuanto estén, podrás seguir." : painting && cover?.status !== "done" ? "Falta la portada, alrededor de un minuto. Mientras, mira sus personajes." : "Gratis hasta aquí. Después decides si lo quieres ilustrado."}
+        </p>
       </div>
     </div>
   );
