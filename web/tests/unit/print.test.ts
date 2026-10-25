@@ -203,6 +203,28 @@ test("PDF que se descarga: A4 apaisado con la maqueta del libro; el gratis sin l
   assert.match(free.html, /cover\.jpg/);
 });
 
+test("maqueta: solo caracteres que tienen Lora y Figtree (en Vercel no hay fuentes del sistema; «✦» salía como un cuadradito)", () => {
+  const input = { plan, heroName: "Vera", from: "los abuelos", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
+  const htmls = {
+    interior: printInteriorHtml(input, { trimWidth: 280, trimHeight: 210, bleed: 4 }).html,
+    cubierta: printCoverHtml(input, estimatedCover()).html,
+    full: pdfBookHtml(input, "full").html,
+    free: pdfBookHtml(input, "free").html,
+  };
+  // latín (con acentos, ñ, «», ¿¡), puntuación general (rayas, comillas, puntos suspensivos) y el WORD JOINER de los diálogos
+  const ok = /^[\u0000-ɏ‐-‧‰-⁞⁠]$/u;
+  for (const [name, html] of Object.entries(htmls)) {
+    const text = html
+      .replace(/<style[\s\S]*?<\/style>/g, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&#(\d+);/g, (_m, n: string) => String.fromCodePoint(Number(n)))
+      .replace(/&#x([0-9a-f]+);/gi, (_m, n: string) => String.fromCodePoint(parseInt(n, 16)));
+    const bad = [...new Set([...text].filter((c) => !ok.test(c)))];
+    assert.deepEqual(bad, [], `${name}: caracteres sin glifo en Lora/Figtree: ${bad.map((c) => `U+${c.codePointAt(0)!.toString(16)}`).join(", ")}`);
+    assert.match(html, /<svg class="star"/, `${name}: la estrella de la marca va en SVG`);
+  }
+});
+
 test("Stripe: la tapa dura va en los metadatos con su nombre y su descripción", () => {
   const p = checkoutBody({ bookId: "abc12345", email, title: "Vera y Toby", amountCents: 3490, origin: "https://x", edition: "hardcover" });
   assert.equal(p.get("metadata[edition]"), "hardcover");
