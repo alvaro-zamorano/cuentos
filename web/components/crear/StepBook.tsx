@@ -23,7 +23,7 @@ import { ErrorNote, Status } from "./ui";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isPage = (j: BookJobView) => j.kind === "page";
 /** Lo que el navegador ayuda a pintar tras el pago: las páginas y los retratos de la página de personajes. */
-const isPaid = (j: BookJobView) => j.kind === "page" || j.kind === "portrait";
+const isPaid = (j: BookJobView) => j.kind === "page" || j.kind === "portrait" || (j.kind === "cover" && j.paid);
 const inFlight = (j: BookJobView) => j.status === "pending" || j.status === "running";
 
 /** Alguna página no tiene una ilustración de su escena actual hecha o en marcha: hay que pedirla. */
