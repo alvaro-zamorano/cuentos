@@ -568,15 +568,24 @@ function currentPageJobs(jobs: GenJob[], d: BookDraftV2, n: number, sheetJobId: 
  */
 export const MAX_PORTRAIT_JOBS = 2;
 
+/**
+ * Huella del retrato (25 oct): lo que es el personaje (nombre, aspecto, ropa), el estilo y la hoja. No el texto del
+ * prompt: si el prompt cambia en un despliegue, los retratos ya pintados siguen valiendo y no se vuelven a pagar.
+ */
+function portraitKey(c: { name: string; kind: string; identityEn: string; outfitEn: string }, styleId: string, sheetJobId: string): string {
+  return hashString(JSON.stringify([c.name, c.kind, c.identityEn, c.outfitEn, styleId, sheetJobId]));
+}
+
 function portraitRow(book: BookRecord, d: BookDraftV2, i: number, variant: number, sheetJobId: string): NewJob {
   const style = getStyle(d.ficha.styleId)!;
-  const prompt = portraitPrompt(d.castArt!.cast[i], style);
+  const c = d.castArt!.cast[i];
+  const prompt = portraitPrompt(c, style);
   return {
     book_id: book.id,
     kind: "portrait",
     page_n: i + 1,
     variant,
-    job_key: jobKey("portrait", i + 1, variant, hashString(`${prompt}|${sheetJobId}`)),
+    job_key: jobKey("portrait", i + 1, variant, portraitKey(c, style.id, sheetJobId)),
     style_id: style.id,
     prompt,
     references: [{ kind: "sheet", job_id: sheetJobId }, { kind: "anchor", style_id: style.id }, spec("1:1", "1K")] as unknown as NewJob["references"],
@@ -589,7 +598,7 @@ function currentPortraitJobs(jobs: GenJob[], d: BookDraftV2, i: number, sheetJob
   const c = d.castArt?.cast[i];
   const style = getStyle(d.ficha.styleId);
   if (!c || !style) return [];
-  const want = hashString(`${portraitPrompt(c, style)}|${sheetJobId}`);
+  const want = portraitKey(c, style.id, sheetJobId);
   return jobs.filter((j) => j.kind === "portrait" && j.page_n === i + 1 && v2Of(j) && sheetRefOf(j) === sheetJobId && j.job_key.endsWith(want));
 }
 
@@ -798,6 +807,11 @@ export interface BookView {
     /** Un retrato por personaje del reparto, en orden (job o null si aún no está). Vacío sin reparto. */
     portraits: { name: string; job: string | null }[];
   };
+  /**
+   * Pagado y a algún personaje le falta el retrato sin ninguno en marcha, pero aún se puede pedir (25 oct): el navegador
+   * vuelve a pedir el libro entero (no repinta páginas) para que no se queden sin pintar si el segundo plano no llegó.
+   */
+  portraitsToRequest: boolean;
   /** Edición pagada (null sin pagar). */
   edition: PaidEdition | null;
   /** Pagado en PDF: lo que cuesta pasar a tapa dura y hasta cuándo se puede (null si no se puede). La ruta lo quita si aquí no hay imprenta. */
@@ -869,10 +883,19 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
   }
   const portraits = (d.castArt?.cast ?? []).map((c, i) => {
     const done = out.filter((j) => j.kind === "portrait" && j.page === i + 1 && j.status === "done" && j.current && j.sheetJobId === sheet?.id);
-    return { name: c.name, job: done[done.length - 1]?.id ?? null };
+    // sin nombre, el reparto usa la relación («su perro»): bajo el retrato, con mayúscula
+    return { name: c.name.charAt(0).toUpperCase() + c.name.slice(1), job: done[done.length - 1]?.id ?? null };
   });
   const order = await store.getOrder(book.id);
   const feedback = await store.listFeedback(book.id).catch(() => []);
+  const portraitsToRequest =
+    !!order &&
+    !!sheet &&
+    (d.castArt?.cast ?? []).some((_, i) => {
+      const cur = currentPortraitJobs(jobs, d, i, sheet.id);
+      if (cur.some((j) => j.status !== "failed")) return false;
+      return cur.some((j) => j.attempts < MAX_ATTEMPTS) || jobs.filter((j) => j.kind === "portrait" && j.page_n === i + 1).length < MAX_PORTRAIT_JOBS;
+    });
   return {
     ok: true,
     bookId: book.public_id,
@@ -897,5 +920,6 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     sheetsLeft: Math.max(0, MAX_SHEETS - sheets.length),
     jobs: out,
     chosen: { sheet: sheet?.id ?? null, cover: cover?.id ?? null, pages, portraits },
+    portraitsToRequest,
   };
 }

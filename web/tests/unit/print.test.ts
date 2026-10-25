@@ -20,6 +20,7 @@ import { purgeExpired, type PurgeDb } from "../../lib/purge";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { getStyle } from "../../lib/generation/styles";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -190,7 +191,7 @@ test("maqueta: 30 páginas interiores apaisadas (280×210 + sangre), ilustració
 test("PDF que se descarga: A4 apaisado con la maqueta del libro; el gratis sin las 12 ilustraciones", () => {
   const input = { plan, heroName: "Vera", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
   const full = pdfBookHtml(input, "full");
-  assert.equal(full.pages, 29, "portada, personajes, dedicatoria, 24, fin y colofón");
+  assert.equal(full.pages, 29, "portada, personajes, dedicatoria, 24, fin y la página de la marca");
   assert.match(full.html, /size: 297mm 210mm/);
   const sections = full.html.split('<section class="pg').slice(1);
   assert.match(sections[0], /cover\.jpg/, "la portada primero");
@@ -439,4 +440,40 @@ test("personajes en la maqueta: retratos con su nombre debajo; sin retratos, la 
   const free = pdfBookHtml(base, "free");
   assert.doesNotMatch(free.html, /sheet\.jpg|Así son los personajes/, "el gratis, sin hoja");
   assert.equal(pdfBookHtml({ ...base, portraits }, "free").pages, 17);
+});
+
+test("personajes (25 oct): con tres retratos, la fila cabe dentro del margen de seguridad del impreso y del PDF", () => {
+  const base = { plan, heroName: "Vera", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
+  const portraits = ["Vera", "Toby", "La abuela Carmen"].map((name, i) => ({ name, url: `https://img/r${i + 1}.jpg` }));
+  const sizes = (html: string) => [...html.matchAll(/style="width:(\d+)mm;height:\1mm"/g)].map((m) => Number(m[1]));
+  // impreso 280×210 con 4 mm de sangre: 288 mm de ancho; margen de seguridad 18 mm + 6 de aire por lado
+  const inner = printInteriorHtml({ ...base, portraits }, { trimWidth: 280, trimHeight: 210, bleed: 4 });
+  const s = sizes(inner.html);
+  assert.equal(s.length, 3);
+  assert.ok(3 * s[0] + 2 * 12 <= 288 - 2 * (18 + 6), `fila de ${3 * s[0] + 24} mm`);
+  const full = pdfBookHtml({ ...base, portraits }, "full");
+  const f = sizes(full.html);
+  assert.equal(f.length, 3);
+  assert.ok(f[0] <= 78);
+  // con uno o dos, el tamaño de siempre
+  assert.deepEqual(sizes(printInteriorHtml({ ...base, portraits: portraits.slice(0, 2) }, { trimWidth: 280, trimHeight: 210, bleed: 4 }).html), [100, 100]);
+});
+
+test("personajes (25 oct): cambiar el texto del prompt en un despliegue no invalida los retratos ya pintados", async () => {
+  const { store, bookId } = await paidHardcover();
+  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  await paintPages(store, bookId);
+  const before = await bookView(store, bookId);
+  assert.ok(before.ok && before.chosen.portraits.every((p) => p.job));
+  const style = getStyle(before.ficha.styleId)!;
+  const old = style.promptStyle;
+  try {
+    (style as { promptStyle: string }).promptStyle = `${old}, slightly different wording`;
+    const after = await bookView(store, bookId);
+    assert.ok(after.ok);
+    assert.deepEqual(after.chosen.portraits, before.chosen.portraits, "siguen siendo los mismos");
+    assert.equal(after.portraitsToRequest, false, "no hay que volver a pintarlos");
+  } finally {
+    (style as { promptStyle: string }).promptStyle = old;
+  }
 });

@@ -7,7 +7,7 @@ import { PDF_PAGE, pdfBookHtml, type PrintBookInput } from "./printHtml";
  * portada a sangre y, en cada escena, la ilustración a página completa a la izquierda y el texto a la derecha.
  * Sin filtros SVG, así que basta con page.pdf(): las ilustraciones van como JPEG y el texto queda seleccionable.
  *
- * - "full": portada, personajes, dedicatoria, 12 dobles, «Fin» y colofón.
+ * - "full": portada, personajes, dedicatoria, 12 dobles, «Fin» y la página de la marca.
  * - "free" (D3): lo mismo sin las 12 ilustraciones (PDF casero gratis).
  */
 export interface Book2PdfInput extends PrintBookInput {

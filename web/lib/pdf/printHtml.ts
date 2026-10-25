@@ -13,7 +13,7 @@ export const SITE_DOMAIN = "erasesuvez.com";
  * - "print": interior de la tapa dura (Gelato, ≈ 280×210 mm con 4 mm de sangre), 30 páginas (página 1 = derecha):
  *     1 portadilla · 2 «así son los personajes» · 3 dedicatoria · 4–27 las 12 escenas (ilustración en par, texto en
  *     impar) · 28 «Fin» · 29 marca y web · 30 en blanco (la imprenta puede poner ahí su código de montaje)
- * - "full": PDF ilustrado en A4 apaisado: portada, personajes, dedicatoria, 12 dobles, «Fin» y colofón (29). Con la
+ * - "full": PDF ilustrado en A4 apaisado: portada, personajes, dedicatoria, 12 dobles, «Fin» y la página de la marca (29). Con la
  *     portada sola, las dobles caen como en el libro (ilustración a la izquierda) en la vista de dos páginas.
  * - "free" (D3): PDF casero en A4 apaisado: portada, personajes (solo si ya hay retratos), dedicatoria, 12 páginas de
  *     texto, «Fin» y la marca.
@@ -141,7 +141,10 @@ body { background: ${PAPER}; color: ${INK}; font-family: Lora, Georgia, serif; }
   // retrato, el impreso y el PDF ilustrado usan la hoja (no pueden perder la página) y el gratis la quita.
   const ready = portraits.length > 0 && portraits.every((p) => p.url);
   if (ready) {
-    const side = portraits.length === 1 ? 120 : portraits.length === 2 ? 100 : 78;
+    // dentro del margen de seguridad (25 oct): con 3 personajes en el impreso, 78 mm se salían 9 mm por cada lado
+    const avail = W - 2 * (safe + 6);
+    const n = portraits.length;
+    const side = Math.min(n === 1 ? 120 : n === 2 ? 100 : 78, Math.floor((avail - (n - 1) * 12) / n));
     const who = portraits.map((p) => `<div class="who"><img src="${esc(p.url!)}" style="width:${side}mm;height:${side}mm"><div class="nm" style="max-width:${side}mm">${esc(p.name)}</div></div>`).join("");
     pages.push(`<section class="pg"><div class="center"><div class="label">Así son los personajes</div><div class="cast">${who}</div></div></section>`);
   } else if (kind !== "free") {

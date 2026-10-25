@@ -107,6 +107,9 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await page.getByTestId("pay").click();
   await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId("print-panel")).toHaveCount(0);
+  // el padre ve la página de personajes antes de descargar (25 oct)
+  await expect(page.getByTestId("cast-portraits")).toBeVisible();
+  await expect(page.getByTestId("portrait-1")).toHaveAttribute("data-state", /done|placeholder/);
 
   // la hoja aprobada es la versión 2 y no hay jobs repetidos
   const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
