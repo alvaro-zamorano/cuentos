@@ -20,6 +20,7 @@ import { purgeExpired, type PurgeDb } from "../../lib/purge";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { getStyle } from "../../lib/generation/styles";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -167,7 +168,8 @@ test("maqueta: 30 páginas interiores apaisadas (280×210 + sangre), ilustració
   assert.equal((inner.html.match(/<section class="pg/g) ?? []).length, 30);
   assert.equal((inner.html.match(/class="ill"/g) ?? []).length, 12, "una ilustración por escena");
   assert.match(inner.html, /size: 288mm 218mm/);
-  assert.match(inner.html, /octubre de 2026/);
+  assert.match(inner.html, /erasesuvez\.com/, "la última página lleva la web");
+  assert.doesNotMatch(inner.html, /octubre de 2026|inteligencia artificial/, "sin fecha ni explicación de cómo se hizo");
   assert.match(inner.html, /De parte de los abuelos/);
   // cada ilustración en una página par (izquierda) y su texto enfrente: portadilla 1, personajes 2, dedicatoria 3, escena 1 en la 4
   const sections = inner.html.split('<section class="pg').slice(1);
@@ -189,7 +191,7 @@ test("maqueta: 30 páginas interiores apaisadas (280×210 + sangre), ilustració
 test("PDF que se descarga: A4 apaisado con la maqueta del libro; el gratis sin las 12 ilustraciones", () => {
   const input = { plan, heroName: "Vera", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
   const full = pdfBookHtml(input, "full");
-  assert.equal(full.pages, 29, "portada, personajes, dedicatoria, 24, fin y colofón");
+  assert.equal(full.pages, 29, "portada, personajes, dedicatoria, 24, fin y la página de la marca");
   assert.match(full.html, /size: 297mm 210mm/);
   const sections = full.html.split('<section class="pg').slice(1);
   assert.match(sections[0], /cover\.jpg/, "la portada primero");
@@ -198,9 +200,14 @@ test("PDF que se descarga: A4 apaisado con la maqueta del libro; el gratis sin l
     if (sec.includes("https://img/p")) assert.equal(page % 2, 0, `ilustración en la página ${page}: a la izquierda con la portada sola`);
   });
   const free = pdfBookHtml(input, "free");
-  assert.equal(free.pages, 17);
+  assert.equal(free.pages, 16, "sin retratos (antes del pago) el gratis no lleva página de personajes");
   assert.doesNotMatch(free.html, /https:\/\/img\/p\d/, "sin las ilustraciones de pago");
   assert.match(free.html, /cover\.jpg/);
+  // última página (25 oct): solo la marca y la web; el libro no explica cómo se hizo
+  const last = sections[sections.length - 1];
+  assert.match(last, /Érase su vez/);
+  assert.match(last, /erasesuvez\.com/);
+  for (const html of [full.html, free.html]) assert.doesNotMatch(html, /inteligencia artificial|\bIA\b/i, "sin mencionar la IA dentro del libro");
 });
 
 test("maqueta: solo caracteres que tienen Lora y Figtree (en Vercel no hay fuentes del sistema; «✦» salía como un cuadradito)", () => {
@@ -389,4 +396,84 @@ test("borrado: un libro impreso sin mandar a la imprenta no se borra al caducar"
   assert.equal(r.keptForPrint, 1);
   assert.equal(r.scrubbedPaid, 1);
   assert.deepEqual(kept, ["borrado:books/b/x.jpg", "vaciado:b"]);
+});
+
+test("personajes (25 oct): tras el pago, un retrato por personaje con la hoja como referencia; sin pagar, ninguno", async () => {
+  const { store, bookId } = await paidHardcover();
+  const before = await bookView(store, bookId);
+  assert.ok(before.ok);
+  assert.ok(before.jobs.every((j) => j.kind !== "portrait"), "nunca antes del pago");
+  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  await paintPages(store, bookId);
+  const view = await bookView(store, bookId);
+  assert.ok(view.ok);
+  const portraits = view.jobs.filter((j) => j.kind === "portrait");
+  assert.ok(view.chosen.portraits.length >= 1);
+  assert.equal(portraits.length, view.chosen.portraits.length, "uno por personaje");
+  assert.ok(view.chosen.portraits.every((p) => p.job), "todos pintados");
+  assert.ok(portraits.every((j) => j.sheetJobId === view.chosen.sheet), "con la hoja aprobada como referencia");
+  assert.equal(view.chosen.portraits[0].name, ficha.hero.name);
+  // pedir otra vez no duplica
+  await paintPages(store, bookId);
+  const again = await bookView(store, bookId);
+  assert.ok(again.ok);
+  assert.equal(again.jobs.filter((j) => j.kind === "portrait").length, portraits.length);
+});
+
+test("personajes en la maqueta: retratos con su nombre debajo; sin retratos, la hoja (el gratis quita la página)", () => {
+  const base = { plan, heroName: "Vera", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
+  const portraits = [
+    { name: "Vera", url: "https://img/r1.jpg" },
+    { name: "Toby", url: "https://img/r2.jpg" },
+  ];
+  const full = pdfBookHtml({ ...base, portraits }, "full");
+  assert.equal(full.pages, 29);
+  assert.match(full.html, /r1\.jpg[^]*Vera[^]*r2\.jpg[^]*Toby/, "cada retrato con su nombre debajo, en orden");
+  assert.doesNotMatch(full.html, /sheet\.jpg/, "sin la hoja con todas las vistas");
+  const inner = printInteriorHtml({ ...base, portraits }, { trimWidth: 280, trimHeight: 210, bleed: 4 });
+  assert.equal(inner.pages, 30);
+  assert.doesNotMatch(inner.html, /sheet\.jpg/);
+  // falta un retrato: el impreso no pierde la página
+  const partial = printInteriorHtml({ ...base, portraits: [portraits[0], { name: "Toby", url: null }] }, { trimWidth: 280, trimHeight: 210, bleed: 4 });
+  assert.equal(partial.pages, 30);
+  assert.match(partial.html, /sheet\.jpg/);
+  const free = pdfBookHtml(base, "free");
+  assert.doesNotMatch(free.html, /sheet\.jpg|Así son los personajes/, "el gratis, sin hoja");
+  assert.equal(pdfBookHtml({ ...base, portraits }, "free").pages, 17);
+});
+
+test("personajes (25 oct): con tres retratos, la fila cabe dentro del margen de seguridad del impreso y del PDF", () => {
+  const base = { plan, heroName: "Vera", coverUrl: "https://img/cover.jpg", sheetUrl: "https://img/sheet.jpg", pageUrls: Object.fromEntries(plan.pages.map((p) => [p.n, `https://img/p${p.n}.jpg`])), date: new Date("2026-10-18T10:00:00Z") };
+  const portraits = ["Vera", "Toby", "La abuela Carmen"].map((name, i) => ({ name, url: `https://img/r${i + 1}.jpg` }));
+  const sizes = (html: string) => [...html.matchAll(/style="width:(\d+)mm;height:\1mm"/g)].map((m) => Number(m[1]));
+  // impreso 280×210 con 4 mm de sangre: 288 mm de ancho; margen de seguridad 18 mm + 6 de aire por lado
+  const inner = printInteriorHtml({ ...base, portraits }, { trimWidth: 280, trimHeight: 210, bleed: 4 });
+  const s = sizes(inner.html);
+  assert.equal(s.length, 3);
+  assert.ok(3 * s[0] + 2 * 12 <= 288 - 2 * (18 + 6), `fila de ${3 * s[0] + 24} mm`);
+  const full = pdfBookHtml({ ...base, portraits }, "full");
+  const f = sizes(full.html);
+  assert.equal(f.length, 3);
+  assert.ok(f[0] <= 78);
+  // con uno o dos, el tamaño de siempre
+  assert.deepEqual(sizes(printInteriorHtml({ ...base, portraits: portraits.slice(0, 2) }, { trimWidth: 280, trimHeight: 210, bleed: 4 }).html), [100, 100]);
+});
+
+test("personajes (25 oct): cambiar el texto del prompt en un despliegue no invalida los retratos ya pintados", async () => {
+  const { store, bookId } = await paidHardcover();
+  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  await paintPages(store, bookId);
+  const before = await bookView(store, bookId);
+  assert.ok(before.ok && before.chosen.portraits.every((p) => p.job));
+  const style = getStyle(before.ficha.styleId)!;
+  const old = style.promptStyle;
+  try {
+    (style as { promptStyle: string }).promptStyle = `${old}, slightly different wording`;
+    const after = await bookView(store, bookId);
+    assert.ok(after.ok);
+    assert.deepEqual(after.chosen.portraits, before.chosen.portraits, "siguen siendo los mismos");
+    assert.equal(after.portraitsToRequest, false, "no hay que volver a pintarlos");
+  } finally {
+    (style as { promptStyle: string }).promptStyle = old;
+  }
 });

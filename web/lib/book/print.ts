@@ -97,7 +97,7 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
     const url = (id: string | null) => (id ? byId.get(id)?.url ?? null : null);
     const pageUrls: Record<number, string | null> = {};
     for (let n = 1; n <= 12; n++) pageUrls[n] = url(view.chosen.pages[n]);
-    const input: PrintBookInput = { plan: view.plan, heroName: view.ficha.hero.name.trim(), from: view.ficha.from?.trim() || undefined, coverUrl: url(view.chosen.cover), sheetUrl: url(view.chosen.sheet), pageUrls, date: now };
+    const input: PrintBookInput = { plan: view.plan, heroName: view.ficha.hero.name.trim(), from: view.ficha.from?.trim() || undefined, coverUrl: url(view.chosen.cover), sheetUrl: url(view.chosen.sheet), portraits: view.chosen.portraits.map((p) => ({ name: p.name, url: url(p.job) })), pageUrls, date: now };
 
     let productUid = "dry-run";
     let size = DEFAULT_SIZE;
