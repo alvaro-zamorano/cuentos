@@ -264,7 +264,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 
 ## 5. Próxima sesión: empezar por
 
-- **Retratos de personajes (PR de `fix/libro-personajes-colofon`):** aplicar `docs/sql/cuentos_generation_jobs_portrait.sql` en Supabase (con el visto bueno de Álvaro). Sin aplicar, los retratos no se encolan y el libro sale con la hoja. Después, probar un libro pagado en la preview y mirar la página 2 del PDF ilustrado.
+- **Retratos de personajes (PR de `fix/libro-personajes-colofon`):** `docs/sql/cuentos_generation_jobs_portrait.sql` ya está aplicado en Supabase (25 oct, con el visto bueno de Álvaro). Falta unir el PR #41 y probar un libro pagado en la preview y mirar la página 2 del PDF ilustrado.
 - **Mejora a tapa dura (PR de `feat/mejora-tapa-dura`):** revisarla y unirla; probarla en la preview con la tarjeta de prueba de Stripe (PDF y después tapa dura) y mirar que el email de «listo» del PDF trae la oferta. Mirar en Gelato el envío a Baleares.
 
 1. Leer `INDICE.md` y este documento. No hace falta el historial del chat.
