@@ -243,7 +243,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
       )}
       {view.paid && !view.print && view.edition === "illustrated" && view.upgrade && !showBusy && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
 
-      {view.paid && view.chosen.portraits.length > 0 && <CastPortraits view={view} />}
+      {view.paid && view.chosen.portraits.length > 0 && (!locked || view.chosen.portraits.every((p) => p.job)) && <CastPortraits view={view} />}
 
       {view.paid ? (
         <ol className="m-0 grid list-none gap-8 p-0">

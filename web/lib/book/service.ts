@@ -888,9 +888,11 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
   });
   const order = await store.getOrder(book.id);
   const feedback = await store.listFeedback(book.id).catch(() => []);
+  // ya enviado a la imprenta, el libro no cambia: no se piden retratos que no van a ir en él
   const portraitsToRequest =
     !!order &&
     !!sheet &&
+    !(order.printStatus && LOCKED_PRINT_STATUSES.includes(order.printStatus)) &&
     (d.castArt?.cast ?? []).some((_, i) => {
       const cur = currentPortraitJobs(jobs, d, i, sheet.id);
       if (cur.some((j) => j.status !== "failed")) return false;
