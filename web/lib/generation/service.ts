@@ -376,7 +376,17 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
   if (!lead) return finish(store, job, "failed", "lead sin email");
   const v2 = v2Of(job);
   const gate = await gateSpend(store.db, { leadId: lead, images: 1, provider: adapter.name, paid: job.paid, size: v2?.size });
-  if (!gate.ok) return job.paid ? fail(429, "budget", gate.reason) : finish(store, job, "failed", `presupuesto: ${gate.reason}`);
+  if (!gate.ok) {
+    if (job.paid) return fail(429, "budget", gate.reason);
+    // 26 oct (Álvaro): si ya hay una imagen pintada que el control de calidad mandó repetir y no queda presupuesto para
+    // repetirla, se queda esa. No se tira una imagen ya pagada ni se deja el libro sin portada
+    const kept = qcFallback(job);
+    if (kept) {
+      await store.updateJob(job.id, { status: "done", chosen: kept, storage_path: kept, error: `qc sin repetir: ${gate.reason}`.slice(0, 300) });
+      return { ok: true, job: (await store.getJob(job.id)) ?? job, ran: false };
+    }
+    return finish(store, job, "failed", `presupuesto: ${gate.reason}`);
+  }
   if (job.paid && gate.cents > 0) {
     const spent = (await store.listJobs(book.id)).reduce((a, j) => a + (j.cost_cents ?? 0), 0);
     if (spent + gate.cents > perBookCap()) return finish(store, job, "failed", `tope de coste por libro (${perBookCap()} c) alcanzado`);
@@ -443,6 +453,17 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
   }
   const after = await store.getJob(job.id);
   return { ok: true, job: after ?? job, ran: true };
+}
+
+/** La última imagen ya pintada de un job (la que el control de calidad mandó repetir), o null si no hay ninguna. */
+export function qcFallback(job: Pick<GenJob, "candidates">): string | null {
+  const list = Array.isArray(job.candidates) ? (job.candidates as unknown as (Candidate | string)[]) : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const c = list[i];
+    const path = typeof c === "string" ? c : c?.path;
+    if (typeof path === "string" && path && !path.startsWith("dry-run")) return path;
+  }
+  return null;
 }
 
 async function finish(store: GenStore, job: GenJob, status: "failed", error: string): Promise<RunResult> {
