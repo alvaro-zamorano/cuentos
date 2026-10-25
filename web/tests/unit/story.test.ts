@@ -10,7 +10,7 @@ import { composeMockStory } from "../../lib/story/mock";
 import { selectProvider } from "../../lib/story/provider";
 import { generateStory } from "../../lib/story/generate";
 import { promptFor, storyInputFromDraft } from "../../lib/story/spec";
-import { extractJson, validateStory, type StoryOutput } from "../../lib/story/validate";
+import { disallowedNames, extractJson, validateStory, type StoryOutput } from "../../lib/story/validate";
 import type { Draft } from "../../lib/types";
 
 const TWO = ["Le encantan los trenes de mercancías", "Siempre dice «otra vez» cuando algo le gusta"];
@@ -129,6 +129,15 @@ test("validador rechaza un nombre no permitido", () => {
   out.pages[6].text = out.pages[6].text.replace("Por la tarde fueron todos", "Por la tarde fueron con Martina");
   const v = validateStory(out, input);
   assert.ok(v.issues.some((i) => /Página 7: nombres no permitidos \(Martina\)/.test(i)), v.issues.join("\n"));
+});
+
+test("validador: la mayúscula tras un diálogo cerrado con ? o ! es inicio de frase, no un nombre", () => {
+  const allowed = new Set<string>(["leo"]);
+  assert.deepEqual(disallowedNames("Leo le dice: «¿Juegas con nosotros?» El niño sale corriendo.", allowed), []);
+  assert.deepEqual(disallowedNames("Al final dice: «¡Otra vez!» Y cantan de nuevo.", allowed), []);
+  assert.deepEqual(disallowedNames("Dice: “¿Vienes?” Luego se ríen.", allowed), []);
+  // sin puntuación antes del cierre sigue sin ser inicio de frase
+  assert.deepEqual(disallowedNames("La tarjeta dice «para después» Martina sonríe.", allowed), ["Martina"]);
 });
 
 test("validador rechaza longitudes fuera de rango", () => {
