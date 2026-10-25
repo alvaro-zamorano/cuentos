@@ -27,6 +27,8 @@ export interface Book3DData {
   coverUrl?: string | null;
   sheetUrl?: string | null;
   sheetKey?: string | null;
+  /** Retratos de la página de personajes (25 oct): si están todos, van en vez de la hoja, como en el libro impreso. */
+  portraits?: { name: string; url: string | null; key: string | null }[];
   pages: Book3DPage[];
   /** Páginas sin pintar todavía porque falta el pago: llevan la etiqueta «Al pagar». */
   locked?: boolean;
@@ -108,6 +110,17 @@ export async function createBook3D(opts: {
 }): Promise<Book3DHandle> {
   const { canvas, data, fonts, reduceMotion } = opts;
   const P = data.pages.length;
+  // memoria de vídeo (25 oct): en pantallas pequeñas las caras se pintan a 0,6 (768×576 en vez de 1280×960)
+  const SMALL = Math.min(window.innerWidth, window.innerHeight) < 700;
+  const TEX_SCALE = SMALL ? 0.6 : 1;
+  const newFaceCanvas = () => {
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(TEX_W * TEX_SCALE);
+    cv.height = Math.round(TEX_H * TEX_SCALE);
+    const x = cv.getContext("2d")!;
+    x.scale(TEX_SCALE, TEX_SCALE);
+    return { cv, x };
+  };
 
   /* ---------- hojas ---------- */
   const LEAVES: [Face, Face][] = [[{ k: "titulo" }, { k: "hoja" }], [{ k: "dedicatoria" }, { k: "ilus", n: 1 }]];
@@ -119,14 +132,22 @@ export async function createBook3D(opts: {
 
   /* ---------- imágenes ---------- */
   const pics = new Map<string, HTMLImageElement>();
-  const wanted: [string, string | null | undefined][] = [["cover", data.coverUrl], ["sheet", data.sheetUrl], ...data.pages.map((p) => [`p${p.n}`, p.imageUrl] as [string, string | null | undefined])];
-  // la portada primero: es lo que se ve al cargar; el resto llega por detrás
+  // la portada primero: es lo que se ve al cargar. El resto, bajo demanda (25 oct): cuando se pinta la cara que la usa
   const coverImg = data.coverUrl ? await loadImage(data.coverUrl) : null;
   if (coverImg) pics.set("cover", coverImg);
-  for (const [key, url] of wanted) {
-    if (key === "cover" || !url) continue;
+  const urlOf = (key: string): string | null | undefined => {
+    if (key === "sheet") return data.sheetUrl;
+    if (key.startsWith("r")) return data.portraits?.[Number(key.slice(1)) - 1]?.url;
+    if (key.startsWith("p")) return data.pages.find((p) => p.n === Number(key.slice(1)))?.imageUrl;
+    return null;
+  };
+  const asked = new Map<string, string>(); // clave → URL pedida
+  function fetchPic(key: string) {
+    const url = urlOf(key);
+    if (!url || asked.get(key) === url || pics.has(key)) return;
+    asked.set(key, url);
     void loadImage(url).then((img) => {
-      if (!img || disposed) return;
+      if (!img || disposed || asked.get(key) !== url) return;
       pics.set(key, img);
       refreshFacesUsing(key);
     });
@@ -240,13 +261,14 @@ export async function createBook3D(opts: {
   };
 
   const facesUsing = new Map<string, Set<number>>(); // imagen → hojas que la usan
-  const faceImageKey = (f: Face) => (f.k === "ilus" ? `p${f.n}` : f.k === "hoja" ? "sheet" : null);
+  const portraitKeys = () => (data.portraits ?? []).map((_, i) => `r${i + 1}`);
+  const faceImageKeys = (f: Face): string[] => (f.k === "ilus" ? [`p${f.n}`] : f.k === "hoja" ? ["sheet", ...portraitKeys()] : []);
+  /** Pide las imágenes que necesita una cara (una vez). */
+  const want = (f: Face) => faceImageKeys(f).forEach(fetchPic);
 
   function drawFace(face: Face, side: "left" | "right"): HTMLCanvasElement {
-    const cv = document.createElement("canvas");
-    cv.width = TEX_W;
-    cv.height = TEX_H;
-    const x = cv.getContext("2d")!;
+    const { cv, x } = newFaceCanvas();
+    want(face);
     const cx = TEX_W / 2;
     switch (face.k) {
       case "ilus": {
@@ -348,6 +370,29 @@ export async function createBook3D(opts: {
         x.fillStyle = C.inkSoft;
         x.font = hand(42);
         x.fillText(`Así ${data.pages.length ? "son" : "es"} en el libro`, cx, 112);
+        // con todos los retratos pintados, como en el impreso: uno por personaje con su nombre debajo
+        const rs = (data.portraits ?? []).map((p, i) => ({ name: p.name, img: pics.get(`r${i + 1}`) }));
+        if (rs.length > 0 && rs.every((r) => r.img) && (data.portraits ?? []).every((p) => p.url)) {
+          const n = rs.length;
+          const gapPx = 48;
+          const sz = Math.min(n === 1 ? 560 : n === 2 ? 440 : 340, (TEX_W * 0.86 - (n - 1) * gapPx) / n);
+          const top = 190;
+          let left = cx - (n * sz + (n - 1) * gapPx) / 2;
+          for (const r of rs) {
+            const im = r.img!;
+            const k = Math.min(sz / im.width, sz / im.height);
+            x.save();
+            x.globalCompositeOperation = "multiply";
+            x.drawImage(im, left + (sz - im.width * k) / 2, top + (sz - im.height * k) / 2, im.width * k, im.height * k);
+            x.restore();
+            x.fillStyle = C.ink;
+            x.font = serif(600, 46);
+            x.fillText(r.name, left + sz / 2, top + sz + 64, sz);
+            left += sz + gapPx;
+          }
+          gutter(x, side);
+          break;
+        }
         const img = pics.get("sheet");
         const w = TEX_W * 0.78;
         const h = img ? (w * img.height) / img.width : w / 1.5;
@@ -391,10 +436,7 @@ export async function createBook3D(opts: {
   }
 
   function drawEndpaper(seed: number) {
-    const cv = document.createElement("canvas");
-    cv.width = TEX_W;
-    cv.height = TEX_H;
-    const x = cv.getContext("2d")!;
+    const { cv, x } = newFaceCanvas();
     x.fillStyle = C.night;
     x.fillRect(0, 0, TEX_W, TEX_H);
     let s = seed;
@@ -496,7 +538,7 @@ export async function createBook3D(opts: {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  const maxAniso = Math.min(SMALL ? 4 : 16, renderer.capabilities.getMaxAnisotropy());
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 40);
@@ -634,10 +676,7 @@ export async function createBook3D(opts: {
     pivot.add(front, back);
     book.add(pivot);
     leaves.push({ i, geo, front, back, pivot, tex: null, flatAt: null });
-    for (const f of LEAVES[i]) {
-      const k = faceImageKey(f);
-      if (k) facesUsing.set(k, (facesUsing.get(k) ?? new Set()).add(i));
-    }
+    for (const f of LEAVES[i]) for (const k of faceImageKeys(f)) facesUsing.set(k, (facesUsing.get(k) ?? new Set()).add(i));
   }
 
   const items = Array.from({ length: ITEMS }, () => ({ p: 0, target: 0, dir: 1 }));
@@ -962,20 +1001,30 @@ export async function createBook3D(opts: {
         data.locked = next.locked;
         LEAVES.forEach((_, i) => dirty.add(i));
       }
-      const reload = (key: string, url: string | null | undefined) => {
+      // la URL nueva ya está en `data` cuando se llama: se pide al volver a pintar la cara (o ahora, si está cargada)
+      const reload = (key: string) => {
         pics.delete(key);
+        asked.delete(key);
         for (const i of facesUsing.get(key) ?? []) dirty.add(i);
-        if (url)
-          void loadImage(url).then((img) => {
-            if (!img || disposed) return;
-            pics.set(key, img);
-            refreshFacesUsing(key);
-          });
       };
+      const pk = (d: Book3DData) => JSON.stringify((d.portraits ?? []).map((p) => [p.name, p.key]));
+      if (pk(next) !== pk(data)) {
+        if ((next.portraits ?? []).length !== (data.portraits ?? []).length) return false;
+        (next.portraits ?? []).forEach((np, i) => {
+          const cur = data.portraits![i];
+          cur.name = np.name;
+          if (np.key !== cur.key) {
+            cur.key = np.key;
+            cur.url = np.url;
+            reload(`r${i + 1}`);
+          }
+        });
+        leavesWith((f) => f.k === "hoja");
+      }
       if ((next.sheetKey ?? null) !== (data.sheetKey ?? null)) {
         data.sheetKey = next.sheetKey;
         data.sheetUrl = next.sheetUrl;
-        reload("sheet", next.sheetUrl);
+        reload("sheet");
       }
       next.pages.forEach((np, i) => {
         const cur = data.pages[i];
@@ -987,7 +1036,7 @@ export async function createBook3D(opts: {
         if ((np.imageKey ?? null) !== (cur.imageKey ?? null)) {
           cur.imageKey = np.imageKey;
           cur.imageUrl = np.imageUrl;
-          reload(`p${cur.n}`, np.imageUrl);
+          reload(`p${cur.n}`);
         }
       });
       for (const i of dirty) freeLeafTex(leaves[i]);
