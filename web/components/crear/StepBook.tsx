@@ -20,11 +20,13 @@ import { ErrorNote, Status } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isPage = (j: BookJobView) => j.kind === "page";
+/** Lo que el navegador ayuda a pintar tras el pago: las páginas y los retratos de la página de personajes. */
+const isPaid = (j: BookJobView) => j.kind === "page" || j.kind === "portrait";
 const inFlight = (j: BookJobView) => j.status === "pending" || j.status === "running";
 
 /** Alguna página no tiene una ilustración de su escena actual hecha o en marcha: hay que pedirla. */
 function needsRequest(v: BookView): boolean {
-  return v.plan.pages.some((p) => !v.jobs.some((j) => isPage(j) && j.page === p.n && j.current && j.status !== "failed"));
+  return v.plan.pages.some((p) => !v.jobs.some((j) => isPage(j) && j.page === p.n && j.current && j.status !== "failed")) || (v.paid && v.portraitsToRequest);
 }
 
 function paintingCopy(v: BookView | null): string {
@@ -60,7 +62,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
   const drive = useCallback(
     async (label?: string) => {
       const v = await refresh();
-      const ids = (v?.jobs ?? []).filter((j) => isPage(j) && inFlight(j)).map((j) => j.id);
+      const ids = (v?.jobs ?? []).filter((j) => isPaid(j) && inFlight(j)).map((j) => j.id);
       if (ids.length === 0) return;
       setBusy(label ?? paintingCopy(v));
       const outcomes: JobOutcome[] = [];
@@ -150,7 +152,8 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
   const { plan } = view;
   const byId = new Map(view.jobs.map((j) => [j.id, j]));
   const cover = view.chosen.cover ? byId.get(view.chosen.cover) : undefined;
-  const allDone = Object.values(view.chosen.pages).every(Boolean);
+  // el libro está listo cuando lo están las 12 páginas y no queda ningún retrato pintándose (si falla, va la hoja)
+  const allDone = Object.values(view.chosen.pages).every(Boolean) && !view.jobs.some((j) => j.kind === "portrait" && j.current && inFlight(j));
   const pagesDone = Object.values(view.chosen.pages).filter(Boolean).length;
   const name = view.ficha.hero.name.trim();
 
@@ -214,6 +217,8 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
         <PrintPanel view={view} allDone={allDone} onSend={sendToPrint} onShipping={(shipping) => setView({ ...view, print: { ...view.print!, shipping } })} />
       )}
       {view.paid && !view.print && view.edition === "illustrated" && view.upgrade && !showBusy && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
+
+      {view.paid && view.chosen.portraits.length > 0 && <CastPortraits view={view} />}
 
       {view.paid ? (
         <ol className="m-0 grid list-none gap-8 p-0">
@@ -631,4 +636,31 @@ function trackPaid(bookId: string, edicion: string) {
     /* sin almacenamiento: se manda igual */
   }
   track({ name: "pago_confirmado", props: { edicion } });
+}
+
+/**
+ * Página «así son los personajes» del libro (25 oct): el padre ve los retratos antes de descargar o mandar a imprimir.
+ * Si alguno no ha salido, el libro usa la hoja de personajes (lo dice aquí).
+ */
+function CastPortraits({ view }: { view: BookView }) {
+  const byKey = new Map(view.jobs.filter((j) => j.kind === "portrait" && j.current).map((j) => [j.page, j]));
+  const chosen = new Map(view.jobs.map((j) => [j.id, j]));
+  const all = view.chosen.portraits.every((p) => p.job);
+  const failed = view.chosen.portraits.some((p, i) => !p.job && byKey.get(i + 1)?.status === "failed" && !view.portraitsToRequest);
+  return (
+    <section className="grid gap-3" aria-label="Página de personajes" data-testid="cast-portraits">
+      <h3 className="display text-[22px]">Así son los personajes</h3>
+      <p className="m-0 text-sm text-ink-soft">
+        {failed ? "Algún retrato no ha salido: en el libro irá la hoja de personajes en esta página." : all ? "Esta página va al principio del libro." : "Se están pintando los retratos de esta página."}
+      </p>
+      <ul className="m-0 grid list-none grid-cols-2 gap-4 p-0 sm:grid-cols-3">
+        {view.chosen.portraits.map((p, i) => (
+          <li key={i} className="grid gap-1.5 text-center">
+            <BookImage job={p.job ? chosen.get(p.job) : byKey.get(i + 1)} alt={`Retrato de ${p.name}`} testId={`portrait-${i + 1}`} box="relative aspect-square w-full overflow-hidden rounded-[18px] bg-paper-deep" />
+            <span className="font-display text-[17px]">{p.name}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }

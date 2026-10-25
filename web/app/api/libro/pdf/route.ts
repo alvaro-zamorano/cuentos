@@ -32,7 +32,8 @@ export async function GET(req: Request) {
   }
   try {
     const sheetUrl = view.chosen.sheet ? byId.get(view.chosen.sheet)?.url ?? null : null;
-    const pdf = await renderBook2Pdf({ plan: view.plan, heroName: view.ficha.hero.name.trim(), from: view.ficha.from?.trim() || undefined, coverUrl, sheetUrl, pageUrls, date: new Date(), kind });
+    const portraits = view.chosen.portraits.map((p) => ({ name: p.name, url: p.job ? byId.get(p.job)?.url ?? null : null }));
+    const pdf = await renderBook2Pdf({ plan: view.plan, heroName: view.ficha.hero.name.trim(), from: view.ficha.from?.trim() || undefined, coverUrl, sheetUrl, portraits, pageUrls, date: new Date(), kind });
     const slug = view.ficha.hero.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "libro";
     return new Response(Buffer.from(pdf), {
       headers: {
