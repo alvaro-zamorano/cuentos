@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Figtree, Lora, Patrick_Hand } from "next/font/google";
 import { CookieConsent } from "@/components/CookieConsent";
 import { Footer } from "@/components/Footer";
+import { POSTHOG_ENABLED } from "@/lib/analytics";
 import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -23,15 +24,12 @@ export const metadata: Metadata = {
     "Un cuento personalizado con tu hijo o tu hija como protagonista: su nombre, cómo es y quién le acompaña. Un regalo para leer juntos e imprimir en casa.",
 };
 
-/** Microsoft Clarity: solo si NEXT_PUBLIC_CLARITY_ID existe en el entorno del build (nunca en el repo) y tras consentimiento (CookieConsent). */
-const CLARITY_ID = process.env.NEXT_PUBLIC_CLARITY_ID;
-const CLARITY_ID_OK = !!CLARITY_ID && /^[a-z0-9]{6,20}$/i.test(CLARITY_ID);
-
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className={`${serif.variable} ${ui.variable} ${hand.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
-        <CookieConsent clarityId={CLARITY_ID_OK ? CLARITY_ID! : null} />
+        {/* medición con PostHog solo tras consentimiento (lib/analytics.ts) */}
+        <CookieConsent enabled={POSTHOG_ENABLED} />
         <div className="flex flex-1 flex-col">{children}</div>
         <Footer />
       </body>

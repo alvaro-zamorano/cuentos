@@ -304,6 +304,7 @@ export type Database = {
           edition: string
           id: string
           print_error: string | null
+          print_info: Json | null
           print_order_id: string | null
           print_reminded_at: string | null
           print_sent_at: string | null
@@ -323,6 +324,7 @@ export type Database = {
           edition: string
           id?: string
           print_error?: string | null
+          print_info?: Json | null
           print_order_id?: string | null
           print_reminded_at?: string | null
           print_sent_at?: string | null
@@ -342,6 +344,7 @@ export type Database = {
           edition?: string
           id?: string
           print_error?: string | null
+          print_info?: Json | null
           print_order_id?: string | null
           print_reminded_at?: string | null
           print_sent_at?: string | null

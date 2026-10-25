@@ -85,10 +85,18 @@ function heroChildWord(f: Ficha): string {
   return f.hero.gender === "nina" ? "girl" : f.hero.gender === "nino" ? "boy" : "child";
 }
 
+/**
+ * Abuelos (24 oct, Álvaro): quien compra suele ser el propio abuelo y no quiere verse como alguien muy mayor. Sin
+ * descripción (o con una parcial), se dibujan activos y de unos 60 años; si el adulto los describe mayores, se respeta.
+ */
+export const GRANDPARENT_RULE =
+  "Grandparents (abuela, abuelo, yaya, yayo, nana and the like): fill in whatever the Spanish does not say as an active person of about 60 with a modern everyday look (jeans or chinos, trainers, a jumper or shirt; grey hair is fine). Never make them frail or stereotypically very old (no hair buns, shawls, aprons, walking sticks, hunched backs or deep wrinkles) unless the Spanish asks for it. If the Spanish describes them older, follow it exactly.";
+
 const ART_SYSTEM = [
   "You are the art director of a children's picture book. You turn Spanish descriptions into concise, concrete English visual descriptions for an image model.",
   "Invented creatures must look original: never like a famous film or cartoon character (a small green creature with big pointed ears reads as a famous one: change colour, ears or shape).",
   "Rules: keep every concrete visual detail from the Spanish (colours, hairstyles, clothes, marks like freckles or a missing tooth); add only neutral filler needed to make it drawable; never add new story elements.",
+  GRANDPARENT_RULE,
   "Never write numbers that force counting (write 'some candles', not 'five candles'). Never ask for text, letters or signs in the image.",
   "No brands, no copyrighted characters, no real famous people.",
   "Answer with one valid JSON object only, no markdown.",

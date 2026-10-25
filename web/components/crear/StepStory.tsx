@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fichaHash, normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, Plan, PlanPage, PlanRecord } from "@/lib/plan/types";
+import { track } from "@/lib/analytics";
 import { postJson } from "@/lib/bookClient";
 import { Icon, Sparkle } from "@/components/brand";
 import { AutoTextarea } from "./AutoTextarea";
@@ -51,7 +52,9 @@ export function StepStory({
       if (status === 200 && json.record) {
         onRecord(json.record);
         setState("idle");
+        track({ name: "cuento_escrito", props: { segundos: Math.round((Date.now() - t0) / 1000) } });
       } else {
+        track({ name: "cuento_error", props: { estado: status } });
         setError(json.message ?? "No hemos podido escribir el cuento. Inténtalo de nuevo.");
         setState("error");
       }

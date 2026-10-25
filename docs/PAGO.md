@@ -14,6 +14,15 @@ Código: `web/lib/stripe.ts`, `web/lib/mail.ts`, `web/lib/book/background.ts`, `
    - si no, «muy pronto».
 6. **Límite.** El segundo plano para a los ≈ 225 s para no dejar jobs a medias cuando Vercel corta a los 300 s. Lo que falte se pinta cuando el padre vuelve con su enlace, y en ese caso el email de «listo» no sale (E13).
 
+## Pasar a tapa dura (24 oct)
+
+Quien compró el PDF puede pedir el libro de tapa dura pagando la diferencia (`UPGRADE_CENTS`, 20,00 €). La tarjeta sale en el paso 5 si hay imprenta y pago, hasta un día antes de que caduque el libro.
+
+1. `/api/libro/checkout` con `upgrade: true`, la dirección y la casilla. `prepareUpgrade` pide un pedido PDF pagado y ninguno de tapa dura. Stripe lleva `metadata.upgrade=1` y vuelve a `/crear?b=…&pagado=1&mejora=1`, que espera a que el libro sea de tapa dura.
+2. El webhook crea un segundo pedido `hardcover` en `awaiting_approval` (idempotente por sesión). No repinta nada.
+3. Si no lo puede registrar, avisa a `MAIL_FORWARD_TO` para devolver el cobro a mano.
+4. Pago de prueba: `/api/libro/pay` con `upgrade: true`.
+
 ## Comprobado
 
 | Prueba | Resultado |
