@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Condiciones" };
 export default function Condiciones() {
   const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="20 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="25 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
         {holderLine(t)}, <ContactEmail value={t.email} />. Datos completos en el{" "}
