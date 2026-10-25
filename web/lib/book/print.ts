@@ -128,8 +128,9 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
       if ("error" in r) return await failWith(r.error);
       printOrderId = r.id;
     }
-    const info: PrintInfo = { ...(order.info ?? {}), steps: { ...(order.info?.steps ?? {}), sent: now.toISOString() } };
-    await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null, info });
+    // un reintento tras «failed» es un pedido nuevo en la imprenta: nada del anterior (hitos, seguimiento, entrega)
+    const info: PrintInfo = { steps: { sent: now.toISOString() } };
+    await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null, trackingUrl: null, info });
     await deps.mail.sentToPrint(book.email, d.plan.title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false }));
     console.log(`[imprenta] ${book.public_id} → ${printOrderId} (${deps.mode}, ${deps.orderType}, ${pdf.length} bytes)`);
     return { ok: true, printOrderId };
@@ -168,9 +169,10 @@ export async function refreshPrint(store: GenStore, order: PaidOrder, deps: Prin
   if (status === "failed") patch.printError = `imprenta: ${g.status}`;
   const info = mergeInfo(order.info, g, patch.printStatus ?? null, now);
   if (info) patch.info = info;
-  const tracking = patch.trackingUrl ?? order.trackingUrl ?? (info ?? order.info)?.trackingCode ?? null;
+  // el email de «va de camino» lleva a nuestra página, que ya cuenta el envío: no espera al número del transportista
+  // (el envío económico puede no traerlo)
   const nowShipped = (patch.printStatus ?? order.printStatus) === "shipped" || (patch.printStatus ?? order.printStatus) === "delivered";
-  if (nowShipped && tracking && !order.shippedMailedAt) {
+  if (nowShipped && !order.shippedMailedAt) {
     const book = await store.getBookById(order.bookId);
     const d = book ? draftV2(book) : null;
     if (book?.email) {
@@ -251,7 +253,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface TrackingView {
   ok: true;
   title: string;
-  heroName: string;
   status: PrintStatus;
   city: string | null;
   paidAt: string;
@@ -271,21 +272,29 @@ export async function trackingView(store: GenStore, orderId: unknown, deps?: Pri
   let order = await store.getOrderById(orderId);
   if (!order || order.edition !== "hardcover" || !order.printStatus) return fail(404, "not_found");
   const open = order.printStatus === "sent" || order.printStatus === "in_production" || order.printStatus === "shipped";
-  const last = Date.parse(order.updatedAt ?? order.sentAt ?? order.createdAt);
+  // la última vez que se preguntó a la imprenta (25 oct): `checkedAt` se apunta aunque no cambie nada, para no llamar a
+  // Gelato en cada visita mientras el pedido está días en el mismo estado
+  const checked = Date.parse(order.info?.checkedAt ?? "");
+  const last = Number.isFinite(checked) ? checked : Date.parse(order.sentAt ?? order.createdAt);
   const now = deps?.now?.() ?? new Date();
   if (deps && open && !(now.getTime() - last < REFRESH_AFTER_MS)) {
     const r = await refreshPrint(store, order, deps).catch(() => "skipped" as const);
-    if (r === "updated") order = (await store.getOrderById(orderId)) ?? order;
+    if (r !== "skipped") {
+      const fresh = (await store.getOrderById(orderId)) ?? order;
+      const info: PrintInfo = { ...(fresh.info ?? {}), checkedAt: now.toISOString() };
+      await store.updateOrder(orderId, { info }).catch(() => null);
+      order = { ...fresh, info };
+    }
   }
   const book = await store.getBookById(order.bookId);
-  const d = book ? draftV2(book) : null;
-  if (!book || !d) return fail(404, "not_found");
-  const view = await bookView(store, book.public_id).catch(() => null);
+  if (!book) return fail(404, "not_found");
+  // a los 30 días el borrado vacía el libro aunque el paquete siga de camino: la página sigue, sin título ni portada
+  const d = draftV2(book);
+  const view = d ? await bookView(store, book.public_id).catch(() => null) : null;
   const coverUrl = view && view.ok && view.chosen.cover ? (view.jobs.find((j) => j.id === view.chosen.cover)?.url ?? null) : null;
   return {
     ok: true,
-    title: d.plan.title,
-    heroName: d.ficha.hero.name.trim(),
+    title: d?.plan.title ?? "Tu libro",
     status: order.printStatus ?? "sent",
     city: order.shipping?.city ?? null,
     paidAt: order.createdAt,

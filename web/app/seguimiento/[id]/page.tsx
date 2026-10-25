@@ -24,7 +24,6 @@ export const metadata: Metadata = {
 const EXAMPLE: TrackingView = {
   ok: true,
   title: "Olivia y su familia",
-  heroName: "Olivia",
   status: "shipped",
   city: "Madrid",
   paidAt: "2026-10-24T14:40:46Z",

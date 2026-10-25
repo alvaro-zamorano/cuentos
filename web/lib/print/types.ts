@@ -45,6 +45,8 @@ export interface PrintInfo {
   etaTo?: string | null;
   trackingCode?: string | null;
   steps?: Partial<Record<PrintStep, string>>;
+  /** Última vez que se preguntó a la imprenta desde la página de seguimiento (aunque no cambiara nada). */
+  checkedAt?: string | null;
 }
 
 export interface PaidOrder {

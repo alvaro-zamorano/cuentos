@@ -183,3 +183,63 @@ test("página: id raro o pedido que no es de tapa dura, 404", async () => {
     assert.ok(!r.ok && r.status === 404, String(id));
   }
 });
+
+test("página (25 oct): sin cambios en la imprenta, no se le vuelve a preguntar hasta media hora después", async () => {
+  // fechas lejos del reloj real a propósito: la pausa no puede depender de la hora a la que corre el test
+  const t0 = new Date("2031-03-02T10:00:00Z");
+  const { store, orderId, deps, setNow } = await sentBook(t0);
+  let calls = 0;
+  const getOrder = deps.getOrder;
+  deps.getOrder = async (id) => (calls++, getOrder(id));
+  setNow(new Date("2031-03-02T11:00:00Z"));
+  assert.ok((await trackingView(store, orderId, deps)).ok);
+  assert.equal(calls, 1, "pasada media hora desde el envío: se pregunta");
+  setNow(new Date("2031-03-02T11:10:00Z"));
+  assert.ok((await trackingView(store, orderId, deps)).ok);
+  assert.ok((await trackingView(store, orderId, deps)).ok);
+  assert.equal(calls, 1, "Gelato no cambió nada, pero ya se le preguntó hace diez minutos");
+  setNow(new Date("2031-03-02T11:45:00Z"));
+  assert.ok((await trackingView(store, orderId, deps)).ok);
+  assert.equal(calls, 2);
+});
+
+test("página (25 oct): el borrado vacía el libro con el paquete en camino y la página sigue, sin título ni portada", async () => {
+  const t0 = new Date("2031-03-02T10:00:00Z");
+  const { store, bookId, orderId, deps, setGelato, setNow } = await sentBook(t0);
+  setGelato({ status: "shipped", trackingCode: "PQ4B7C0012345670128001X" });
+  setNow(new Date("2031-03-03T10:00:00Z"));
+  await store.saveBook({ publicId: bookId, email, draft: {}, edition: "hardcover" });
+  const v = await trackingView(store, orderId, deps);
+  assert.ok(v.ok, JSON.stringify(v));
+  assert.equal(v.title, "Tu libro");
+  assert.equal(v.coverUrl, null);
+  assert.equal(v.status, "shipped");
+  assert.equal(v.city, "Madrid");
+});
+
+test("envío sin número de seguimiento (25 oct): el email de «va de camino» sale igual, con nuestra página", async () => {
+  const { store, orderId, deps, mails, setGelato, setNow } = await sentBook(new Date("2031-03-02T10:00:00Z"));
+  setGelato({ status: "shipped", trackingCode: null, trackingUrl: null });
+  setNow(new Date("2031-03-04T10:00:00Z"));
+  assert.equal(await refreshPrint(store, (await store.getOrderById(orderId))!, deps), "updated");
+  assert.deepEqual(mails.filter((m) => m.startsWith("enviado")), [`enviado|${email}|https://www.erasesuvez.com/seguimiento/${orderId}`]);
+});
+
+test("reintento tras «failed» (25 oct): el pedido nuevo no arrastra hitos ni seguimiento del anterior", async () => {
+  const { store, bookId, orderId, deps, setGelato, setNow } = await sentBook(new Date("2031-03-02T10:00:00Z"));
+  setGelato({ status: "printed", etaFrom: "2031-03-06", etaTo: "2031-03-08", trackingUrl: "https://s.correos.es/viejo" });
+  setNow(new Date("2031-03-02T12:00:00Z"));
+  await refreshPrint(store, (await store.getOrderById(orderId))!, deps);
+  setGelato({ status: "failed" });
+  setNow(new Date("2031-03-02T13:00:00Z"));
+  await refreshPrint(store, (await store.getOrderById(orderId))!, deps);
+  assert.equal((await store.getOrderById(orderId))!.printStatus, "failed");
+  setNow(new Date("2031-03-02T14:00:00Z"));
+  const again = await startPrint(store, bookId, "gelato");
+  assert.ok(again.ok && again.orderId === orderId, JSON.stringify(again));
+  const done = await completePrint(store, orderId, deps);
+  assert.ok(done.ok, JSON.stringify(done));
+  const o = (await store.getOrderById(orderId))!;
+  assert.deepEqual(o.info, { steps: { sent: "2031-03-02T14:00:00.000Z" } });
+  assert.equal(o.trackingUrl, null);
+});
