@@ -19,7 +19,7 @@ export default function Condiciones() {
       <ul>
         <li>
           <strong>Gratis</strong>: el cuento escrito, la hoja de personajes y la portada ilustrada, y un PDF para imprimir en casa con la portada y
-          el texto. La hoja y la portada se pintan cuando nos das tu email.
+          el texto.
         </li>
         <li>
           <strong>Libro ilustrado</strong>: las doce páginas ilustradas en un PDF A4 apaisado. De pago; el precio final, con IVA, se indica antes de pagar.
@@ -32,10 +32,9 @@ export default function Condiciones() {
 
       <h2>3. Cómo se hace el libro</h2>
       <ol className="list-decimal pl-5">
-        <li>Cuentas la idea y cómo es el niño o la niña.</li>
-        <li>Escribimos el cuento con IA. Puedes cambiar cualquier texto o pedir que se reescriba una página con una frase.</li>
-        <li>Con tu email pintamos la hoja de personajes y la portada. Puedes pedir hasta dos cambios con palabras.</li>
-        <li>Al pagar se pintan las doce páginas. Si una ilustración no te convence, nos dices qué cambiar y pintamos otra: hasta dos versiones más por página. Si aun así no queda bien, nos avisas desde esa página y la arreglamos nosotros.</li>
+        <li>Nos cuentas la idea y cómo es el niño o la niña, y te damos el cuento escrito. Puedes cambiar cualquier texto.</li>
+        <li>Con tu email creamos la hoja de personajes y la portada. Al pagar, las doce páginas ilustradas.</li>
+        <li>Puedes pedir cambios y otras versiones de las ilustraciones, con los límites que se indican en cada paso.</li>
         <li>Descargas el PDF.</li>
         <li>
           Si has comprado el libro de tapa dura, lo revisas y pulsas «Mandar a imprimir». No lo imprimimos hasta entonces, y después ya no se
