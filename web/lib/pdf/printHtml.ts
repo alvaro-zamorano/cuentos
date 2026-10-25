@@ -72,10 +72,13 @@ export function monthYear(d: Date): string {
   return new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric", timeZone: "Europe/Madrid" }).format(d);
 }
 
-/** Primera letra del texto como capitular (con su raya de diálogo si empieza por ella). */
-function storyHtml(t: string): string {
+/**
+ * Primera letra del texto como capitular (con su raya de diálogo si empieza por ella). Si el texto empieza por comillas,
+ * interrogación u otro signo, sin capitular: una «« de 3 líneas de alto queda mal.
+ */
+export function storyHtml(t: string): string {
   const html = paras(t);
-  return html.replace(/^<p>((?:—|&#8288;|\u2060)*)([^<\s—])/, (_m, pre: string, ch: string) => `<p>${pre}<span class="cap">${ch}</span>`);
+  return html.replace(/^<p>((?:—|&#8288;|\u2060)*)([\p{L}\p{N}])/u, (_m, pre: string, ch: string) => `<p>${pre}<span class="cap">${ch}</span>`);
 }
 
 /**

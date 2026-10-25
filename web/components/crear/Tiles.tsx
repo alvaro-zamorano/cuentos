@@ -7,24 +7,24 @@ import { recolorPiece } from "@/lib/recolor";
 import type { Pick } from "@/lib/crearPicks";
 
 /** Miniatura con el pelo y la piel elegidos; mientras se recolorea, la original. */
-function useTinted(src: string, skin?: string | null, hair?: string | null): string {
+function useTinted(src: string, skin?: string | null, hair?: string | null, hairMask?: string): string {
   const key = `${src}|${skin ?? ""}|${hair ?? ""}`;
   const [state, setState] = useState<{ key: string; url: string } | null>(null);
   useEffect(() => {
     if (!skin && !hair) return;
     let alive = true;
-    recolorPiece(src, { skin, hair })
+    recolorPiece(src, { skin, hair, hairMask })
       .then((url) => alive && setState({ key, url }))
       .catch(() => undefined);
     return () => {
       alive = false;
     };
-  }, [src, skin, hair, key]);
+  }, [src, skin, hair, hairMask, key]);
   return (skin || hair) && state?.key === key ? state.url : src;
 }
 
 function Tile({ pick, on, tall, tint, onClick }: { pick: Pick; on: boolean; tall?: boolean; tint?: { skin?: string | null; hair?: string | null }; onClick: () => void }) {
-  const src = useTinted(pick.src, tint?.skin, tint?.hair);
+  const src = useTinted(pick.src, tint?.skin, tint?.hair, pick.mask);
   return (
     <button type="button" aria-pressed={on} className={`tile ${on ? "tile-on" : ""}`} onClick={onClick} data-pick={pick.id}>
       <img src={src} alt="" loading="lazy" draggable={false} className={`w-full object-cover object-top ${tall ? "aspect-[3/4]" : "aspect-square"}`} />

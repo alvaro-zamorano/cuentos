@@ -120,10 +120,15 @@ export function StepStory({
   return (
     <div className="grid gap-7">
       <div className="grid gap-4">
-        <span className="inline-flex items-center gap-2 justify-self-start rounded-full bg-sage px-3.5 py-1.5 text-[13px] font-semibold text-sage-ink">
-          <Icon.check size={14} />
-          Escrito. Léelo y cambia lo que quieras
-        </span>
+        {/* «Escribirlo de otra manera» va arriba, donde se decide si el cuento convence; junto al botón de seguir
+            sembraba la duda en el último paso antes de dibujar (25 oct) */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <span className="inline-flex items-center gap-2 rounded-full bg-sage px-3.5 py-1.5 text-[13px] font-semibold text-sage-ink">
+            <Icon.check size={14} />
+            Escrito. Léelo y cambia lo que quieras
+          </span>
+          <Rewrite onConfirm={() => onFicha({ ...ficha, seed: (ficha.seed ?? 0) + 1 })} />
+        </div>
         <div className="relative">
           {/* área de texto de una línea lógica: en móvil el título largo se parte en renglones en vez de cortarse */}
           <AutoTextarea
@@ -170,7 +175,6 @@ export function StepStory({
         <button className="btn-primary btn-lg w-full sm:w-auto" onClick={onNext} data-testid="next-3">
           Así está bien, dibujar a {name}
         </button>
-        <Rewrite onConfirm={() => onFicha({ ...ficha, seed: (ficha.seed ?? 0) + 1 })} />
       </div>
     </div>
   );
@@ -181,12 +185,12 @@ function Rewrite({ onConfirm }: { onConfirm: () => void }) {
   const [asking, setAsking] = useState(false);
   if (!asking)
     return (
-      <button className="w-full text-center text-sm font-semibold text-ink-soft underline decoration-1 underline-offset-[3px] hover:text-ink sm:w-auto" onClick={() => setAsking(true)}>
+      <button className="text-sm font-semibold text-ink-soft underline decoration-1 underline-offset-[3px] hover:text-ink" onClick={() => setAsking(true)} data-testid="rewrite">
         Escribirlo de otra manera
       </button>
     );
   return (
-    <div className="rise flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm sm:w-auto sm:justify-start" role="group" aria-label="Escribir otra versión">
+    <div className="rise flex w-full flex-wrap items-center gap-x-3 gap-y-2 text-sm" role="group" aria-label="Escribir otra versión">
       <span className="text-ink-soft">¿Otra versión entera? Se pierden los cambios de esta.</span>
       <button className="btn-ghost btn-sm" onClick={onConfirm}>
         Sí, escribir otra

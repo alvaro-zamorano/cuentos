@@ -24,7 +24,7 @@ export function BookImage({ job, alt, testId, title, scene, tint, box = BOX }: {
     return (
       <div className={`${box} shimmer grid place-items-center`} data-testid={testId} data-state="pending">
         <span className="hand flex items-center gap-2 text-[18px] text-ink-soft">
-          {running ? <Icon.brush size={20} className="pen-write text-accent" /> : <Sparkle className="twinkle" size={14} color="var(--accent)" />}
+          {running ? <Icon.brush size={20} className="brush-dab text-accent" /> : <Sparkle className="twinkle" size={14} color="var(--accent)" />}
           {running ? "pintando…" : "en cola…"}
         </span>
       </div>
