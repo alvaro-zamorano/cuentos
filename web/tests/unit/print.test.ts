@@ -477,3 +477,17 @@ test("personajes (25 oct): cambiar el texto del prompt en un despliegue no inval
     (style as { promptStyle: string }).promptStyle = old;
   }
 });
+
+test("personajes (25 oct): un libro ya enviado a la imprenta sin retratos no los pide", async () => {
+  const { store, bookId } = await paidHardcover();
+  assert.ok((await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
+  await paintPages(store, bookId);
+  const b = (await store.findBook({ publicId: bookId }))!;
+  // como un libro de antes del cambio: sin retratos
+  for (const j of (await store.listJobs(b.id)).filter((j) => j.kind === "portrait")) await store.updateJob(j.id, { status: "failed", attempts: 2 });
+  const order = (await store.getOrder(b.id))!;
+  await store.updateOrder(order.id, { printStatus: "sent" });
+  const v = await bookView(store, bookId);
+  assert.ok(v.ok);
+  assert.equal(v.portraitsToRequest, false);
+});
