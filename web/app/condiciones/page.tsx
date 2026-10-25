@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Condiciones" };
 export default function Condiciones() {
   const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="25 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="26 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
         {holderLine(t)}, <ContactEmail value={t.email} />. Datos completos en el{" "}
@@ -19,7 +19,7 @@ export default function Condiciones() {
       <ul>
         <li>
           <strong>Gratis</strong>: el cuento escrito, la hoja de personajes y la portada ilustrada, y un PDF para imprimir en casa con la portada y
-          el texto.
+          el texto. Cada email puede empezar hasta tres cuentos con dibujos gratis cada 30 días; al comprar un libro, vuelven a ser tres.
         </li>
         <li>
           <strong>Libro ilustrado</strong>: las doce páginas ilustradas en un PDF A4 apaisado. De pago; el precio final, con IVA, se indica antes de pagar.

@@ -10,6 +10,11 @@
  *                    a esos los limita MAX_COST_CENTS_PER_BOOK. Los pagos de prueba (`dry-run:<libro>`) sí se frenan,
  *                    porque en la preview cualquiera puede «pagar».
  *
+ *   FREE_BOOK_CAP_CENTS  (26 oct) en el flujo nuevo, el tope antes del pago es por libro, no por email: lo que puede
+ *                    gastar un cuento gratis (por defecto 60: 3 hojas y 3 portadas, cada una con su repetición del
+ *                    control de calidad). Cuántos cuentos gratis empieza cada persona lo limita lib/book/freeLimit.ts
+ *                    en la puerta, para que un cuento que empieza siempre termine.
+ *
  * Sin cliente admin, o si la lectura falla, canSpend devuelve ok:false: nunca se gasta a ciegas.
  * Dónde se llama: lib/generation/service.ts (al crear los jobs en /api/generate/sample y /book, y antes de cada
  * imagen en /api/generate/run, que también registra el gasto) y el worker (scripts/worker.ts) para los jobs antiguos.
@@ -46,6 +51,10 @@ export function leadCapCents(): number {
   return capFromEnv("LEAD_CAP_CENTS", 30);
 }
 
+export function freeBookCapCents(): number {
+  return capFromEnv("FREE_BOOK_CAP_CENTS", 60);
+}
+
 export function dailyCapCents(): number {
   return capFromEnv("DAILY_CAP_CENTS", 500);
 }
@@ -72,7 +81,7 @@ export async function hasChargedOrder(db: Db, bookId: string): Promise<boolean> 
 /** ¿Se pueden gastar `cents` más para este lead hoy? Comprueba el tope por lead (salvo `paid`) y el diario (salvo libro cobrado con Stripe). */
 export async function canSpend(
   db: Db | null,
-  { leadId, cents, paid = false, now = new Date() }: { leadId: string; cents: number; paid?: boolean; now?: Date },
+  { leadId, cents, paid = false, now = new Date(), leadCap: leadCapOverride }: { leadId: string; cents: number; paid?: boolean; now?: Date; leadCap?: number },
 ): Promise<SpendCheck> {
   if (!db) return { ok: false, reason: "sin presupuesto configurado" };
   if (!leadId) return { ok: false, reason: "lead sin identificar" };
@@ -90,7 +99,7 @@ export async function canSpend(
   if (!paid) {
     const lead = await db.from("cuentos_spend").select("cost_cents").eq("lead_id", leadId);
     if (lead.error) return { ok: false, reason: "no se pudo leer el gasto del lead" };
-    const leadCap = leadCapCents();
+    const leadCap = leadCapOverride ?? leadCapCents();
     const spentLead = sum(lead.data);
     if (spentLead + cents > leadCap) return { ok: false, reason: `tope por lead (${leadCap} c) alcanzado: ${spentLead} c gastados` };
   }

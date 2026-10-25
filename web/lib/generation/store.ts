@@ -54,6 +54,8 @@ export interface BookRecord {
   raw: unknown;
   /** Cuándo caduca (cuentos_books.expires_at, 30 días desde que se creó): el borrado se lo lleva. */
   expiresAt?: string | null;
+  /** Cuándo se creó (solo lo traen las consultas que lo necesitan). */
+  createdAt?: string | null;
 }
 
 /** Libro del flujo nuevo para crear o actualizar (sin public_id se crea uno). */
@@ -69,6 +71,8 @@ export interface GenStore {
   /** Cliente para el presupuesto (cuentos_spend); null en memoria. */
   db: SupabaseClient<Database> | null;
   findBook(q: { publicId?: string; email?: string }): Promise<BookRecord | null>;
+  /** Libros con email de ese dominio creados desde `since` (para el límite de cuentos gratis por buzón). */
+  listBooksByEmailDomain(domain: string, since: string): Promise<BookRecord[]>;
   getBookById(id: string): Promise<BookRecord | null>;
   /** Solo memoria: crea o actualiza el libro con el borrador que manda el cliente (sin Supabase no hay /api/books). */
   saveMemoryBook?(b: { publicId: string; email: string | null; draft: Draft }): Promise<BookRecord>;
@@ -219,6 +223,19 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
     async getBookById(id) {
       const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("id", id).maybeSingle();
       return data ? toBook(data) : null;
+    },
+    async listBooksByEmailDomain(domain, since) {
+      // el dominio se escapa para ilike (% y _ son comodines)
+      const safe = domain.replace(/[\\%_]/g, (c) => `\\${c}`);
+      const { data, error } = await db
+        .from("cuentos_books")
+        .select("id, public_id, email, draft, expires_at, created_at")
+        .ilike("email", `%@${safe}`)
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (error) throw new Error(`books: ${error.message}`);
+      return (data ?? []).map((r) => ({ ...toBook(r), createdAt: r.created_at }));
     },
     async listJobs(bookId) {
       const { data, error } = await jobs().select(JOB_COLUMNS).eq("book_id", bookId).not("job_key", "is", null).order("created_at", { ascending: true });
@@ -384,6 +401,11 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async getBookById(id) {
       return state.books.get(id) ?? null;
+    },
+    async listBooksByEmailDomain(domain, since) {
+      return [...state.books.values()]
+        .map((b) => ({ ...b, createdAt: b.createdAt ?? (b.expiresAt ? new Date(Date.parse(b.expiresAt) - 30 * 24 * 3600 * 1000).toISOString() : new Date().toISOString()) }))
+        .filter((b) => !!b.email && b.email.toLowerCase().endsWith(`@${domain}`) && b.createdAt >= since);
     },
     async saveMemoryBook({ publicId, email, draft }) {
       const prev = state.books.get(publicId);

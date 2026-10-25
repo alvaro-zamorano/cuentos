@@ -51,6 +51,24 @@ export function sendBookLink(to: string, bookTitle: string, link: string): Promi
   );
 }
 
+/**
+ * El buzón ya tiene sus cuentos con dibujos gratis del periodo (26 oct): en vez de dibujar otro, le mandamos los que
+ * tiene empezados para que elija cuál terminar. Nunca se enseñan en pantalla (el email no está verificado).
+ */
+export function sendYourBooks(to: string, books: { title: string; link: string }[]): Promise<MailResult> {
+  const list = books.map((b) => `<li style="margin:0 0 10px"><a href="${esc(b.link)}" style="color:#c8492c;font-weight:bold">${esc(b.title)}</a></li>`).join("");
+  const html = `<!doctype html><html lang="es"><body style="margin:0;background:#fbf5ea;font-family:Georgia,serif;color:#232036">
+<div style="max-width:520px;margin:0 auto;padding:32px 24px">
+<p style="font-style:italic;font-size:22px;margin:0 0 24px"><span style="color:#f2b84b">&#10022;</span> Érase su vez</p>
+<h1 style="font-size:26px;font-weight:500;margin:0 0 16px">Tus cuentos te esperan</h1>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">Ya tienes ${books.length} cuentos con sus personajes dibujados. Elige el que más te guste y termínalo: en cuanto tengas uno, puedes empezar otro.</p>
+<ul style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;padding-left:18px;margin:20px 0">${list}</ul>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6f6457">Guardamos cada libro 30 días. Si no lo has pedido tú, ignora este mensaje.</p>
+</div></body></html>`;
+  const text = `Tus cuentos te esperan\n\nYa tienes ${books.length} cuentos con sus personajes dibujados. Elige el que más te guste y termínalo:\n\n${books.map((b) => `${b.title}: ${b.link}`).join("\n")}\n\nGuardamos cada libro 30 días.`;
+  return send(to, "Tus cuentos te esperan", html, text);
+}
+
 /** Cuando las 12 ilustraciones están pintadas tras el pago. Con la tapa dura, el libro espera a que el padre lo mande a imprimir. */
 export function sendBookReady(
   to: string,
