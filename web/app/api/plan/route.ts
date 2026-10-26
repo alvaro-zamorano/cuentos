@@ -59,8 +59,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "budget", message: TEXT_BUDGET_MESSAGE }, { status: 503 });
   }
   const result = await planBook(ficha, llm);
-  if (!result.ok) return NextResponse.json(result, { status: result.status });
-  await recordText(db, "plan", llm, result.costCents);
+  // también si falla después de llamar al modelo (negativa, plan no válido): ese gasto existe (revisión 26 oct)
+  if (result.ok || result.costCents) await recordText(db, "plan", llm, result.costCents ?? null);
+  if (!result.ok) return NextResponse.json({ ...result, costCents: undefined }, { status: result.status });
 
   if (db) {
     const { error } = await db.from("cuentos_stories").insert({

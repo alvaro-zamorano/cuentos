@@ -55,9 +55,16 @@ export async function rescueBooks(store: GenStore, deps: RescueDeps): Promise<Re
   const now = deps.now ?? Date.now;
   const env = deps.env ?? process.env;
   const report: RescueReport = { books: 0, painted: 0, mailed: 0, alerted: 0, skipped: 0, errors: 0 };
-  const orders = await store.listPaidOrdersSince(new Date(now() - LOOKBACK_MS).toISOString(), 300);
+  // solo los pedidos de este entorno y los más recientes primero, filtrado en la consulta: antes se pedían los 300 más
+  // antiguos y se filtraba después, y los pedidos de prueba o ya terminados dejaban fuera a los nuevos (revisión 26 oct)
+  const orders = await store.listPaidOrdersSince(new Date(now() - LOOKBACK_MS).toISOString(), 500, env.VERCEL_ENV === "production");
+  // por libro, el primer cobro (la mejora a tapa dura es un segundo pedido): desde ahí cuentan las horas sin terminar
   const firstOrder = new Map<string, PaidOrder>();
-  for (const o of orders) if (orderBelongsToEnv(o.sessionId, env) && !firstOrder.has(o.bookId)) firstOrder.set(o.bookId, o);
+  for (const o of orders) {
+    if (!orderBelongsToEnv(o.sessionId, env)) continue;
+    const prev = firstOrder.get(o.bookId);
+    if (!prev || o.createdAt < prev.createdAt) firstOrder.set(o.bookId, o);
+  }
 
   for (const [bookUuid, order] of firstOrder) {
     const book = await store.getBookById(bookUuid);
@@ -69,6 +76,7 @@ export async function rescueBooks(store: GenStore, deps: RescueDeps): Promise<Re
     }
     report.books++;
     const pid = book.public_id;
+    let failure: string | null = null;
     try {
       // ya terminado (sin «listo» porque falló el email o no hay): solo se intenta el email, sin tocar nada más
       const before = await bookView(store, pid, env);
@@ -88,30 +96,49 @@ export async function rescueBooks(store: GenStore, deps: RescueDeps): Promise<Re
         report.mailed++;
         continue;
       }
-      // sin terminar desde hace horas: aviso a soporte, una vez por libro (terminado pero sin «listo», no es esto)
-      const view = await bookView(store, pid, env);
-      const missing = view.ok ? Object.entries(view.chosen.pages).filter(([, job]) => !job).map(([n]) => n) : [];
-      const fresh = draftV2((await store.getBookById(bookUuid)) ?? book) ?? d;
-      if (missing.length > 0 && now() - Date.parse(order.createdAt) > STUCK_AFTER_MS && !fresh.stuckAlertedAt) {
-        const r = await deps
-          .notify(
-            "Libro pagado sin terminar",
-            [
-              `«${d.plan.title}» se pagó el ${new Date(order.createdAt).toISOString().slice(0, 16).replace("T", " ")} (UTC) y le faltan ${missing.length} de 12 páginas (${missing.join(", ")}).`,
-              `Edición: ${order.edition}. Libro: ${deps.link(pid)}`,
-              "El rescate lo seguirá intentando. Si no avanza, mira el proveedor de imágenes (saldo, caídas) y el tope por libro (MAX_COST_CENTS_PER_BOOK).",
-            ].join("\n"),
-          )
-          .catch(() => ({ sent: false }));
-        if (r.sent) {
-          await markStuckAlerted(store, pid, now());
-          report.alerted++;
-        }
-      }
     } catch (e) {
       report.errors++;
-      console.error(`[rescate] ${pid}: ${e instanceof Error ? e.message.slice(0, 200) : "error"}`);
+      failure = e instanceof Error ? e.message.slice(0, 200) : "error";
+      console.error(`[rescate] ${pid}: ${failure}`);
+    }
+    // sin terminar desde hace horas: aviso a soporte, una vez por libro, también si el rescate ha fallado (revisión 26 oct)
+    try {
+      if (await alertIfStuck(store, deps, { bookUuid, pid, order, title: d.plan.title, env, now: now(), failure })) report.alerted++;
+    } catch (e) {
+      report.errors++;
+      console.error(`[rescate] aviso ${pid}: ${e instanceof Error ? e.message.slice(0, 200) : "error"}`);
     }
   }
   return report;
+}
+
+async function alertIfStuck(
+  store: GenStore,
+  deps: RescueDeps,
+  { bookUuid, pid, order, title, env, now, failure }: { bookUuid: string; pid: string; order: PaidOrder; title: string; env: Env; now: number; failure: string | null },
+): Promise<boolean> {
+  if (now - Date.parse(order.createdAt) <= STUCK_AFTER_MS) return false;
+  const book = await store.getBookById(bookUuid);
+  const fresh = book ? draftV2(book) : null;
+  if (!fresh || fresh.stuckAlertedAt || fresh.readyMailedAt) return false;
+  const view = await bookView(store, pid, env).catch(() => null);
+  const missing = view?.ok ? Object.entries(view.chosen.pages).filter(([, job]) => !job).map(([n]) => n) : null;
+  // terminado pero sin «listo» (falló el email) no es un libro atascado
+  if (missing && missing.length === 0 && !failure) return false;
+  const r = await deps
+    .notify(
+      "Libro pagado sin terminar",
+      [
+        `«${title}» se pagó el ${new Date(order.createdAt).toISOString().slice(0, 16).replace("T", " ")} (UTC) y ${missing ? `le faltan ${missing.length} de 12 páginas${missing.length ? ` (${missing.join(", ")})` : ""}` : "no se ha podido mirar cómo va"}.`,
+        failure ? `El rescate ha fallado: ${failure}` : "",
+        `Edición: ${order.edition}. Libro: ${deps.link(pid)}`,
+        "El rescate lo seguirá intentando. Si no avanza, mira el proveedor de imágenes (saldo, caídas), el de textos y el tope por libro (MAX_COST_CENTS_PER_BOOK).",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .catch(() => ({ sent: false }));
+  if (!r.sent) return false;
+  await markStuckAlerted(store, pid, now);
+  return true;
 }

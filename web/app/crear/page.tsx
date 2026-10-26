@@ -100,6 +100,8 @@ function Crear() {
   const saved = useRef<string>("");
   // si un cambio no se guarda, se dice (auditoría 26 oct, B6): antes se perdía sin aviso y el PDF llevaba el texto viejo
   const [saveError, setSaveError] = useState<string | null>(null);
+  // solo cuenta la respuesta del último guardado: una vieja que llega tarde no pisa a la nueva (revisión 26 oct)
+  const saveSeq = useRef(0);
   useEffect(() => {
     if (!bookId || !plan) return;
     const json = JSON.stringify(plan);
@@ -110,11 +112,12 @@ function Crear() {
     if (json === saved.current) return;
     const t = setTimeout(async () => {
       saved.current = json;
+      const seq = ++saveSeq.current;
       try {
         const r = await postJson("/api/libro/plan", { bookId, plan });
-        setSaveError(r.status === 200 ? null : errorMessage(r.json, "Inténtalo de nuevo en un momento."));
+        if (seq === saveSeq.current) setSaveError(r.status === 200 ? null : errorMessage(r.json, "Inténtalo de nuevo en un momento."));
       } catch {
-        setSaveError("Sin conexión. Cuando vuelva, cambia algo y se guardará.");
+        if (seq === saveSeq.current) setSaveError("Sin conexión. Cuando vuelva, cambia algo y se guardará.");
       }
     }, 1200);
     return () => clearTimeout(t);

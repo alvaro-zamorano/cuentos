@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MOCK_LLM } from "../../lib/llm";
-import { dryRunAdapter, type GenerationAdapter } from "../../lib/generation/adapter";
+import { TransientError, dryRunAdapter, type GenerationAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
 import { bookView, payDryRun, requestPages, retryCast, reviseSheet, startBook, type StartResult } from "../../lib/book/service";
@@ -17,11 +17,21 @@ const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
 const deadline = () => Date.now() + 30_000;
 
-/** Gemini caído (503): cada intento falla. */
+/**
+ * Gemini rechaza la imagen (un fallo que no es pasajero): cada intento falla y se gasta. Con un 503 o un 429 el intento
+ * no se gasta (lib/generation/adapter.ts, `TransientError`): ese caso va en el último test.
+ */
 const down: GenerationAdapter = {
   ...dryRunAdapter,
   generateImage: async () => {
-    throw new Error("503 UNAVAILABLE");
+    throw new Error("gemini sin imagen (IMAGE_SAFETY)");
+  },
+};
+/** Gemini caído de verdad (503): pasajero. */
+const unavailable: GenerationAdapter = {
+  ...dryRunAdapter,
+  generateImage: async () => {
+    throw new TransientError("gemini 503: UNAVAILABLE");
   },
 };
 
@@ -155,4 +165,18 @@ test("una portada que se está pintando de verdad (menos de 330 s) no se toca", 
   const covers = (await store.listJobs((await store.getJob(start.sheetJobId))!.book_id)).filter((j) => j.kind === "cover");
   assert.equal(covers.length, 1);
   assert.equal(covers[0].status, "running");
+});
+
+test("con Gemini caído (503), «Reintentar» reabre la misma hoja las veces que haga falta, sin gastar versiones", async () => {
+  const { store, start } = await started("nico@example.com");
+  for (let i = 0; i < 4; i++) {
+    await paintAll(store, unavailable, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: deadline() });
+    assert.equal((await store.getJob(start.sheetJobId))?.attempts, 0, "el intento no se gasta");
+    const r = ok(await retryCast(store, { bookId: start.bookId }, dryRunAdapter));
+    assert.equal(r.sheetJobId, start.sheetJobId);
+    assert.equal(r.created, 0);
+  }
+  await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: deadline() });
+  const v = await bookView(store, start.bookId);
+  assert.ok(v.ok && v.chosen.sheet === start.sheetJobId && v.sheetsLeft === 2);
 });

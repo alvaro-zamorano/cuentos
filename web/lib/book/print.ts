@@ -226,17 +226,20 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
   const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0 };
   // cada entorno, solo sus pedidos: la preview no escribe a clientes reales ni toca sus pedidos; producción no recuerda
   // los de prueba (auditoría 26 oct, B1)
-  const mine = (o: { sessionId?: string | null }) => orderBelongsToEnv(o.sessionId, deps.env ?? process.env);
+  const env = deps.env ?? process.env;
+  const mine = (o: { sessionId?: string | null }) => orderBelongsToEnv(o.sessionId, env);
+  // y se filtra ya en la consulta: los pedidos de prueba de la preview se acumulan y llenaban la ventana (revisión 26 oct)
+  const live = env.VERCEL_ENV === "production";
   // una tapa dura pagada sin mandar a imprimir no tiene plazo (Álvaro, 26 oct; auditoría B3): el libro sigue abriéndose
   // hasta que se manda. El borrado ya la conservaba (`printPending`), pero el enlace dejaba de abrir a los 30 días
-  for (const o of await store.listPrintOrders(["awaiting_approval", "failed"], 500)) {
+  for (const o of await store.listPrintOrders(["awaiting_approval", "failed"], 500, live)) {
     if (!mine(o)) continue;
     const book = await store.getBookById(o.bookId);
     if (!book?.expiresAt || Date.parse(book.expiresAt) - now.getTime() > 3 * 24 * HOUR) continue;
     await store.extendBook(book.id, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString());
     report.kept++;
   }
-  for (const o of await store.listPrintOrders(["awaiting_approval"], 200)) {
+  for (const o of await store.listPrintOrders(["awaiting_approval"], 200, live)) {
     if (!mine(o)) continue;
     const age = now.getTime() - Date.parse(o.createdAt);
     const sinceReminder = o.remindedAt ? now.getTime() - Date.parse(o.remindedAt) : Infinity;
@@ -252,7 +255,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
       report.reminded++;
     }
   }
-  for (const o of await store.listPrintOrders(["sending"], 50)) {
+  for (const o of await store.listPrintOrders(["sending"], 50, live)) {
     if (o.sentAt || !mine(o)) continue;
     const book = await store.getBookById(o.bookId);
     // `sending` sin terminar: la función se cortó. Se libera para que el padre lo reintente.
@@ -261,7 +264,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
       report.unstuck++;
     }
   }
-  for (const o of await store.listPrintOrders(["sent", "in_production", "shipped"], 100)) {
+  for (const o of await store.listPrintOrders(["sent", "in_production", "shipped"], 100, live)) {
     if (!mine(o)) continue;
     if ((await refreshPrint(store, o, deps)) === "updated") report.refreshed++;
   }

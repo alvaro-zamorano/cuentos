@@ -42,7 +42,9 @@ export async function POST(req: Request) {
       console.error(`[stripe] ${notice.subject}: ${notice.text.split("\n")[0]} · sesión ${event.data.object.id ?? "?"}`);
       await sendSupportNotice(notice.subject, notice.text).catch(() => null);
     }
-    if (r.action === "paid") {
+    // también con «duplicate»: si Stripe reintenta porque la vez anterior falló después de guardar el pedido, las páginas
+    // no se habían pedido (revisión 26 oct). Pedirlas otra vez no repite nada
+    if (r.action === "paid" || r.action === "duplicate") {
       const origin = publicOrigin(req);
       paintLater(
         "stripe",

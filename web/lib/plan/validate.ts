@@ -27,7 +27,8 @@ export interface PlanValidation {
   issues: Issue[];
 }
 
-const EMOJI_RE = /\p{Extended_Pictographic}/u;
+// también banderas (letras regionales) y números en tecla («3️⃣»): Lora y Figtree no los tienen (revisión 26 oct)
+const EMOJI_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const TONES: Tone[] = ["aventura", "tierno", "divertido", "dormir"];
 const SHOTS: Shot[] = ["general", "medio", "cerca"];
@@ -219,12 +220,33 @@ export function familyGiven(f: Ficha): Set<string> {
  * Parentescos que salen en el plan (reparto inventado, extras o texto) sin que el adulto los haya puesto. `given`: más
  * texto que cuenta como del adulto (lo que ha escrito o pedido en el paso 3; auditoría 26 oct, B6).
  */
-export function inventedFamily(plan: Pick<Plan, "extraCast" | "pages">, f: Ficha, given: string[] = []): string[] {
+export function inventedFamily(plan: Pick<Plan, "extraCast" | "pages">, f: Ficha, given: string[] = [], { scenes = true }: { scenes?: boolean } = {}): string[] {
   const fromAdult = new Set([...familyGiven(f), ...familyIn(given.join(" \n "))]);
+  // la escena también va al dibujo (revisión 26 oct): «su madre la arropa» en la escena pintaba a una madre inventada
   const used = familyIn(
-    [...plan.extraCast.map((c) => `${c.name} ${c.relation}`), ...plan.pages.flatMap((p) => [p.text, ...p.extras])].join(" \n "),
+    [...plan.extraCast.map((c) => `${c.name} ${c.relation}`), ...plan.pages.flatMap((p) => [p.text, ...p.extras, ...(scenes ? [p.scene] : [])])].join(" \n "),
   );
   return [...used].filter((k) => !fromAdult.has(k));
+}
+
+/**
+ * Lo que el padre escribe en el cuento (título, dedicatoria y texto de las páginas): cuenta como suyo (B6).
+ */
+function parentText(plan: Pick<Plan, "title" | "dedication" | "pages">): string[] {
+  return [plan.title, plan.dedication, ...plan.pages.map((p) => p.text)];
+}
+
+/**
+ * Quita de los extras de cada página (lo que se dibuja de fondo, que el padre no ve ni puede tocar) los familiares que ya
+ * no están en ningún sitio del padre: tras «que salga la abuela», el modelo la pone en el texto y en los extras; si el
+ * padre borra después la frase, la abuela se quedaba en los extras y el libro no se podía dibujar ni guardar (revisión
+ * 26 oct).
+ */
+export function dropOrphanFamilyExtras<P extends Pick<Plan, "title" | "dedication" | "pages">>(plan: P, f: Ficha): P {
+  const fromAdult = new Set([...familyGiven(f), ...familyIn(parentText(plan).join(" \n "))]);
+  const orphan = (e: string) => [...familyIn(e)].some((k) => !fromAdult.has(k));
+  if (!plan.pages.some((p) => p.extras.some(orphan))) return plan;
+  return { ...plan, pages: plan.pages.map((p) => ({ ...p, extras: p.extras.filter((e) => !orphan(e)) })) };
 }
 
 /**
@@ -246,7 +268,8 @@ export function validatePlan(plan: Plan, f: Ficha, { fromParent = false }: { fro
     commonChecks("Dedicatoria", plan.dedication, issues, "la dedicatoria");
   }
   if (f.cast.length + plan.extraCast.length > MAX_CAST) issues.push({ msg: `El reparto tiene más de ${MAX_CAST} recurrentes.`, hard: true });
-  const kin = inventedFamily(plan, f, fromParent ? [plan.title, plan.dedication, ...plan.pages.map((p) => p.text)] : []);
+  // con el plan del padre, las escenas no se miran: las escribió el modelo y ya pasaron esta validación al escribirse
+  const kin = inventedFamily(plan, f, fromParent ? parentText(plan) : [], { scenes: !fromParent });
   if (kin.length) issues.push({ msg: `Aparecen familiares que el adulto no ha puesto (${kin.join(", ")}): quítalos del texto, de extraCast y de extras; si hace falta un adulto, que sea alguien sin parentesco ni nombre en una sola página.`, hard: true });
   for (const c of plan.extraCast) {
     if (!c.look) issues.push({ msg: `extraCast ${c.id}: falta el aspecto.`, hard: true });

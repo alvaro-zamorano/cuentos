@@ -232,12 +232,18 @@ function fakeDb(rows: Row[], opts: { failRead?: boolean; orders?: Order[] } = {}
   const like = (v: unknown, pat: string) => new RegExp(`^${pat.split("%").map((a) => a.split("_").map(esc).join(".")).join(".*")}$`).test(String(v ?? ""));
   const query = (data: () => Record<string, unknown>[]) => {
     const filters: ((r: Record<string, unknown>) => boolean)[] = [];
+    let slice: [number, number] | null = null;
     const q = {
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
       gte: (c: string, v: string) => (filters.push((r) => String(r[c]) >= v), q),
       like: (c: string, pat: string) => (filters.push((r) => like(r[c], pat)), q),
-      then: (ok: (x: unknown) => unknown, ko?: (e: unknown) => unknown) =>
-        Promise.resolve(opts.failRead ? { data: null, error: { message: "x" } } : { data: data().filter((r) => filters.every((f) => f(r))), error: null }).then(ok, ko),
+      order: () => q,
+      range: (from: number, to: number) => ((slice = [from, to + 1]), q),
+      limit: (n: number) => ((slice = [0, n]), q),
+      then: (ok: (x: unknown) => unknown, ko?: (e: unknown) => unknown) => {
+        const rows = data().filter((r) => filters.every((f) => f(r)));
+        return Promise.resolve(opts.failRead ? { data: null, error: { message: "x" } } : { data: slice ? rows.slice(...slice) : rows, error: null }).then(ok, ko);
+      },
     };
     return q;
   };
@@ -381,11 +387,14 @@ test("el texto cuenta en el tope diario: se mira antes de escribir y se apunta d
     assert.equal((await textRoom(db, "plan", claude, now)).ok, false, "93 + 12 ya no");
     assert.equal((await textRoom(db, "page", claude, now)).ok, true, "una página (2 c) sí");
     await recordText(db, "page", claude, null);
-    assert.equal(inserted[1].cost_cents, TEXT_ESTIMATE_CENTS.page, "sin precio conocido, la estimación");
+    // pasado el 80 % queda también la marca del aviso del día (gasto cero)
+    const spent = () => inserted.filter((r) => !r.lead_id.startsWith("aviso-tope:"));
+    assert.equal(spent()[1].cost_cents, TEXT_ESTIMATE_CENTS.page, "sin precio conocido, la estimación");
+    assert.equal(inserted.filter((r) => r.lead_id.startsWith("aviso-tope:")).length, 1);
     // con el modelo de prueba o sin base, ni se mira ni se apunta
     assert.equal((await textRoom(db, "plan", MOCK_LLM, now)).ok, true);
     await recordText(db, "plan", MOCK_LLM, 5);
-    assert.equal(inserted.length, 2);
+    assert.equal(spent().length, 2);
     assert.equal((await textRoom(null, "plan", claude, now)).ok, true);
   });
 });
@@ -403,4 +412,49 @@ test("canSpend: si la lectura falla no se gasta; recordSpend inserta la fila", a
 
 test("DEFAULT_TRAITS produce un bible válido", () => {
   assert.match(characterBible(DEFAULT_TRAITS, 5), /short curly chestnut brown hair/);
+});
+
+test("tiempo agotado: no gasta el intento, pero se apunta su coste estimado y así los topes frenan los reintentos", async () => {
+  const { memoryStore, newMemoryState } = await import("../../lib/generation/store");
+  const { runJob } = await import("../../lib/generation/service");
+  const { startBook } = await import("../../lib/book/service");
+  const { normalizeFicha } = await import("../../lib/plan/ficha");
+  const { mockPlan } = await import("../../lib/plan/mock");
+  const { EVAL_CASES } = await import("../../lib/plan/evalCases");
+  const { dryRunAdapter } = await import("../../lib/generation/adapter");
+  await withEnv({ DAILY_CAP_CENTS: undefined, FREE_BOOK_CAP_CENTS: undefined }, async () => {
+    const { db, inserted } = fakeDb([]);
+    const store = { ...memoryStore(newMemoryState()), db };
+    const ficha = normalizeFicha(EVAL_CASES[0]);
+    const start = await startBook(store, { email: "vera@example.com", ficha, plan: mockPlan(ficha), planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
+    assert.ok(start.ok, JSON.stringify(start));
+    const slow = {
+      ...dryRunAdapter,
+      name: "gemini-images",
+      generateImage: async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      },
+    };
+    await runJob(store, start.sheetJobId, slow);
+    const job = (await store.getJob(start.sheetJobId))!;
+    assert.equal(job.status, "failed");
+    assert.equal(job.attempts, 0, "el intento no se gasta");
+    assert.equal(job.cost_cents, 4, "la hoja 1K de Gemini, estimada");
+    assert.deepEqual(inserted.map((r) => [r.lead_id, r.model, r.cost_cents]), [[job.book_id, "tiempo-agotado", 4]]);
+  });
+});
+
+test("aviso del 80 %: con varios gastos a la vez sale al menos una vez, y no vuelve a salir ese día", async () => {
+  await withEnv({ DAILY_CAP_CENTS: "100" }, async () => {
+    const sent: string[] = [];
+    const notify = async (subject: string) => (sent.push(subject), { sent: true });
+    const now = new Date();
+    const { db } = fakeDb([{ lead_id: "x", cost_cents: 78, created_at: now.toISOString() }]);
+    const spend = (cents: number) => recordSpend(db, { leadId: "y", kind: "page", provider: "gemini-images", model: "m", cents }, { now, notify });
+    await Promise.all([spend(4), spend(4), spend(4)]);
+    assert.ok(sent.length >= 1, "antes, con tres a la vez, no salía ninguno");
+    const n = sent.length;
+    await spend(4);
+    assert.equal(sent.length, n);
+  });
 });

@@ -267,23 +267,29 @@ type Row = { lead_id: string; cost_cents: number; created_at: string };
 
 /** Cliente Supabase falso con lo que usa budget.ts (cuentos_spend: select → eq|gte, insert; cuentos_orders: sin pedidos). */
 function fakeSpendDb(rows: Row[]) {
-  // sin pedidos: cualquier consulta encadenada (eq, like, gte) devuelve una lista vacía
-  const none = () => {
-    const q: Record<string, unknown> = {};
-    for (const m of ["eq", "like", "gte"]) q[m] = () => q;
-    q.then = (ok: (x: unknown) => unknown, ko?: (e: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok, ko);
+  // consulta encadenable (eq, gte, like, order, range, limit) que se resuelve al esperarla; cuentos_orders, sin pedidos
+  const query = (data: () => Record<string, unknown>[]) => {
+    const filters: ((r: Record<string, unknown>) => boolean)[] = [];
+    let slice: [number, number] | null = null;
+    const q: Record<string, unknown> = {
+      eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
+      gte: (c: string, v: string) => (filters.push((r) => String(r[c]) >= v), q),
+      like: () => q,
+      order: () => q,
+      range: (from: number, to: number) => ((slice = [from, to + 1]), q),
+      limit: (n: number) => ((slice = [0, n]), q),
+      then: (ok: (x: unknown) => unknown, ko?: (e: unknown) => unknown) => {
+        const found = data().filter((r) => filters.every((f) => f(r)));
+        return Promise.resolve({ data: slice ? found.slice(...slice) : found, error: null }).then(ok, ko);
+      },
+    };
     return q;
   };
   const client = {
     from(table: string) {
-      if (table === "cuentos_orders") return { select: none };
+      if (table === "cuentos_orders") return { select: () => query(() => []) };
       return {
-        select() {
-          return {
-            eq: (_c: string, v: string) => Promise.resolve({ data: rows.filter((r) => r.lead_id === v), error: null }),
-            gte: (_c: string, v: string) => Promise.resolve({ data: rows.filter((r) => r.created_at >= v), error: null }),
-          };
-        },
+        select: () => query(() => rows as unknown as Record<string, unknown>[]),
         insert(row: { lead_id: string; cost_cents: number }) {
           rows.push({ ...row, created_at: new Date().toISOString() });
           return Promise.resolve({ error: null });

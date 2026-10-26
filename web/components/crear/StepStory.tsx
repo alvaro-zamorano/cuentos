@@ -126,7 +126,10 @@ export function StepStory({
   const familyHint = (text: string) => {
     if (drawn) return null;
     const words = familyMentions(text).filter((m) => !given.has(m.kin)).map((m) => `«${m.word}»`);
-    return words.length ? `Sale ${words.join(" y ")} en el texto. Para que salga también en los dibujos, y como es de verdad, añade a esa persona en «Quién más sale» (paso 2).` : null;
+    // cambiar el reparto cambia la ficha y el cuento se escribe otra vez: se dice antes (revisión 26 oct)
+    return words.length
+      ? `Sale ${words.join(" y ")} en el texto. Para que salga también en los dibujos, y como es de verdad, añade a esa persona en «Quién más sale» (paso 2). Ojo: al cambiar el paso 2, el cuento se escribe otra vez y se pierden los cambios hechos a mano.`
+      : null;
   };
   return (
     <div className="grid gap-7">

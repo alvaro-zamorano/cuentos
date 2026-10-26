@@ -154,6 +154,11 @@ export class TransientError extends Error {
 
 const transientStatus = (status: number) => status === 408 || status === 429 || status >= 500;
 
+/** ¿Se cortó por tiempo? El proveedor pudo hacer el trabajo (y cobrarlo) aunque no llegara la respuesta. */
+export function isTimeout(e: unknown): boolean {
+  return e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+}
+
 /** ¿Es un fallo pasajero? Los marcados como tales, los tiempos agotados y los de red de fetch. */
 export function isTransient(e: unknown): boolean {
   if (e instanceof TransientError) return true;

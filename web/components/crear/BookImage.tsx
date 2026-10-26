@@ -33,7 +33,7 @@ export function BookImage({ job, alt, testId, title, scene, tint, box = BOX }: {
   if (job.status === "failed") {
     return (
       <div className={`${box} grid place-items-center`} data-testid={testId} data-state="failed">
-        <span className="px-6 text-center text-sm text-danger">{job.error === "budget" ? "Sin presupuesto para esta imagen hoy." : "No ha salido. Lo repetimos al reintentar."}</span>
+        <span className="px-6 text-center text-sm text-danger">{job.error === "budget" ? "Sin presupuesto para esta imagen hoy." : job.error === "limit" ? "No podemos pintar más para este libro. Escríbenos y lo miramos." : "No ha salido. Lo repetimos al reintentar."}</span>
       </div>
     );
   }

@@ -95,19 +95,34 @@ export interface FreeSpendToday {
   counts: (leadId: string, at: number) => boolean;
 }
 
+/** Supabase devuelve como mucho 1000 filas por consulta: se piden por páginas (revisión 26 oct). null si falla. */
+const PAGE_ROWS = 1000;
+async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[] | null> {
+  const out: T[] = [];
+  for (let from = 0; from < 50 * PAGE_ROWS; from += PAGE_ROWS) {
+    const { data, error } = await page(from, from + PAGE_ROWS - 1);
+    if (error || !data) return null;
+    out.push(...data);
+    if (data.length < PAGE_ROWS) break;
+  }
+  return out;
+}
+
 /**
  * Lo gastado hoy que cuenta para el tope diario (B2): todo menos lo pintado para libros cobrados de verdad (`cs_live_`)
  * después de cobrarlos. Lo de antes del pago (hoja y portada gratis) sí cuenta. null si falla la lectura.
  */
 export async function freeSpendToday(db: Db, now = new Date()): Promise<FreeSpendToday | null> {
   const dayStart = utcDayStart(now);
-  const day = await db.from("cuentos_spend").select("cost_cents, lead_id, created_at").gte("created_at", dayStart);
-  if (day.error || !day.data) return null;
+  const day = await allRows((from, to) => db.from("cuentos_spend").select("cost_cents, lead_id, created_at").gte("created_at", dayStart).order("created_at", { ascending: true }).range(from, to));
+  if (!day) return null;
   const since = new Date(Date.parse(dayStart) - PAID_LOOKBACK_MS).toISOString();
-  const orders = await db.from("cuentos_orders").select("book_id, stripe_session_id, created_at").eq("status", "paid").like("stripe_session_id", "cs_live_%").gte("created_at", since);
-  if (orders.error || !orders.data) return null;
+  const orders = await allRows((from, to) =>
+    db.from("cuentos_orders").select("book_id, stripe_session_id, created_at").eq("status", "paid").like("stripe_session_id", "cs_live_%").gte("created_at", since).order("created_at", { ascending: true }).range(from, to),
+  );
+  if (!orders) return null;
   const paidAt = new Map<string, number>();
-  for (const o of orders.data) {
+  for (const o of orders) {
     if (!isLiveSession(o.stripe_session_id)) continue;
     const t = Date.parse(o.created_at);
     const prev = paidAt.get(o.book_id);
@@ -117,7 +132,7 @@ export async function freeSpendToday(db: Db, now = new Date()): Promise<FreeSpen
     const t = paidAt.get(leadId);
     return t === undefined || at < t;
   };
-  const total = day.data.reduce((a, r) => (counts(r.lead_id, Date.parse(r.created_at)) ? a + (r.cost_cents ?? 0) : a), 0);
+  const total = day.reduce((a, r) => (counts(r.lead_id, Date.parse(r.created_at)) ? a + (r.cost_cents ?? 0) : a), 0);
   return { total, counts };
 }
 
@@ -162,7 +177,7 @@ type Notify = (subject: string, text: string) => Promise<{ sent: boolean }>;
 
 /**
  * Anota un gasto ya hecho. Devuelve ok:false si no hay cliente o falla la escritura (el llamador decide si avisa).
- * Si este gasto hace pasar del 80 % el tope diario, avisa por email (una vez por cruce; si falla, solo queda en el log).
+ * Si el gasto del día pasa del 80 % del tope, avisa por email una vez al día (si falla, solo queda en el log).
  */
 export async function recordSpend(db: Db | null, rec: SpendRecord, { now = new Date(), notify = sendSupportNotice }: { now?: Date; notify?: Notify } = {}): Promise<SpendCheck> {
   if (!db) return { ok: false, reason: "sin presupuesto configurado" };
@@ -175,17 +190,23 @@ export async function recordSpend(db: Db | null, rec: SpendRecord, { now = new D
     cost_cents: cents,
   });
   if (error) return { ok: false, reason: `no se pudo registrar el gasto: ${error.message}` };
-  if (cents > 0) await dailyAlert(db, rec.leadId, cents, now, notify);
+  if (cents > 0) await dailyAlert(db, now, notify);
   return { ok: true };
 }
 
-async function dailyAlert(db: Db, leadId: string, cents: number, now: Date, notify: Notify): Promise<void> {
+async function dailyAlert(db: Db, now: Date, notify: Notify): Promise<void> {
   try {
-    const day = await freeSpendToday(db, now);
-    if (!day || !day.counts(leadId, now.getTime())) return;
     const cap = dailyCapCents();
-    const line = DAILY_ALERT_AT * cap;
-    if (cap <= 0 || day.total < line || day.total - cents >= line) return;
+    if (cap <= 0) return;
+    const day = await freeSpendToday(db, now);
+    if (!day || day.total < DAILY_ALERT_AT * cap) return;
+    // una vez al día, con una fila de gasto cero como marca (sin tabla nueva). Antes se miraba si este gasto cruzaba la
+    // línea, y con varios gastos a la vez el aviso podía no salir nunca (revisión 26 oct); ahora, como mucho, sale dos veces
+    const marker = `aviso-tope:${utcDayStart(now).slice(0, 10)}`;
+    const seen = await db.from("cuentos_spend").select("id").eq("lead_id", marker).limit(1);
+    if (seen.error || (seen.data && seen.data.length > 0)) return;
+    const mark = await db.from("cuentos_spend").insert({ lead_id: marker, kind: "story", provider: "aviso", model: "80%", cost_cents: 0 });
+    if (mark.error) return;
     const r = await notify(
       `Gasto del día al ${Math.round((day.total / cap) * 100)} %`,
       [

@@ -429,3 +429,21 @@ test("«Que salga la abuela»: el paso 3 avisa de cómo sacarla en los dibujos, 
   await expect(page.getByTestId("save-error")).toHaveCount(0, { timeout: 10_000 });
   expect(errors).toEqual([]);
 });
+
+test("Pago que volvió de Stripe sin confirmar: al volver con el enlace no se ofrece pagar otra vez", async ({ page }) => {
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("rita@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await page.getByTestId("approve").click();
+  await expect(page.getByTestId("paywall")).toBeVisible();
+  const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
+  // lo que deja la vuelta de Stripe (?pagado=1) cuando el pago aún no ha llegado
+  await page.evaluate((id) => localStorage.setItem(`cuentos:pago-pendiente:pago:${id}`, String(Date.now())), bookId);
+  await page.goto(`/crear?b=${bookId}`);
+  await expect(page.getByTestId("pay-pending")).toBeVisible();
+  await expect(page.getByTestId("paywall")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

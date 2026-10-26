@@ -22,7 +22,7 @@ import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_FIX_EN, REDO_REASONS, cleanNote, i
 import { fichaHash, normalizeFicha } from "../plan/ficha";
 import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
-import { validatePlan, type PlanValidation } from "../plan/validate";
+import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping } from "../print/shipping";
 import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
@@ -223,8 +223,9 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   if (!email) return fail(400, "email");
   const ficha = normalizeFicha(input.ficha);
   if (!ficha.hero.name) return fail(400, "ficha");
-  const plan = planFromClient(ficha, input.plan);
-  if (!plan) return fail(400, "plan");
+  const raw = planFromClient(ficha, input.plan);
+  if (!raw) return fail(400, "plan");
+  const plan = dropOrphanFamilyExtras(raw, ficha);
   const v = validatePlan(plan, ficha, { fromParent: true });
   if (!v.usable) return fail(422, "plan_invalid", planProblem(v));
   if (!getStyle(ficha.styleId)) return fail(400, "style_id");
@@ -424,8 +425,9 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
-  const plan = planFromClient(d.ficha, input.plan);
-  if (!plan) return fail(400, "plan");
+  const raw = planFromClient(d.ficha, input.plan);
+  if (!raw) return fail(400, "plan");
+  const plan = dropOrphanFamilyExtras(raw, d.ficha);
   if (await printLocked(store, book.id)) {
     // el guardado automático puede llegar después de mandarlo a imprimir con los mismos textos: eso no es un cambio
     const same = plan.title === d.plan.title && plan.dedication === d.plan.dedication && plan.pages.every((p, i) => p.text === d.plan.pages[i]?.text);
@@ -461,6 +463,7 @@ export async function payDryRun(store: GenStore, input: { bookId?: unknown; edit
     const loaded = await loadBook(store, input.bookId);
     if (isFail(loaded)) return loaded;
     await store.addPaidOrder(loaded.book.id, newOrder("hardcover", up.amountCents, `dry-run-mejora:${loaded.book.public_id}`, loaded.d.shipping));
+    await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
     return { ok: true };
   }
   const prep = await prepareCheckout(store, input);
@@ -469,6 +472,8 @@ export async function payDryRun(store: GenStore, input: { bookId?: unknown; edit
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
   if (!(await store.hasPaidOrder(book.id))) await store.addPaidOrder(book.id, newOrder(prep.edition, prep.amountCents, `dry-run:${book.public_id}`, d.shipping));
+  // como un pago real: el libro dura 30 días desde el pago (revisión 26 oct)
+  await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
   return { ok: true };
 }
 
@@ -595,7 +600,12 @@ export async function recordStripePayment(store: GenStore, event: PaidEvent, env
   const loaded = await loadBook(store, bookId, { includeExpired: true });
   if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
   const publicId = loaded.book.public_id;
-  if (s.id && (await store.hasPaidOrder(loaded.book.id, (x) => x === s.id))) return { action: "duplicate", bookId: publicId };
+  if (s.id && (await store.hasPaidOrder(loaded.book.id, (x) => x === s.id))) {
+    // Stripe reintenta si la vez anterior falló después de guardar el pedido (por ejemplo, al alargar el libro): se
+    // vuelve a alargar, que nunca acorta (revisión 26 oct)
+    await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
+    return { action: "duplicate", bookId: publicId };
+  }
   if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
   if (await paidHere(store, loaded.book.id, env)) return { action: "double_charge", bookId: publicId };
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
@@ -741,7 +751,9 @@ async function ensureCover(store: GenStore, book: BookRecord, d: BookDraftV2, sh
     const mine = coverJobs(jobs).filter((j) => sheetRefOf(j) === sheetJobId);
     // una portada «pintando» desde hace más de 330 s está colgada (Vercel cortó la función): cuenta como perdida (B8)
     const hung = (j: GenJob) => j.status === "running" && now - Date.parse(j.updated_at) > STALE_RUNNING_MS;
-    if (mine.some((j) => j.status !== "failed" && !hung(j))) return [];
+    // una portada gratis que se quedó en cola tampoco vale: tras el pago solo se pintan las pagadas (revisión 26 oct)
+    const alive = (j: GenJob) => j.status === "done" || (j.status === "running" && !hung(j)) || (j.status === "pending" && j.paid);
+    if (mine.some(alive)) return [];
     // pagada y con intentos: runJob la vuelve a reclamar
     const resume = mine.find((j) => hung(j) && j.paid && j.attempts < MAX_ATTEMPTS);
     if (resume) return [resume.id];
@@ -990,7 +1002,11 @@ export interface BookJobView {
   status: GenJob["status"];
   url: string | null;
   placeholder: boolean;
-  error: "budget" | "error" | null;
+  /**
+   * Por qué falló: «budget», el tope del día (mañana se puede); «limit», el tope del libro (no se renueva); «error», lo
+   * demás (revisión 26 oct: antes todo era «budget» y el paso 4 decía «vuelve mañana» también con el tope del libro).
+   */
+  error: "budget" | "limit" | "error" | null;
   /** Sigue siendo la imagen de la escena actual (si el padre cambió la página después, ya no). */
   current: boolean;
   sheetJobId: string | null;
@@ -1058,6 +1074,12 @@ export function upgradeOffer(
   return cents !== null && until ? { cents, until } : null;
 }
 
+function failReason(error: string | null | undefined): BookJobView["error"] {
+  if (error?.includes("tope diario")) return "budget";
+  if (error?.includes("tope por lead") || error?.includes("tope de coste por libro")) return "limit";
+  return "error";
+}
+
 export async function bookView(store: GenStore, bookId: unknown, env: Env = process.env): Promise<BookView | Fail> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return loaded;
@@ -1081,7 +1103,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       status: j.status,
       url: j.status === "done" && j.storage_path ? await store.signedUrl(j.storage_path, 3600) : null,
       placeholder: j.status === "done" && !j.storage_path,
-      error: j.status === "failed" ? (j.error?.startsWith("presupuesto") ? "budget" : "error") : null,
+      error: j.status === "failed" ? failReason(j.error) : null,
       current,
       sheetJobId: sheetId,
       paid: !!j.paid,

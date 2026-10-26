@@ -69,7 +69,7 @@ export default function Privacidad() {
       <ul>
         <li>
           El libro (lo que pones en el formulario, el cuento y las ilustraciones) se <strong>borra a los 30 días</strong> de empezarlo; si lo
-          compras, a los 30 días de la compra. Si has comprado el libro impreso y aún no lo has mandado a imprimir, se guarda hasta que lo hagas. La dirección de envío,
+          compras, a los 30 días de la compra. Si has comprado el libro impreso, se guarda hasta que lo mandas a imprimir y, después, como mucho 30 días más. La dirección de envío,
           hasta que llega el paquete.
         </li>
         <li>

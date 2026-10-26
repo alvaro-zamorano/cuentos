@@ -14,7 +14,7 @@
 import { newPublicId } from "../ids";
 import { buildBook, normalizeDraft } from "../story";
 import { characterBible } from "./character";
-import { estimatedCostCents, isTransient, type GenerationAdapter, type GenerationResult, type ImageRef, type ImageSize } from "./adapter";
+import { estimatedCostCents, isTimeout, isTransient, type GenerationAdapter, type GenerationResult, type ImageRef, type ImageSize } from "./adapter";
 import { thumbnail, toJpeg } from "./postprocess";
 import { qcImage, type QcResult } from "../plan/qc";
 import { canSpend, freeBookCapCents, recordSpend, type SpendCheck, type SpendKind } from "./budget";
@@ -455,7 +455,19 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
     // un fallo pasajero del proveedor (429, 5xx, red, tiempo agotado) no gasta el intento: el job queda fallido y se
     // reabre al volver al libro, al reintentar o en el rescate (auditoría 26 oct, B4)
     const transient = isTransient(e);
-    await store.updateJob(job.id, { status: "failed", error: `${transient ? "pasajero: " : ""}${msg}`.slice(0, 300), ...(transient ? { attempts: Math.max(0, claimed.attempts - 1) } : {}) });
+    // un tiempo agotado sí se apunta como gasto (estimado): el proveedor pudo cobrarlo, y así el tope por libro y el del
+    // día frenan los reintentos sin fin cuando va lento (revisión 26 oct). 429, 5xx y red no se cobran
+    const charged = isTimeout(e) ? estimatedCostCents(adapter.name, v2?.size) : 0;
+    await store.updateJob(job.id, {
+      status: "failed",
+      error: `${transient ? "pasajero: " : ""}${msg}`.slice(0, 300),
+      ...(transient ? { attempts: Math.max(0, claimed.attempts - 1) } : {}),
+      ...(charged > 0 ? { cost_cents: (claimed.cost_cents ?? 0) + charged } : {}),
+    });
+    if (charged > 0) {
+      const rec = await recordSpend(store.db, { leadId: lead, kind: SPEND_KIND[job.kind], provider: adapter.name, model: "tiempo-agotado", cents: charged }).catch(() => null);
+      if (!rec?.ok) console.error(`[generate] gasto del tiempo agotado sin registrar (${job.kind} ${job.id})`);
+    }
     console.error(`[generate] ${job.kind} ${job.id} falló${transient ? " (pasajero)" : ""}`);
   }
   const after = await store.getJob(job.id);

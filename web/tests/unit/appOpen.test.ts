@@ -70,3 +70,23 @@ test("sitemapPaths: sin /crear mientras esté cerrada", () => {
   assert.deepEqual(sitemapPaths(false), ["/", "/privacidad", "/condiciones", "/aviso-legal"]);
   assert.ok(sitemapPaths(true).includes("/crear"));
 });
+
+test("proxy con la app abierta: la API antigua da 404 de verdad y la nueva pasa (revisión 26 oct: el test anterior no pasaba por proxy.ts)", async () => {
+  const { NextRequest } = await import("next/server");
+  const { proxy } = await import("../../proxy");
+  const prev = process.env.APP_OPEN;
+  process.env.APP_OPEN = "1";
+  try {
+    for (const p of ["/api/generate/sample", "/api/books/abc", "/api/Generate/sample", "/api/lead"]) {
+      const r = proxy(new NextRequest(`https://x.test${p}`));
+      assert.equal(r.status, 404, p);
+    }
+    for (const p of ["/api/libro/view", "/api/plan", "/api/cron/rescue", "/api/stripe/webhook"]) {
+      const r = proxy(new NextRequest(`https://x.test${p}`));
+      assert.notEqual(r.status, 404, p);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.APP_OPEN;
+    else process.env.APP_OPEN = prev;
+  }
+});

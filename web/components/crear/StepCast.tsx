@@ -262,6 +262,13 @@ export function StepCast({
 }
 
 function RetryNote({ failed, busy, onRetry }: { failed?: BookJobView; busy: boolean; onRetry: () => void }) {
+  // el tope del libro no se renueva: sin botón, que solo volvería a fallar
+  if (failed?.error === "limit")
+    return (
+      <p className="rise m-0 rounded-2xl bg-[#f6ded6] px-4 py-3.5 text-[15px] leading-snug text-ink" role="status" data-testid="cast-retry">
+        Este cuento ya ha usado todos sus dibujos gratis. Escríbenos y lo miramos.
+      </p>
+    );
   const text =
     failed?.error === "budget"
       ? "Hoy ya hemos dibujado todo lo que podemos. Vuelve mañana y dale a «Reintentar»."
