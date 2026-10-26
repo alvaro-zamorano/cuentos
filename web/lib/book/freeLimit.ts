@@ -36,7 +36,10 @@ export interface FreeUse {
   books: BookRecord[];
 }
 
-/** Libros del mismo buzón que ya tienen dibujos y no se han pagado, en el periodo. `exceptBookId`: el que se está creando. */
+/**
+ * Libros del mismo buzón que ya tienen dibujos (o se están pintando) y no se han pagado, en el periodo. `exceptBookId`: el
+ * que se está creando.
+ */
 export async function freeUse(store: GenStore, email: string, opts: { exceptBookId?: string | null; now?: number } = {}): Promise<FreeUse> {
   const now = opts.now ?? Date.now();
   const norm = normalizeEmail(email);
@@ -54,8 +57,9 @@ export async function freeUse(store: GenStore, email: string, opts: { exceptBook
       continue;
     }
     if (b.id === opts.exceptBookId || b.public_id === opts.exceptBookId) continue;
+    // cuenta si tiene personajes dibujados o en camino; si fallaron todos (Gemini 503 o 429), no (auditoría 26 oct, B8)
     const jobs = await store.listJobs(b.id);
-    if (jobs.some((j) => j.kind === "sheet")) unpaidWithArt.push(b);
+    if (jobs.some((j) => j.kind === "sheet" && j.status !== "failed")) unpaidWithArt.push(b);
   }
   const books = unpaidWithArt.filter((b) => Date.parse(b.createdAt ?? new Date(now).toISOString()) >= since);
   return { used: books.length, left: Math.max(0, FREE_BOOKS - books.length - 1), since: new Date(since).toISOString(), books };

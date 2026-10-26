@@ -11,7 +11,7 @@
 import { selectLlm, type Llm } from "../llm";
 import { hashString } from "../story/hash";
 import { getStyle } from "../generation/styles";
-import { MAX_ATTEMPTS, gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
+import { MAX_ATTEMPTS, STALE_RUNNING_MS, gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
 import { jobKey } from "../generation/keys";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
@@ -101,6 +101,26 @@ function coverJobs(jobs: GenJob[]): GenJob[] {
 function sheetRefOf(job: GenJob): string | null {
   const refs = Array.isArray(job.references) ? (job.references as { kind?: string; job_id?: string }[]) : [];
   return refs.find((r) => r?.kind === "sheet")?.job_id ?? null;
+}
+/** La portada más reciente de una hoja: puede haber varias si una falló del todo (auditoría 26 oct, B8). */
+function lastCoverOf(jobs: GenJob[], sheetJobId: string): GenJob | undefined {
+  const mine = coverJobs(jobs).filter((c) => sheetRefOf(c) === sheetJobId);
+  return mine[mine.length - 1];
+}
+/** Falló y ya no le quedan intentos: para repetirla hay que pintar otra (B8). */
+function spent(job: GenJob): boolean {
+  return job.status === "failed" && job.attempts >= MAX_ATTEMPTS;
+}
+/** Tiene personajes dibujados o en camino: cuenta como cuento con dibujos (lib/book/freeLimit.ts). */
+function hasArt(sheets: GenJob[]): boolean {
+  return sheets.some((j) => j.status !== "failed");
+}
+/**
+ * Versiones de la hoja que quedan: tres que salgan (la primera y dos cambios con palabras). Las que fallaron del todo no
+ * gastan una (B8), pero nunca más de las que admite la base.
+ */
+function sheetsLeftOf(sheets: GenJob[]): number {
+  return Math.max(0, Math.min(MAX_SHEETS - sheets.filter((j) => !spent(j)).length, DB_MAX_VARIANT - sheets.length));
 }
 
 /** Hoja y portada que van juntas (misma versión del reparto). */
@@ -225,26 +245,18 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   const sheets = sheetJobs(existing);
   const current = d.castArt?.key === key ? sheets.filter((j) => j.prompt === sheetPrompt(d.castArt!, getStyle(ficha.styleId)!)) : [];
 
-  // ya hay hoja para este reparto: no se gasta otra vez (si falló y le queda un intento, se reabre)
-  if (current.length > 0) {
-    const sheet = current[current.length - 1];
-    const cover = coverJobs(existing).find((c) => sheetRefOf(c) === sheet.id);
-    if (cover) {
-      let reopened = 0;
-      for (const j of [sheet, cover]) if (j.status === "failed" && j.attempts < MAX_ATTEMPTS && (await store.reopen(j))) reopened++;
-      return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 0, reopened };
-    }
-  }
-  if (sheets.length >= MAX_SHEETS) return fail(409, "max_versions", "Ya has usado las versiones de la hoja de este libro.");
-
   // la puerta (26 oct): cuántos cuentos con dibujos lleva este buzón sin pagar. Se mira antes de dibujar el primero:
-  // un cuento que empieza siempre termina
-  let freeLeft: number | undefined;
-  if (sheets.length === 0) {
-    const use = await freeUse(store, email, { exceptBookId: book.id });
-    if (use.used >= FREE_BOOKS) return { ok: false, status: 429, error: "free_limit", books: use.books.map((b) => ({ publicId: b.public_id, title: draftV2(b)?.plan.title ?? "Tu cuento" })) } as FreeLimitFail;
-    freeLeft = use.left;
+  // un cuento que empieza siempre termina. Un libro cuyos dibujos fallaron todos aún no cuenta (B8)
+  const gate = await freeGate(store, email, book, sheets);
+  if ("error" in gate) return gate;
+  const { freeLeft } = gate;
+
+  // ya hay hoja para este reparto: no se gasta otra vez (lo fallido se reabre; si ya no le quedan intentos, otra versión)
+  if (current.length > 0) {
+    const r = await reviveCast(store, book, d, existing, current[current.length - 1], adapter);
+    if (r) return r.ok ? { ...r, freeLeft } : r;
   }
+  if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado las versiones de la hoja de este libro.");
 
   // hoja + portada tienen que caber en el presupuesto del libro y en el del día
   const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
@@ -258,13 +270,80 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   }
 
   const variant = sheets.length + 1;
+  const made = await newSheetAndCover(store, book, d, variant);
+  if (isFail(made)) return made;
+  return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2, fresh: variant === 1, email, title: plan.title, freeLeft };
+}
+
+/** La puerta de los cuentos gratis, solo para un libro que aún no tiene personajes (sin hoja o con todas fallidas). */
+async function freeGate(store: GenStore, email: string, book: BookRecord, sheets: GenJob[]): Promise<{ freeLeft?: number } | FreeLimitFail> {
+  if (hasArt(sheets)) return {};
+  const use = await freeUse(store, email, { exceptBookId: book.id });
+  if (use.used >= FREE_BOOKS) return { ok: false, status: 429, error: "free_limit", books: use.books.map((b) => ({ publicId: b.public_id, title: draftV2(b)?.plan.title ?? "Tu cuento" })) };
+  return { freeLeft: use.left };
+}
+
+async function newSheetAndCover(store: GenStore, book: BookRecord, d: BookDraftV2, variant: number): Promise<{ sheet: GenJob; cover: GenJob } | Fail> {
   await store.insertJobs(sheetAndCover(book, d, variant));
   const sheet = sheetJobs(await store.listJobs(book.id)).find((j) => j.variant === variant);
   if (!sheet) return fail(500, "db");
   await store.insertJobs([coverRow(book, d, variant, sheet.id)]);
-  const cover = coverJobs(await store.listJobs(book.id)).find((c) => sheetRefOf(c) === sheet.id);
+  const cover = lastCoverOf(await store.listJobs(book.id), sheet.id);
   if (!cover) return fail(500, "db");
-  return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 2, fresh: variant === 1, email, title: plan.title, freeLeft };
+  return { sheet, cover };
+}
+
+/**
+ * Vuelve a poner en marcha una hoja y su portada si fallaron (B8): lo fallido con intentos libres se reabre y una portada
+ * sin intentos se pinta otra vez para la misma hoja. Una hoja sin intentos no se arregla aquí: devuelve null y toca
+ * pintar otra versión. Si nada falló, no cambia nada.
+ */
+async function reviveCast(store: GenStore, book: BookRecord, d: BookDraftV2, jobs: GenJob[], sheet: GenJob, adapter: Pick<GenerationAdapter, "name">): Promise<StartResult | Fail | null> {
+  if (spent(sheet)) return null;
+  let cover = lastCoverOf(jobs, sheet.id);
+  let row: NewJob | null = null;
+  if (!cover || spent(cover)) {
+    const variant = coverJobs(jobs).length + 1;
+    if (variant > DB_MAX_VARIANT) return fail(409, "max_versions", "Ya no podemos repetir la portada de este libro. Escríbenos y lo miramos.");
+    const gate = await gateSpendCents(store, book.id, estimatedCostCents(adapter.name, "2K"));
+    if (!gate.ok) return fail(402, "budget", gate.reason);
+    row = coverRow(book, d, variant, sheet.id);
+  }
+  let reopened = 0;
+  for (const j of [sheet, ...(row ? [] : [cover!])]) if (j.status === "failed" && (await store.reopen(j))) reopened++;
+  if (row) {
+    await store.insertJobs([row]);
+    cover = (await store.listJobs(book.id)).find((j) => j.job_key === row.job_key);
+    if (!cover) return fail(500, "db");
+  }
+  return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover!.id, created: row ? 1 : 0, reopened };
+}
+
+/**
+ * «Reintentar» del paso 4 (auditoría 26 oct, B8): si la última hoja o su portada fallaron (Gemini 503 o 429), se vuelven
+ * a pintar sin empezar otro cuento. Con lo guardado en el libro: no hacen falta el email ni la ficha.
+ */
+export async function retryCast(store: GenStore, input: { bookId?: unknown }, adapter: Pick<GenerationAdapter, "name">, env: Env = process.env): Promise<StartResult | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  const { book, d } = loaded;
+  if (!d.castArt || !book.email) return fail(409, "no_sheet");
+  if (await paidHere(store, book.id, env)) return fail(409, "already_paid");
+  const jobs = await store.listJobs(book.id);
+  const sheets = sheetJobs(jobs);
+  const sheet = sheets[sheets.length - 1];
+  if (!sheet) return fail(409, "no_sheet");
+  const gate = await freeGate(store, book.email, book, sheets);
+  if ("error" in gate) return gate;
+  const r = await reviveCast(store, book, d, jobs, sheet, adapter);
+  if (r) return r.ok ? { ...r, freeLeft: gate.freeLeft } : r;
+  // la última hoja ya no tiene intentos: otra versión del mismo reparto
+  if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya no podemos repetir más el dibujo de este libro. Escríbenos y lo miramos.");
+  const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
+  if (!both.ok) return fail(402, "budget", both.reason);
+  const made = await newSheetAndCover(store, book, d, sheets.length + 1);
+  if (isFail(made)) return made;
+  return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2, freeLeft: gate.freeLeft };
 }
 
 /** Comprueba que `cents` caben en el presupuesto del libro (antes del pago) y en el del día. */
@@ -292,7 +371,9 @@ export async function reviseSheet(store: GenStore, input: { bookId?: unknown; in
   const existing = await store.listJobs(book.id);
   const sheets = sheetJobs(existing);
   if (sheets.length === 0) return fail(409, "no_sheet");
-  if (sheets.length >= MAX_SHEETS) return fail(409, "max_versions", "Ya has usado los dos cambios de la hoja.");
+  if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado los dos cambios de la hoja.");
+  const gate = await freeGate(store, book.email, book, sheets);
+  if ("error" in gate) return gate;
   const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
   if (!both.ok) return fail(402, "budget", both.reason);
 
@@ -301,14 +382,9 @@ export async function reviseSheet(store: GenStore, input: { bookId?: unknown; in
   d.pagesArt = undefined;
   d.approvedSheetJobId = undefined;
   book = await save(store, book, d);
-  const variant = sheets.length + 1;
-  await store.insertJobs(sheetAndCover(book, d, variant));
-  const sheet = sheetJobs(await store.listJobs(book.id)).find((j) => j.variant === variant);
-  if (!sheet) return fail(500, "db");
-  await store.insertJobs([coverRow(book, d, variant, sheet.id)]);
-  const cover = coverJobs(await store.listJobs(book.id)).find((c) => sheetRefOf(c) === sheet.id);
-  if (!cover) return fail(500, "db");
-  return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 2 };
+  const made = await newSheetAndCover(store, book, d, sheets.length + 1);
+  if (isFail(made)) return made;
+  return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2 };
 }
 
 /* ------------------------------ aprobar hoja, guardar textos ------------------------------ */
@@ -640,12 +716,18 @@ function currentPageJobs(jobs: GenJob[], d: BookDraftV2, n: number, sheetJobId: 
  * 26 oct: un libro pagado nunca se queda sin portada. Si la de su hoja falló (o no existe), se encarga otra como trabajo
  * pagado (sin tope por lead), como los retratos. Si algo falla aquí, se avisa en el log y el resto del libro sigue.
  */
-async function ensureCover(store: GenStore, book: BookRecord, d: BookDraftV2, sheetJobId: string, adapter: Pick<GenerationAdapter, "name">): Promise<string[]> {
+async function ensureCover(store: GenStore, book: BookRecord, d: BookDraftV2, sheetJobId: string, adapter: Pick<GenerationAdapter, "name">, now = Date.now()): Promise<string[]> {
   try {
     const jobs = await store.listJobs(book.id);
     const mine = coverJobs(jobs).filter((j) => sheetRefOf(j) === sheetJobId);
-    if (mine.some((j) => j.status !== "failed")) return [];
-    const retry = mine.find((j) => j.attempts < MAX_ATTEMPTS && j.paid);
+    // una portada «pintando» desde hace más de 330 s está colgada (Vercel cortó la función): cuenta como perdida (B8)
+    const hung = (j: GenJob) => j.status === "running" && now - Date.parse(j.updated_at) > STALE_RUNNING_MS;
+    if (mine.some((j) => j.status !== "failed" && !hung(j))) return [];
+    // pagada y con intentos: runJob la vuelve a reclamar
+    const resume = mine.find((j) => hung(j) && j.paid && j.attempts < MAX_ATTEMPTS);
+    if (resume) return [resume.id];
+    for (const j of mine.filter(hung)) await store.updateJob(j.id, { status: "failed", error: "tiempo agotado" });
+    const retry = mine.find((j) => j.status === "failed" && j.attempts < MAX_ATTEMPTS && j.paid);
     if (retry) return (await store.reopen(retry)) ? [retry.id] : [];
     const variant = coverJobs(jobs).length + 1;
     if (variant > DB_MAX_VARIANT) {
@@ -1035,7 +1117,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
           }
         : null,
     approvedSheetJobId: d.approvedSheetJobId ?? null,
-    sheetsLeft: Math.max(0, MAX_SHEETS - sheets.length),
+    sheetsLeft: sheetsLeftOf(sheets),
     jobs: out,
     chosen: { sheet: sheet?.id ?? null, cover: cover?.id ?? null, pages, portraits },
     portraitsToRequest,

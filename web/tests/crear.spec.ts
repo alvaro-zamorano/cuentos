@@ -364,3 +364,40 @@ test("Recuperar un libro con el enlace /crear?b=", async ({ page }) => {
   await page.goto("/crear?b=noexiste00");
   await expect(page.getByText("Este enlace ya no es válido")).toBeVisible();
 });
+
+test("Si falla el dibujo de los personajes, «Reintentar» lo repite aquí sin empezar otro cuento", async ({ page }) => {
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  // Gemini caído: la hoja y la portada salen fallidas. El dry-run no falla nunca, así que se simula en las respuestas
+  // (lo del servidor lo cubre tests/unit/reintentar.test.ts)
+  let down = true;
+  await page.route("**/api/generate/run", async (route) => {
+    if (!down) return route.continue();
+    const { jobId } = route.request().postDataJSON() as { jobId: string };
+    await route.fulfill({ json: { ok: true, ran: true, job: { id: jobId, status: "failed" } } });
+  });
+  await page.route(/\/api\/libro\/view\?/, async (route) => {
+    if (!down) return route.continue();
+    const res = await route.fetch();
+    const json = await res.json();
+    for (const j of json.jobs) if (j.kind === "sheet" || j.kind === "cover") Object.assign(j, { status: "failed", url: null, placeholder: false, error: "error" });
+    json.chosen = { ...json.chosen, sheet: null, cover: null };
+    await route.fulfill({ response: res, json });
+  });
+  await page.getByTestId("email").fill("nora@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("cast-retry")).toContainText("El dibujo de los personajes no ha salido");
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "failed");
+  await expect(page.getByTestId("approve")).toBeDisabled();
+
+  down = false;
+  const retried = page.waitForResponse((r) => r.url().endsWith("/api/libro/retry") && r.status() === 200);
+  await page.getByTestId("retry").click();
+  await retried;
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await expect(page.getByTestId("cover")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await expect(page.getByTestId("cast-retry")).toHaveCount(0);
+  await expect(page.getByTestId("approve")).toBeEnabled();
+  expect(errors).toEqual([]);
+});

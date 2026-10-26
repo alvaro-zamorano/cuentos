@@ -84,6 +84,8 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
       return json.reason?.includes("diario")
         ? "Hoy ya hemos pintado todas las ilustraciones que podemos. Vuelve mañana y seguimos donde lo dejaste."
         : "Ya has usado las ilustraciones de prueba de este email.";
+    case "free_limit":
+      return "Con este email ya tienes tres cuentos con dibujos este mes. Termina uno desde el enlace de su email y podrás seguir con este.";
     case "max_versions":
       return json.reason ?? "Ya no quedan más versiones.";
     case "moderation":
