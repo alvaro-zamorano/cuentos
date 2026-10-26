@@ -6,6 +6,7 @@
  * El email no está verificado: los libros nunca se enseñan en pantalla, se mandan por email.
  */
 import type { BookRecord, GenStore } from "../generation/store";
+import { paidInEnv } from "../stripe";
 
 export const FREE_BOOKS = 3;
 export const FREE_WINDOW_DAYS = 30;
@@ -40,7 +41,7 @@ export interface FreeUse {
  * Libros del mismo buzón que ya tienen dibujos (o se están pintando) y no se han pagado, en el periodo. `exceptBookId`: el
  * que se está creando.
  */
-export async function freeUse(store: GenStore, email: string, opts: { exceptBookId?: string | null; now?: number } = {}): Promise<FreeUse> {
+export async function freeUse(store: GenStore, email: string, opts: { exceptBookId?: string | null; now?: number; env?: Record<string, string | undefined> } = {}): Promise<FreeUse> {
   const now = opts.now ?? Date.now();
   const norm = normalizeEmail(email);
   const domain = norm.slice(norm.lastIndexOf("@") + 1);
@@ -51,8 +52,10 @@ export async function freeUse(store: GenStore, email: string, opts: { exceptBook
   let since = windowStart;
   const unpaidWithArt: BookRecord[] = [];
   for (const b of recent) {
+    // solo una compra de este entorno: en producción, «pagar» con la tarjeta de prueba en la preview no da otra tanda
+    // (la base es la misma; revisión 26 oct)
     const order = await store.getOrder(b.id);
-    if (order) {
+    if (order && paidInEnv(order.sessionId, opts.env ?? process.env)) {
       since = Math.max(since, Date.parse(order.createdAt));
       continue;
     }

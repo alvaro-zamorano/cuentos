@@ -15,6 +15,15 @@ import type { Database, Json } from "../supabase/types";
 import type { Draft } from "../types";
 import type { PaidEdition, PaidOrder, PrintInfo, PrintStatus, Shipping } from "../print/types";
 import type { JobKind } from "./keys";
+import { isLiveSession } from "../stripe";
+
+/**
+ * Qué pedidos pide un cron (revisión del 26 oct): `true`, solo cobros reales (`cs_live_…`, producción); `false`, solo los
+ * demás (prueba y pago simulado, la preview); sin valor, todos. Se filtra en la consulta: filtrar después del límite
+ * dejaba fuera los pedidos de un entorno cuando el otro llenaba la ventana (la base es la misma).
+ */
+export type LiveFilter = boolean | undefined;
+const liveMatch = (live: LiveFilter, sessionId: string | null | undefined) => live === undefined || isLiveSession(sessionId) === live;
 
 export const BUCKET = "cuentos";
 
@@ -108,9 +117,9 @@ export interface GenStore {
   /** Cambia el estado de imprenta solo si sigue en uno de `from` (dos peticiones a la vez no mandan dos pedidos). */
   claimPrint(id: string, from: PrintStatus[], to: PrintStatus): Promise<boolean>;
   /** Pedidos de tapa dura en alguno de estos estados (para el cron), los más antiguos primero. */
-  listPrintOrders(statuses: PrintStatus[], limit: number): Promise<PaidOrder[]>;
-  /** Pedidos pagados desde `since`, de cualquier edición, los más antiguos primero (para el rescate, auditoría 26 oct, B4). */
-  listPaidOrdersSince(since: string, limit: number): Promise<PaidOrder[]>;
+  listPrintOrders(statuses: PrintStatus[], limit: number, live?: LiveFilter): Promise<PaidOrder[]>;
+  /** Pedidos pagados desde `since`, de cualquier edición, los más recientes primero (para el rescate, auditoría 26 oct, B4). */
+  listPaidOrdersSince(since: string, limit: number, live?: LiveFilter): Promise<PaidOrder[]>;
   addFeedback(row: FeedbackRow): Promise<void>;
   listFeedback(bookId: string): Promise<FeedbackRow[]>;
 }
@@ -149,6 +158,13 @@ export interface OrderPatch {
 
 const ORDER_COLUMNS =
   "id, book_id, edition, amount_cents, stripe_session_id, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, print_info, created_at";
+
+/** Aplica `LiveFilter` a una consulta de cuentos_orders (en la sintaxis de PostgREST, `*` es el comodín de like). */
+function sessionFilter<Q extends { like(column: string, pattern: string): Q; or(filters: string): Q }>(q: Q, live: LiveFilter): Q {
+  if (live === true) return q.like("stripe_session_id", "cs_live_*");
+  if (live === false) return q.or("stripe_session_id.is.null,stripe_session_id.not.like.cs_live_*");
+  return q;
+}
 
 function asOrder(r: Record<string, unknown>): PaidOrder {
   return {
@@ -275,7 +291,9 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       return data?.signedUrl ?? null;
     },
     async hasPaidOrder(bookId, accept) {
-      const { data } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
+      const { data, error } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
+      // si la base falla, se lanza: un «no pagado» falso registraba un cobro doble como pedido nuevo y sin aviso (revisión 26 oct)
+      if (error) throw new Error(`orders: ${error.message}`);
       return (data ?? []).some((o) => !accept || accept(o.stripe_session_id));
     },
     async markIllustrating(bookId) {
@@ -342,13 +360,15 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       if (error) throw new Error(`orders: ${error.message}`);
       return !!data;
     },
-    async listPrintOrders(statuses, limit) {
-      const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").eq("edition", "hardcover").in("print_status", statuses).order("created_at", { ascending: true }).limit(limit);
+    async listPrintOrders(statuses, limit, live) {
+      const q = db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").eq("edition", "hardcover").in("print_status", statuses);
+      const { data, error } = await sessionFilter(q, live).order("created_at", { ascending: true }).limit(limit);
       if (error) throw new Error(`orders: ${error.message}`);
       return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
     },
-    async listPaidOrdersSince(since, limit) {
-      const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").gte("created_at", since).order("created_at", { ascending: true }).limit(limit);
+    async listPaidOrdersSince(since, limit, live) {
+      const q = db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").gte("created_at", since);
+      const { data, error } = await sessionFilter(q, live).order("created_at", { ascending: false }).limit(limit);
       if (error) throw new Error(`orders: ${error.message}`);
       return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
     },
@@ -474,11 +494,19 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       o.updatedAt = stamp();
       return true;
     },
-    async listPrintOrders(statuses, limit) {
-      return [...(state.orders?.values() ?? [])].filter((o) => o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus)).slice(0, limit).map((o) => ({ ...o }));
+    async listPrintOrders(statuses, limit, live) {
+      return [...(state.orders?.values() ?? [])]
+        .filter((o) => o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus) && liveMatch(live, o.sessionId))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .slice(0, limit)
+        .map((o) => ({ ...o }));
     },
-    async listPaidOrdersSince(since, limit) {
-      return [...(state.orders?.values() ?? [])].filter((o) => o.createdAt >= since).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, limit).map((o) => ({ ...o }));
+    async listPaidOrdersSince(since, limit, live) {
+      return [...(state.orders?.values() ?? [])]
+        .filter((o) => o.createdAt >= since && liveMatch(live, o.sessionId))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, limit)
+        .map((o) => ({ ...o }));
     },
     async addFeedback(row) {
       (state.feedback ??= []).push({ ...row });

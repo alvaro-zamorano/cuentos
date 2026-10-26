@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "budget", message: TEXT_BUDGET_MESSAGE }, { status: 503 });
   }
   const result = await rewritePage(body.ficha, body.plan, body.n, body.instruction, llm);
-  if (result.ok) await recordText(db, "page", llm, result.costCents);
+  // también si falla después de llamar al modelo: ese gasto existe (revisión 26 oct)
+  if (result.ok || result.costCents) await recordText(db, "page", llm, result.costCents ?? null);
   return NextResponse.json(result, { status: result.ok ? 200 : result.status });
 }

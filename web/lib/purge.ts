@@ -20,6 +20,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/types";
 import { BUCKET } from "./generation/store";
+import { paidInEnv } from "./stripe";
 
 export interface ExpiredBook {
   id: string;
@@ -113,7 +114,7 @@ export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date
 /* ------------------------------ Supabase ------------------------------ */
 
 
-export function supabasePurgeDb(db: SupabaseClient<Database>): PurgeDb {
+export function supabasePurgeDb(db: SupabaseClient<Database>, env: Record<string, string | undefined> = process.env): PurgeDb {
   const must = (error: { message: string } | null, what: string) => {
     if (error) throw new Error(`${what}: ${error.message}`);
   };
@@ -142,14 +143,15 @@ export function supabasePurgeDb(db: SupabaseClient<Database>): PurgeDb {
     async printPending(bookId) {
       const { data, error } = await db
         .from("cuentos_orders")
-        .select("id")
+        .select("stripe_session_id")
         .eq("book_id", bookId)
         .eq("status", "paid")
         .eq("edition", "hardcover")
-        .in("print_status", ["awaiting_approval", "sending", "failed"])
-        .limit(1);
+        .in("print_status", ["awaiting_approval", "sending", "failed"]);
       must(error, "orders.print");
-      return !!data && data.length > 0;
+      // en producción solo se conserva por un cobro real: las tapas duras de prueba de la preview se quedaban para
+      // siempre y, con 100, atascaban el borrado (revisión 26 oct)
+      return (data ?? []).some((o) => paidInEnv(o.stripe_session_id, env));
     },
     async deleteBook(bookId) {
       const { error } = await db.from("cuentos_books").delete().eq("id", bookId);

@@ -38,6 +38,37 @@ function paintingCopy(v: BookView | null): string {
 }
 
 /**
+ * Pago que volvió de Stripe sin confirmarse todavía, por libro y en este navegador, durante 24 h: al volver con el enlace
+ * del email (sin `?pagado=1`) no se vuelve a ofrecer el pago, que llevaba a pagar dos veces (B7; revisión 26 oct).
+ */
+const PENDING_MS = 24 * 3600 * 1000;
+const pendingKey = (bookId: string, kind: "pago" | "mejora") => `cuentos:pago-pendiente:${kind}:${bookId}`;
+function markPending(bookId: string, kind: "pago" | "mejora") {
+  try {
+    localStorage.setItem(pendingKey(bookId, kind), String(Date.now()));
+  } catch {
+    // sin almacenamiento (modo privado): solo vale en esta pestaña
+  }
+}
+function isPending(bookId: string, kind: "pago" | "mejora"): boolean {
+  try {
+    const t = Number(localStorage.getItem(pendingKey(bookId, kind)));
+    return t > 0 && Date.now() - t < PENDING_MS;
+  } catch {
+    return false;
+  }
+}
+function clearPending(bookId: string, kind: "pago" | "mejora") {
+  try {
+    localStorage.removeItem(pendingKey(bookId, kind));
+  } catch {
+    // nada que borrar
+  }
+}
+
+const UPGRADE_PENDING = "El pago de la tapa dura aún no nos ha llegado. Si ya se ha cobrado, aparecerá aquí en unos minutos: recarga esta página o vuelve con tu enlace.";
+
+/**
  * Paso 5: el libro. Antes del pago, la portada y las 12 páginas veladas con el precio. Tras el pago, las 12
  * ilustraciones (el servidor las pinta en segundo plano y el navegador, si sigue abierto, también tira de ellas),
  * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
@@ -49,6 +80,8 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
   const [error, setError] = useState<string | null>(null);
   // vuelta de Stripe sin confirmación del pago: no se vuelve a enseñar el pago, que llevaba a pagar dos veces (B7)
   const [payPending, setPayPending] = useState(false);
+  // lo mismo con la mejora a tapa dura: sin confirmar, no se vuelve a ofrecer
+  const [upgradePending, setUpgradePending] = useState(false);
   const cancel = useRef({ cancelled: false });
   useEffect(() => {
     const c = cancel.current;
@@ -115,11 +148,16 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
         }
         setBusy(null);
         if (!v.paid) {
+          markPending(bookId, "pago");
           setPayPending(true);
           return;
         }
       }
-      if (!v.paid) return;
+      if (!v.paid) {
+        if (isPending(bookId, "pago")) setPayPending(true);
+        return;
+      }
+      clearPending(bookId, "pago");
       if (confirming && !upgrading) trackPaid(bookId, v.edition ?? "illustrated");
       if (upgrading && v.edition !== "hardcover") {
         // vuelta de Stripe tras pasar a tapa dura: el webhook crea el pedido en unos segundos
@@ -129,7 +167,12 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
           v = (await refresh()) ?? v;
         }
         setBusy(null);
-        if (v.edition !== "hardcover") setError("El pago de la tapa dura aún no nos ha llegado. Si ya se ha cobrado, aparecerá aquí en unos minutos: recarga esta página o vuelve con tu enlace.");
+        if (v.edition !== "hardcover") markPending(bookId, "mejora");
+      }
+      if (v.edition === "hardcover") clearPending(bookId, "mejora");
+      else if (isPending(bookId, "mejora")) {
+        setUpgradePending(true);
+        setError(UPGRADE_PENDING);
       }
       if (upgrading && v.edition === "hardcover") trackPaid(bookId, "mejora");
       // con Stripe las páginas las encola el webhook: se le da un momento antes de pedirlas desde aquí
@@ -246,7 +289,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
       {view.paid && view.print && (
         <PrintPanel view={view} allDone={allDone} onSend={sendToPrint} onShipping={(shipping) => setView({ ...view, print: { ...view.print!, shipping } })} />
       )}
-      {view.paid && !view.print && view.edition === "illustrated" && view.upgrade && !showBusy && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
+      {view.paid && !view.print && view.edition === "illustrated" && view.upgrade && !showBusy && !upgradePending && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
 
       {view.paid && view.chosen.portraits.length > 0 && (!locked || view.chosen.portraits.every((p) => p.job)) && <CastPortraits view={view} />}
 

@@ -36,6 +36,8 @@ export interface PlanFail {
   message: string;
   field?: string;
   issues?: string[];
+  /** Lo que costó llegar al fallo si se llamó al modelo (revisión 26 oct: el texto que falla también cuenta en el tope). */
+  costCents?: number | null;
 }
 
 const MAX_TOKENS_PLAN = 6000;
@@ -82,7 +84,7 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
     } catch (e) {
       console.warn(`[plan] proveedor: ${e instanceof Error ? e.message : "error"}`);
       if (attempt === 0) continue;
-      return { ok: false, status: 502, error: "provider", message: "No hemos podido escribir el cuento ahora mismo. Inténtalo de nuevo en un momento." };
+      return { ok: false, status: 502, error: "provider", message: "No hemos podido escribir el cuento ahora mismo. Inténtalo de nuevo en un momento.", costCents: llmCostCents(llm.model, usage) };
     }
     let parsed: unknown;
     try {
@@ -92,7 +94,7 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
       continue;
     }
     const refusal = refusalOf(parsed);
-    if (refusal) return { ok: false, status: 422, error: "refusal", message: `No podemos escribir este cuento: ${refusal}` };
+    if (refusal) return { ok: false, status: 422, error: "refusal", message: `No podemos escribir este cuento: ${refusal}`, costCents: llmCostCents(model, usage) };
 
     const plan = normalizePlan(parsed, f);
     const validation = validatePlan(plan, f);
@@ -105,7 +107,7 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
   const ms = Date.now() - t0;
   if (!last || !last.validation.usable) {
     console.warn(`[plan] sin plan válido tras ${attempts} intentos: ${last ? msgs(last.validation.issues).slice(0, 6).join(" | ") : "sin respuesta"}`);
-    return { ok: false, status: 502, error: "invalid", message: "No hemos podido escribir el cuento ahora mismo. Inténtalo de nuevo.", issues: last ? msgs(last.validation.issues) : [] };
+    return { ok: false, status: 502, error: "invalid", message: "No hemos podido escribir el cuento ahora mismo. Inténtalo de nuevo.", issues: last ? msgs(last.validation.issues) : [], costCents: llmCostCents(last?.model ?? llm.model, usage) };
   }
   return {
     ok: true,
@@ -176,7 +178,7 @@ export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknow
     } catch (e) {
       console.warn(`[plan/page] proveedor: ${e instanceof Error ? e.message : "error"}`);
       if (attempt === 0) continue;
-      return { ok: false, status: 502, error: "provider", message: "No hemos podido cambiar la página ahora mismo. Inténtalo de nuevo." };
+      return { ok: false, status: 502, error: "provider", message: "No hemos podido cambiar la página ahora mismo. Inténtalo de nuevo.", costCents: llmCostCents(model, usage) };
     }
     let parsed: unknown;
     try {
@@ -186,14 +188,14 @@ export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknow
       continue;
     }
     const refusal = refusalOf(parsed);
-    if (refusal) return { ok: false, status: 422, error: "refusal", message: `No podemos hacer ese cambio: ${refusal}` };
+    if (refusal) return { ok: false, status: 422, error: "refusal", message: `No podemos hacer ese cambio: ${refusal}`, costCents: llmCostCents(model, usage) };
     // se normaliza como un plan de una página para reutilizar los tipos
     const candidate = normalizePlan({ ...plan, pages: [{ ...(parsed as object), n }] }, fWithAsk).pages[0];
     const merged: Plan = { ...plan, pages: plan.pages.map((p) => (p.n === n ? candidate : p)) };
     const issues = validatePage(candidate, fWithAsk, merged);
-    // familiares: valen los que el padre pide ahora o ya están en su cuento; el modelo no puede inventar otros (B6)
-    const others = plan.pages.filter((p) => p.n !== n).map((p) => p.text);
-    const kin = inventedFamily({ extraCast: plan.extraCast, pages: [candidate] }, fWithAsk, [plan.title, plan.dedication, ...others]);
+    // familiares: valen los que el padre pide ahora o ya están en su cuento, también en el texto de esta misma página
+    // (lo pudo escribir él, revisión 26 oct); el modelo no puede inventar otros (B6)
+    const kin = inventedFamily({ extraCast: plan.extraCast, pages: [candidate] }, fWithAsk, [plan.title, plan.dedication, ...plan.pages.map((p) => p.text)]);
     if (kin.length) issues.push({ msg: `Aparecen familiares que el adulto no ha puesto (${kin.join(", ")}): quítalos del texto y de extras.`, hard: true });
     if (!candidate.who.includes("hero") && merged.pages.filter((p) => p.who.includes("hero")).length < 10) {
       issues.push({ msg: "El protagonista tiene que salir en esta imagen (who).", hard: true });
@@ -204,7 +206,7 @@ export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknow
     messages.push({ role: "assistant", content: raw }, { role: "user", content: fixMessage(msgs(issues)) });
   }
   if (!lastPage || lastIssues.some((i) => i.hard)) {
-    return { ok: false, status: 502, error: "invalid", message: "No hemos podido cambiar la página así. Prueba a pedirlo de otra manera.", issues: msgs(lastIssues) };
+    return { ok: false, status: 502, error: "invalid", message: "No hemos podido cambiar la página así. Prueba a pedirlo de otra manera.", issues: msgs(lastIssues), costCents: llmCostCents(model, usage) };
   }
   return { ok: true, page: lastPage, warnings: msgs(lastIssues), usage, costCents: llmCostCents(model, usage), ms: Date.now() - t0 };
 }
