@@ -140,11 +140,34 @@ export async function resolveRefPath(p: string, cwd = process.cwd()): Promise<st
   return resolve(roots[0], p);
 }
 
+/** Espera máxima de una imagen o de una referencia (auditoría 26 oct, B4): sin ella, una llamada colgada se comía la función. */
+export const PROVIDER_TIMEOUT_MS = 90_000;
+
+/**
+ * Fallo del proveedor que no es culpa de la petición: 429, 5xx, red o tiempo agotado. No gasta un intento del job
+ * (auditoría 26 oct, B4): con Gemini caído se agotaban los intentos y las versiones de cada página y el libro pagado
+ * quedaba roto para siempre.
+ */
+export class TransientError extends Error {
+  readonly transient = true;
+}
+
+const transientStatus = (status: number) => status === 408 || status === 429 || status >= 500;
+
+/** ¿Es un fallo pasajero? Los marcados como tales, los tiempos agotados y los de red de fetch. */
+export function isTransient(e: unknown): boolean {
+  if (e instanceof TransientError) return true;
+  if (!(e instanceof Error)) return false;
+  if (e.name === "TimeoutError" || e.name === "AbortError") return true;
+  const cause = (e as { cause?: { code?: string } }).cause?.code ?? "";
+  return e instanceof TypeError && /fetch failed|network|socket|ECONN|ETIMEDOUT|EAI_AGAIN|UND_ERR/i.test(`${e.message} ${cause}`);
+}
+
 /** Carga una referencia (archivo local o URL) en memoria. */
 export async function loadRef(ref: ImageRef): Promise<InlineImage> {
   if ("url" in ref) {
-    const res = await fetch(ref.url);
-    if (!res.ok) throw new Error(`referencia no disponible (${res.status})`);
+    const res = await fetch(ref.url, { signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
+    if (!res.ok) throw new (transientStatus(res.status) ? TransientError : Error)(`referencia no disponible (${res.status})`);
     const mimeType = res.headers.get("content-type")?.split(";")[0] || "image/png";
     return { mimeType, data: new Uint8Array(await res.arrayBuffer()), label: "url" };
   }
@@ -225,10 +248,10 @@ async function executeOpenAI(req: OpenAIImageRequest): Promise<GenerationResult>
   form.append("size", req.size);
   form.append("quality", req.quality);
   for (const [i, ref] of req.refs.entries()) form.append("image[]", await refToBlob(ref), `ref-${i}.${"path" in ref ? ref.path.split(".").pop() : "png"}`);
-  const res = await fetch(req.url, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
+  const res = await fetch(req.url, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`openai ${res.status}: ${text.slice(0, 300)}`);
+    throw new (transientStatus(res.status) ? TransientError : Error)(`openai ${res.status}: ${text.slice(0, 300)}`);
   }
   const json = (await res.json()) as { data?: { b64_json?: string }[]; usage?: unknown };
   const images = (json.data ?? []).map((d) => ({ data: d.b64_json ? Uint8Array.from(Buffer.from(d.b64_json, "base64")) : null, mimeType: "image/png" }));
@@ -342,10 +365,10 @@ async function executeGemini(prompt: string, refs: ImageRef[], opts?: ImageOptio
   if (!key) throw new Error("GEMINI_API_KEY no está definida en el entorno");
   if (refs.length > MAX_REFS) throw new Error("máximo 3 referencias por llamada (RF-10)");
   const req = buildGeminiImageRequest(prompt, await Promise.all(refs.map(loadRef)), opts);
-  const res = await fetch(req.url, { method: "POST", headers: { ...req.headers, "x-goog-api-key": key }, body: JSON.stringify(req.body) });
+  const res = await fetch(req.url, { method: "POST", headers: { ...req.headers, "x-goog-api-key": key }, body: JSON.stringify(req.body), signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`gemini ${res.status}: ${text.slice(0, 300)}`);
+    throw new (transientStatus(res.status) ? TransientError : Error)(`gemini ${res.status}: ${text.slice(0, 300)}`);
   }
   const { images, usage } = parseGeminiImageResponse((await res.json()) as GeminiResponse);
   return {

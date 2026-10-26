@@ -5,6 +5,7 @@
   ],
   "crons": [
     { "path": "/api/cron/purge", "schedule": "17 3 * * *" },
-    { "path": "/api/cron/print", "schedule": "23 9 * * *" }
+    { "path": "/api/cron/print", "schedule": "23 9 * * *" },
+    { "path": "/api/cron/rescue", "schedule": "41 7 * * *" }
   ]
 }

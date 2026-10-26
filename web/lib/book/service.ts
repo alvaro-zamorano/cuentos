@@ -63,6 +63,8 @@ export interface BookDraftV2 {
   pageChoice?: Record<number, string>;
   /** Email de «tu libro está listo» enviado (una vez). */
   readyMailedAt?: number;
+  /** Cuándo se avisó a soporte de que el libro pagado no terminaba (rescate, auditoría 26 oct, B4): una vez por libro. */
+  stuckAlertedAt?: number;
   /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
   edition?: PaidEdition;
   shipping?: Shipping;
@@ -678,6 +680,13 @@ export async function notifyBookReady(
   const fresh = draftV2((await store.findBook({ publicId: bookId })) ?? book) ?? d;
   await save(store, book, { ...fresh, readyMailedAt: Date.now() });
   return true;
+}
+
+/** Apunta que ya se avisó a soporte de este libro atascado (rescate, B4). */
+export async function markStuckAlerted(store: GenStore, bookId: string, at: number): Promise<void> {
+  const book = await store.findBook({ publicId: bookId });
+  const d = book ? draftV2(book) : null;
+  if (book && d) await save(store, book, { ...d, stuckAlertedAt: at });
 }
 
 /** Ids de las páginas que esperan a pintarse (para el segundo plano). */
