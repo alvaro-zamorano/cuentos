@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BookView } from "@/lib/book/service";
+import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
 import { normalizeFicha } from "@/lib/plan/ficha";
@@ -12,6 +12,14 @@ import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
 import { WaitCard } from "./Waiting";
 import { ErrorNote, Status, Taped } from "./ui";
+
+/** La portada más reciente de una hoja: si una falla del todo, se pinta otra para la misma hoja (auditoría 26 oct, B8). */
+function coverOf(jobs: BookJobView[] | undefined, sheetId: string | undefined): BookJobView | undefined {
+  const mine = (jobs ?? []).filter((j) => j.kind === "cover" && !!sheetId && j.sheetJobId === sheetId);
+  return mine[mine.length - 1];
+}
+
+const going = (j?: BookJobView) => j?.status === "pending" || j?.status === "running";
 
 /**
  * Paso 4: con el email (captura del lead, D3) pintamos la hoja de personajes y la portada (≈ 10 c, D2). El padre las
@@ -37,6 +45,9 @@ export function StepCast({
   const [error, setError] = useState<string | null>(null);
   // el último cuento con dibujos gratis del periodo: se dice una vez, con suavidad (26 oct)
   const [lastFree, setLastFree] = useState(false);
+  // la última tanda no terminó bien (falló o tardó demasiado): se ofrece «Reintentar» (B8)
+  const [stalled, setStalled] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const cancel = useRef({ cancelled: false });
   useEffect(() => {
     const c = cancel.current;
@@ -55,6 +66,7 @@ export function StepCast({
   const paint = useCallback(
     async (id: string, sheetJobId: string, coverJobId: string) => {
       setError(null);
+      setStalled(false);
       setPainting("Dibujando a los personajes. Tarda alrededor de un minuto.");
       const outcomes: JobOutcome[] = [];
       await runJobs([sheetJobId], 1, (_, o) => outcomes.push(o), cancel.current);
@@ -64,12 +76,13 @@ export function StepCast({
       await refresh(id);
       setPainting(null);
       if (outcomes.includes("budget")) setError(errorMessage({ error: "budget", reason: "diario" }));
-      else if (outcomes.some((o) => o !== "done")) setError("Alguna imagen no ha salido. Vuelve a intentarlo en un momento.");
+      else if (outcomes.some((o) => o !== "done")) setStalled(true);
     },
     [refresh],
   );
 
-  // al volver a este paso con un libro ya creado: cargar y terminar lo que quedara a medias
+  // al volver a este paso con un libro ya creado: cargar y terminar lo que quedara a medias (en cola o pintándose; si
+  // se quedó colgado, el servidor lo da por perdido a los 330 s y lo repite). Lo fallido espera a «Reintentar»
   const resumed = useRef(false);
   useEffect(() => {
     if (!bookId || resumed.current) return;
@@ -79,8 +92,8 @@ export function StepCast({
       if (!v) return;
       const sheets = v.jobs.filter((j) => j.kind === "sheet");
       const last = sheets[sheets.length - 1];
-      const cover = last ? v.jobs.find((j) => j.kind === "cover" && j.sheetJobId === last.id) : undefined;
-      if (last && cover && (last.status === "pending" || cover.status === "pending")) await paint(bookId, last.id, cover.id);
+      const cover = coverOf(v.jobs, last?.id);
+      if (last && cover && (going(last) || going(cover))) await paint(bookId, last.id, cover.id);
     })();
   }, [bookId, paint, refresh]);
 
@@ -102,10 +115,39 @@ export function StepCast({
 
   const sheets = view?.jobs.filter((j) => j.kind === "sheet") ?? [];
   const current = sheets[sheets.length - 1];
+  const currentCover = coverOf(view?.jobs, current?.id);
   const chosenSheet = view?.chosen.sheet ? view.jobs.find((j) => j.id === view.chosen.sheet) : undefined;
   const shownSheet = chosenSheet ?? current;
-  const cover = shownSheet ? view?.jobs.find((j) => j.kind === "cover" && j.sheetJobId === shownSheet.id) : undefined;
+  const cover = coverOf(view?.jobs, shownSheet?.id);
+  // las versiones que se pueden elegir: un dibujo que falló no es una versión
+  const versions = sheets.filter((s) => s.status !== "failed" || s.id === shownSheet?.id);
+  const versionOf = (id?: string) => versions.findIndex((s) => s.id === id) + 1;
   const name = ficha.hero.name.trim();
+
+  // «Reintentar» (B8): lo fallido se vuelve a poner en cola en el servidor; lo que tardó demasiado, se sigue esperando
+  const failed = current?.status === "failed" ? current : currentCover?.status === "failed" ? currentCover : undefined;
+  const stuck = stalled && (going(current) || going(currentCover));
+  const retry = async () => {
+    if (!bookId || !current) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      if (failed) {
+        const r = await postJson<{ sheetJobId?: string; coverJobId?: string; freeLeft?: number }>("/api/libro/retry", { bookId });
+        if (r.status !== 200 || !r.json.sheetJobId || !r.json.coverJobId) {
+          setError(errorMessage(r.json));
+          return;
+        }
+        if (r.json.freeLeft === 0) setLastFree(true);
+        await refresh(bookId);
+        await paint(bookId, r.json.sheetJobId, r.json.coverJobId);
+      } else if (currentCover) await paint(bookId, current.id, currentCover.id);
+    } catch {
+      setError("Sin conexión. Inténtalo de nuevo.");
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const ready = shownSheet?.status === "done";
   return (
@@ -121,21 +163,22 @@ export function StepCast({
       {painting &&
         current?.status !== "done" &&
         (view ? (
-          <WaitCard sheet={current} cover={current ? view.jobs.find((j) => j.kind === "cover" && j.sheetJobId === current.id) : undefined} pages={record.plan.pages} background={view.background} mail={view.mail} testId="painting" />
+          <WaitCard sheet={current} cover={currentCover} pages={record.plan.pages} background={view.background} mail={view.mail} testId="painting" />
         ) : (
           <Status testId="painting">{painting}</Status>
         ))}
       {error && <ErrorNote>{error}</ErrorNote>}
+      {view && !painting && (failed || stuck) && <RetryNote failed={failed} busy={retrying} onRetry={retry} />}
 
       <figure className="m-0 grid gap-3">
         <Taped>
           <BookImage job={shownSheet} alt={`Así será ${name} en el libro: varias poses y caras`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
         </Taped>
-        <figcaption className="text-sm text-mute">Sus personajes{sheets.length > 1 ? ` · versión ${shownSheet?.variant}` : ""}</figcaption>
+        <figcaption className="text-sm text-mute">Sus personajes{versions.length > 1 ? ` · versión ${versionOf(shownSheet?.id)}` : ""}</figcaption>
       </figure>
-      {sheets.length > 1 && (
+      {versions.length > 1 && (
         <div className="-mt-4 flex flex-wrap gap-2" role="group" aria-label="Versiones de los personajes">
-          {sheets.map((s) => (
+          {versions.map((s) => (
             <button
               key={s.id}
               aria-pressed={s.id === shownSheet?.id}
@@ -146,7 +189,7 @@ export function StepCast({
                 if (r.status === 200) await refresh(bookId);
               }}
             >
-              Versión {s.variant}
+              Versión {versionOf(s.id)}
             </button>
           ))}
         </div>
@@ -213,6 +256,28 @@ export function StepCast({
         <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">
           {!ready ? "En cuanto estén, podrás seguir." : painting && cover?.status !== "done" ? "Falta la portada, alrededor de un minuto. Mientras, mira sus personajes." : "Gratis hasta aquí. Después decides si lo quieres ilustrado."}
         </p>
+      </div>
+    </div>
+  );
+}
+
+function RetryNote({ failed, busy, onRetry }: { failed?: BookJobView; busy: boolean; onRetry: () => void }) {
+  const text =
+    failed?.error === "budget"
+      ? "Hoy ya hemos dibujado todo lo que podemos. Vuelve mañana y dale a «Reintentar»."
+      : failed?.kind === "sheet"
+        ? "El dibujo de los personajes no ha salido. Suele ser un fallo pasajero: dale a «Reintentar» y lo repetimos aquí, sin empezar otro cuento."
+        : failed
+          ? "La portada no ha salido. Dale a «Reintentar» y la repetimos."
+          : "Está tardando más de lo normal. Dale a «Reintentar» y seguimos.";
+  return (
+    <div className="rise grid gap-3 rounded-2xl bg-[#f6ded6] px-4 py-3.5 text-[15px] leading-snug text-ink" role="status" data-testid="cast-retry">
+      <p className="m-0">{text}</p>
+      <div>
+        <button className="btn-soft" disabled={busy} onClick={onRetry} data-testid="retry">
+          {busy ? <Sparkle className="twinkle" size={14} /> : <Icon.brush size={16} />}
+          Reintentar
+        </button>
       </div>
     </div>
   );
