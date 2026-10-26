@@ -63,6 +63,8 @@ export interface BookRecord {
   raw: unknown;
   /** Cuándo caduca (cuentos_books.expires_at, 30 días desde que se creó): el borrado se lo lleva. */
   expiresAt?: string | null;
+  /** cuentos_books.updated_at tal como lo da la base: `saveBookIf` guarda solo si sigue igual (I13). */
+  updatedAt?: string;
   /** Cuándo se creó (solo lo traen las consultas que lo necesitan). */
   createdAt?: string | null;
 }
@@ -73,6 +75,15 @@ export interface SaveBook {
   email: string | null;
   draft: unknown;
   edition: string;
+}
+
+/** Guardar solo si nadie ha tocado el libro desde que se leyó (I13). */
+export interface SaveBookIf {
+  publicId: string;
+  email: string | null;
+  draft: unknown;
+  edition: string;
+  ifUpdatedAt: string;
 }
 
 export interface GenStore {
@@ -106,6 +117,8 @@ export interface GenStore {
   markIllustrating(bookId: string): Promise<void>;
   /** Flujo nuevo: crea o actualiza el libro con su borrador v2. */
   saveBook(b: SaveBook): Promise<BookRecord>;
+  /** Como `saveBook` sobre un libro que existe, pero solo si su `updatedAt` sigue siendo `ifUpdatedAt`; si no, null. */
+  saveBookIf(b: SaveBookIf): Promise<BookRecord | null>;
   /** Retrasa la caducidad del libro hasta `until` (nunca la adelanta). */
   extendBook(bookId: string, until: string): Promise<void>;
   /** Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`. */
@@ -214,27 +227,29 @@ function asJob(row: Record<string, unknown>): GenJob {
 
 export function supabaseStore(db: SupabaseClient<Database>): GenStore {
   const jobs = () => db.from("cuentos_generation_jobs");
-  const toBook = (row: { id: string; public_id: string; email: string | null; draft: Json; expires_at?: string | null }): BookRecord => ({
+  const toBook = (row: { id: string; public_id: string; email: string | null; draft: Json; expires_at?: string | null; updated_at?: string | null }): BookRecord => ({
     id: row.id,
     public_id: row.public_id,
     email: row.email,
     draft: normalizeDraft(row.draft as unknown as Partial<Draft>),
     raw: row.draft,
     expiresAt: row.expires_at ?? null,
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
   });
+  const BOOK_COLUMNS = "id, public_id, email, draft, expires_at, updated_at";
   return {
     mode: "supabase",
     db,
     async findBook({ publicId, includeExpired = false }) {
       if (!publicId) return null;
-      let q = db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("public_id", publicId);
+      let q = db.from("cuentos_books").select(BOOK_COLUMNS).eq("public_id", publicId);
       if (!includeExpired) q = q.gt("expires_at", new Date().toISOString());
       const { data, error } = await q.maybeSingle();
       if (error) throw new Error(`books: ${error.message}`);
       return data ? toBook(data) : null;
     },
     async getBookById(id) {
-      const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("id", id).maybeSingle();
+      const { data } = await db.from("cuentos_books").select(BOOK_COLUMNS).eq("id", id).maybeSingle();
       return data ? toBook(data) : null;
     },
     async listBooksByEmailDomain(domain, since) {
@@ -242,7 +257,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       const safe = domain.replace(/[\\%_]/g, (c) => `\\${c}`);
       const { data, error } = await db
         .from("cuentos_books")
-        .select("id, public_id, email, draft, expires_at, created_at")
+        .select(`${BOOK_COLUMNS}, created_at`)
         .ilike("email", `%@${safe}`)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
@@ -307,7 +322,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
           .update({ draft: json, edition, ...(email ? { email } : {}) })
           .eq("public_id", publicId)
           .gt("expires_at", new Date().toISOString())
-          .select("id, public_id, email, draft, expires_at")
+          .select(BOOK_COLUMNS)
           .maybeSingle();
         if (error) throw new Error(`books: ${error.message}`);
         if (data) return toBook(data);
@@ -316,12 +331,24 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
         const { data, error } = await db
           .from("cuentos_books")
           .insert({ public_id: newPublicId(), draft: json, edition, email })
-          .select("id, public_id, email, draft, expires_at")
+          .select(BOOK_COLUMNS)
           .single();
         if (!error && data) return toBook(data);
         if (error && error.code !== "23505") throw new Error(`books: ${error.message}`);
       }
       throw new Error("books: id_collision");
+    },
+    async saveBookIf({ publicId, email, draft, edition, ifUpdatedAt }) {
+      const json = JSON.parse(JSON.stringify(draft)) as Json;
+      const { data, error } = await db
+        .from("cuentos_books")
+        .update({ draft: json, edition, ...(email ? { email } : {}) })
+        .eq("public_id", publicId)
+        .eq("updated_at", ifUpdatedAt)
+        .select(BOOK_COLUMNS)
+        .maybeSingle();
+      if (error) throw new Error(`books: ${error.message}`);
+      return data ? toBook(data) : null;
     },
     async extendBook(bookId, until) {
       const { error } = await db.from("cuentos_books").update({ expires_at: until }).eq("id", bookId).lt("expires_at", until);
@@ -444,8 +471,15 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     async saveBook({ publicId, email, draft }) {
       const id = publicId && state.books.has(publicId) ? publicId : newPublicId();
       const prev = state.books.get(id);
-      const book: BookRecord = { id, public_id: id, email: email ?? prev?.email ?? null, draft: normalizeDraft({}), raw: JSON.parse(JSON.stringify(draft)), expiresAt: prev?.expiresAt ?? memoryExpiry() };
+      const book: BookRecord = { id, public_id: id, email: email ?? prev?.email ?? null, draft: normalizeDraft({}), raw: JSON.parse(JSON.stringify(draft)), expiresAt: prev?.expiresAt ?? memoryExpiry(), updatedAt: stamp() };
       state.books.set(id, book);
+      return book;
+    },
+    async saveBookIf({ publicId, email, draft, ifUpdatedAt }) {
+      const prev = state.books.get(publicId);
+      if (!prev || prev.updatedAt !== ifUpdatedAt) return null;
+      const book: BookRecord = { ...prev, email: email ?? prev.email, raw: JSON.parse(JSON.stringify(draft)), updatedAt: stamp() };
+      state.books.set(publicId, book);
       return book;
     },
     async addPaidOrder(bookId, o) {

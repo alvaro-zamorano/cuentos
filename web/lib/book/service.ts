@@ -58,6 +58,8 @@ export interface BookDraftV2 {
   planMeta: { provider: string; model: string; fichaHash: string };
   castArt?: CastArt;
   pagesArt?: PagesArt;
+  /** Dirección de arte en marcha (I1): otra petición que llegue a la vez espera a esta en vez de pagar otra. */
+  pagesArtPending?: { key: string; at: number };
   approvedSheetJobId?: string;
   /** Versión elegida de cada página (id del job); sin elegir, la última pintada de la escena actual. */
   pageChoice?: Record<number, string>;
@@ -161,8 +163,29 @@ function coverRow(book: BookRecord, d: BookDraftV2, variant: number, sheetJobId:
   };
 }
 
-async function save(store: GenStore, book: BookRecord, d: BookDraftV2, edition = "illustrated"): Promise<BookRecord> {
-  return store.saveBook({ publicId: book.public_id, email: book.email, draft: { ...d, updatedAt: Date.now() }, edition });
+/**
+ * Cambia el borrador sin pisar lo que otra petición haya guardado mientras (auditoría 26 oct, I13). Antes cada acción
+ * reescribía el borrador entero que había leído, y la dirección de arte (de 5 a 20 s) borraba un texto corregido entre
+ * medias. Ahora guarda solo si nadie lo ha tocado desde que se leyó (`updated_at`); si choca, vuelve a leer y aplica
+ * otra vez su cambio. `change` recibe el borrador de ahora y devuelve el nuevo, o null si ya no hay nada que cambiar.
+ */
+async function mutate(store: GenStore, book: BookRecord, change: (d: BookDraftV2) => BookDraftV2 | null): Promise<{ book: BookRecord; d: BookDraftV2 }> {
+  let cur = book;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const d = draftV2(cur);
+    if (!d) throw new Error("books: not_v2");
+    const next = change(d);
+    if (!next) return { book: cur, d };
+    const write = { publicId: cur.public_id, email: cur.email, draft: { ...next, updatedAt: Date.now() }, edition: next.edition ?? "illustrated" };
+    // sin marca de la base (almacenes antiguos), como antes
+    if (!cur.updatedAt) return { book: await store.saveBook(write), d: next };
+    const saved = await store.saveBookIf({ ...write, ifUpdatedAt: cur.updatedAt });
+    if (saved) return { book: saved, d: next };
+    const again = await store.findBook({ publicId: cur.public_id, includeExpired: true });
+    if (!again) throw new Error("books: not_found");
+    cur = again;
+  }
+  throw new Error("books: conflicto al guardar");
 }
 
 export async function loadBook(store: GenStore, bookId: unknown, { includeExpired = false }: { includeExpired?: boolean } = {}): Promise<{ book: BookRecord; d: BookDraftV2 } | Fail> {
@@ -275,15 +298,14 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
   if (!both.ok) return fail(402, "budget", both.reason);
 
+  let drawn = d;
   if (d.castArt?.key !== key) {
-    const r = await castArt(ficha, plan, llm);
-    d.castArt = r.art;
-    d.pagesArt = undefined;
-    book = await save(store, book, d);
+    const art = (await castArt(ficha, plan, llm)).art;
+    ({ book, d: drawn } = await mutate(store, book, (cur) => ({ ...cur, castArt: art, pagesArt: undefined })));
   }
 
   const variant = sheets.length + 1;
-  const made = await newSheetAndCover(store, book, d, variant);
+  const made = await newSheetAndCover(store, book, drawn, variant);
   if (isFail(made)) return made;
   return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2, fresh: variant === 1, email, title: plan.title, freeLeft };
 }
@@ -374,8 +396,7 @@ function sheetAndCoverCents(provider: string): number {
 export async function reviseSheet(store: GenStore, input: { bookId?: unknown; instruction?: unknown }, adapter: Pick<GenerationAdapter, "name">, llm: Llm = selectLlm("art")): Promise<StartResult | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  let { book } = loaded;
-  const { d } = loaded;
+  let { book, d } = loaded;
   const instruction = typeof input.instruction === "string" ? input.instruction.replace(/\s+/g, " ").trim().slice(0, 240) : "";
   if (!instruction) return fail(400, "instruction");
   const bad = blockedWord(instruction) ?? contactData(instruction);
@@ -390,11 +411,8 @@ export async function reviseSheet(store: GenStore, input: { bookId?: unknown; in
   const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
   if (!both.ok) return fail(402, "budget", both.reason);
 
-  const r = await reviseCast(d.ficha, d.plan, d.castArt, instruction, llm);
-  d.castArt = r.art;
-  d.pagesArt = undefined;
-  d.approvedSheetJobId = undefined;
-  book = await save(store, book, d);
+  const art = (await reviseCast(d.ficha, d.plan, d.castArt, instruction, llm)).art;
+  ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, castArt: art, pagesArt: undefined, approvedSheetJobId: undefined })));
   const made = await newSheetAndCover(store, book, d, sheets.length + 1);
   if (isFail(made)) return made;
   return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2 };
@@ -405,11 +423,10 @@ export async function reviseSheet(store: GenStore, input: { bookId?: unknown; in
 export async function approveSheet(store: GenStore, input: { bookId?: unknown; sheetJobId?: unknown }): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  const { book, d } = loaded;
+  const { book } = loaded;
   const sheet = sheetJobs(await store.listJobs(book.id)).find((j) => j.id === input.sheetJobId);
   if (!sheet || sheet.status !== "done") return fail(409, "sheet_not_ready");
-  d.approvedSheetJobId = sheet.id;
-  await save(store, book, d);
+  await mutate(store, book, (cur) => ({ ...cur, approvedSheetJobId: sheet.id }));
   return { ok: true };
 }
 
@@ -436,8 +453,7 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
   const v = validatePlan(plan, d.ficha, { fromParent: true });
   if (!v.usable) return fail(422, "plan_invalid", planProblem(v));
   // el reparto inventado y la portada no cambian después del email: la hoja ya está pintada con ellos
-  d.plan = { ...plan, extraCast: d.plan.extraCast, cover: d.plan.cover, places: d.plan.places, objects: d.plan.objects };
-  await save(store, book, d);
+  await mutate(store, book, (cur) => ({ ...cur, plan: { ...plan, extraCast: cur.plan.extraCast, cover: cur.plan.cover, places: cur.plan.places, objects: cur.plan.objects } }));
   return { ok: true };
 }
 
@@ -445,12 +461,12 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
 export async function choosePage(store: GenStore, input: { bookId?: unknown; jobId?: unknown }): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  const { book, d } = loaded;
+  const { book } = loaded;
   if (await printLocked(store, book.id)) return lockedFail();
   const job = (await store.listJobs(book.id)).find((j) => j.id === input.jobId && j.kind === "page" && v2Of(j));
   if (!job || job.status !== "done" || !job.page_n) return fail(409, "page_not_ready");
-  d.pageChoice = { ...(d.pageChoice ?? {}), [job.page_n]: job.id };
-  await save(store, book, d);
+  const n = job.page_n;
+  await mutate(store, book, (cur) => ({ ...cur, pageChoice: { ...(cur.pageChoice ?? {}), [n]: job.id } }));
   return { ok: true };
 }
 
@@ -501,17 +517,16 @@ export interface CheckoutPrep {
 export async function prepareCheckout(store: GenStore, input: { bookId?: unknown; edition?: unknown; shipping?: unknown }, env: Env = process.env): Promise<CheckoutPrep | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  let { book } = loaded;
-  const { d } = loaded;
+  let { book, d } = loaded;
   if (await paidHere(store, book.id, env)) return fail(409, "already_paid");
   const edition = paidEdition(input.edition) ?? "illustrated";
+  let shipping: Shipping | undefined;
   if (edition === "hardcover") {
     const s = cleanShipping(input.shipping);
     if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
-    d.shipping = s.shipping;
+    shipping = s.shipping;
   }
-  d.edition = edition;
-  book = await save(store, book, d, edition === "hardcover" ? "hardcover" : "illustrated");
+  ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, edition, ...(shipping ? { shipping } : {}) })));
   return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition, amountCents: PRICES[edition] };
 }
 
@@ -527,8 +542,7 @@ export async function prepareUpgrade(
 ): Promise<CheckoutPrep | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  let { book } = loaded;
-  const { d } = loaded;
+  let { book, d } = loaded;
   const order = await store.getOrder(book.id);
   if (!order) return fail(402, "not_paid");
   if (order.edition === "hardcover") return fail(409, "already_hardcover");
@@ -541,8 +555,7 @@ export async function prepareUpgrade(
   const s = cleanShipping(input.shipping);
   if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
   // la edición del libro no cambia hasta que llega el pago (si se abandona, sigue siendo el PDF)
-  d.shipping = s.shipping;
-  book = await save(store, book, d, d.edition ?? "illustrated");
+  ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, shipping: s.shipping })));
   return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true };
 }
 
@@ -550,14 +563,14 @@ export async function prepareUpgrade(
 export async function updateShipping(store: GenStore, input: { bookId?: unknown; shipping?: unknown }): Promise<{ ok: true; shipping: Shipping } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  const { book, d } = loaded;
+  const { book } = loaded;
   const order = await store.getOrder(book.id);
   if (!order || order.edition !== "hardcover") return fail(409, "not_hardcover");
   if (order.printStatus && LOCKED_PRINT_STATUSES.includes(order.printStatus)) return lockedFail();
   const s = cleanShipping(input.shipping);
   if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
   await store.updateOrder(order.id, { shipping: s.shipping });
-  await save(store, book, { ...d, shipping: s.shipping }, "hardcover");
+  await mutate(store, book, (cur) => ({ ...cur, shipping: s.shipping }));
   return { ok: true, shipping: s.shipping };
 }
 
@@ -638,8 +651,7 @@ async function recordUpgrade(
   // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
   // caducara al pedir la mejora
   await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
-  d.edition = "hardcover";
-  await save(store, book, d, "hardcover").catch(() => null);
+  await mutate(store, book, (cur) => ({ ...cur, edition: "hardcover" })).catch(() => null);
   const mismatch = paymentMismatch(expected, s);
   return { action: "upgraded", bookId: book.public_id, ...(mismatch ? { mismatch } : {}) };
 }
@@ -687,16 +699,14 @@ export async function notifyBookReady(
   if (!view.ok || !view.paid || !Object.values(view.chosen.pages).every(Boolean)) return false;
   const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated", view.upgrade);
   if (!r.sent) return false;
-  const fresh = draftV2((await store.findBook({ publicId: bookId })) ?? book) ?? d;
-  await save(store, book, { ...fresh, readyMailedAt: Date.now() });
+  await mutate(store, book, (cur) => ({ ...cur, readyMailedAt: Date.now() }));
   return true;
 }
 
 /** Apunta que ya se avisó a soporte de este libro atascado (rescate, B4). */
 export async function markStuckAlerted(store: GenStore, bookId: string, at: number): Promise<void> {
   const book = await store.findBook({ publicId: bookId });
-  const d = book ? draftV2(book) : null;
-  if (book && d) await save(store, book, { ...d, stuckAlertedAt: at });
+  if (book && draftV2(book)) await mutate(store, book, (cur) => ({ ...cur, stuckAlertedAt: at }));
 }
 
 /** Ids de las páginas que esperan a pintarse (para el segundo plano). */
@@ -724,7 +734,7 @@ function pageRow(book: BookRecord, d: BookDraftV2, n: number, variant: number, s
     kind: "page",
     page_n: n,
     variant,
-    job_key: jobKey("page", n, variant, hashString(`${pageArtKey(d.castArt!, page)}|${prompt}|${sheetJobId}`)),
+    job_key: jobKey("page", n, variant, pageKey(d, page, sheetJobId)),
     style_id: style.id,
     prompt,
     references: [{ kind: "sheet", job_id: sheetJobId }, { kind: "anchor", style_id: style.id }, spec("3:2", "2K")] as unknown as NewJob["references"],
@@ -732,11 +742,73 @@ function pageRow(book: BookRecord, d: BookDraftV2, n: number, variant: number, s
   };
 }
 
+/**
+ * Huella de una página (I1): su escena y su reparto (`pageArtKey`) y la hoja; la versión va aparte, en `jobKey`. No
+ * lleva el prompt, que redacta el modelo y cambia en cada llamada: así dos peticiones a la vez (el webhook del pago y el
+ * navegador, o dos pestañas) chocan en el índice único de (book_id, job_key) y la página no se pinta dos veces.
+ */
+function pageKey(d: BookDraftV2, page: BookDraftV2["plan"]["pages"][number], sheetJobId: string): string {
+  return hashString(`${pageArtKey(d.castArt!, page)}|${sheetJobId}`);
+}
+
 /** Página `n` pintada con la escena actual (la última versión que coincide), si la hay. */
 function currentPageJobs(jobs: GenJob[], d: BookDraftV2, n: number, sheetJobId: string): GenJob[] {
   const page = d.plan.pages[n - 1];
   const prefix = pageArtKey(d.castArt!, page);
-  return jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j) && sheetRefOf(j) === sheetJobId && j.job_key.endsWith(hashString(`${prefix}|${j.prompt}|${sheetJobId}`)));
+  const fixed = pageKey(d, page, sheetJobId);
+  // las pintadas antes del 27 oct llevan el prompt dentro de la huella: siguen valiendo
+  const legacy = (j: GenJob) => j.job_key.endsWith(hashString(`${prefix}|${j.prompt}|${sheetJobId}`));
+  return jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j) && sheetRefOf(j) === sheetJobId && (j.job_key.endsWith(fixed) || legacy(j)));
+}
+
+/** Cuánto espera una petición a la dirección de arte que ya está haciendo otra (tarda de 5 a 20 s). */
+const PAGES_ART_WAIT_MS = 60_000;
+
+/**
+ * Dirección de arte de las páginas, una sola vez por libro (I1). La pide quien consigue poner la marca (`mutate` guarda
+ * solo si nadie ha tocado el libro mientras); otra petición que llegue a la vez espera a esa. Si la otra falla o tarda
+ * más de un minuto, la hace esta. Todas las páginas salen de la misma.
+ */
+async function pagesArtOnce(
+  store: GenStore,
+  book: BookRecord,
+  d: BookDraftV2,
+  llm: Llm,
+  { sleep, now }: { sleep: (ms: number) => Promise<void>; now: () => number },
+): Promise<{ book: BookRecord; d: BookDraftV2 }> {
+  const key = pagesArtKey(d.castArt!, d.plan);
+  for (let round = 0; round < 2; round++) {
+    const st = { v: "mine" as "done" | "wait" | "mine", since: 0 };
+    ({ book, d } = await mutate(store, book, (cur) => {
+      if (cur.pagesArt?.key === key) return ((st.v = "done"), null);
+      const p = cur.pagesArtPending;
+      if (round === 0 && p?.key === key && now() - p.at < PAGES_ART_WAIT_MS) return ((st.v = "wait"), (st.since = p.at), null);
+      st.v = "mine";
+      return { ...cur, pagesArtPending: { key, at: now() } };
+    }));
+    if (st.v === "done") return { book, d };
+    if (st.v === "mine") break;
+    while (now() < st.since + PAGES_ART_WAIT_MS) {
+      await sleep(2000);
+      const again = await store.findBook({ publicId: book.public_id });
+      const fd = again ? draftV2(again) : null;
+      if (!again || !fd) throw new Error("books: not_found");
+      ({ book, d } = { book: again, d: fd });
+      if (d.pagesArt?.key === key) return { book, d };
+      // la otra falló y quitó su marca: se hace aquí
+      if (d.pagesArtPending?.key !== key) break;
+    }
+  }
+  let art: PagesArt;
+  try {
+    art = (await pagesArt(d.ficha, d.plan, d.castArt!, llm)).art;
+  } catch (e) {
+    await mutate(store, book, (cur) => (cur.pagesArtPending?.key === key ? { ...cur, pagesArtPending: undefined } : null)).catch(() => null);
+    throw e;
+  }
+  // sobre el borrador de ahora: lo que se haya guardado mientras (un texto corregido) no se pierde; si otra la terminó
+  // antes, se queda la suya
+  return mutate(store, book, (cur) => (cur.pagesArt?.key === key ? null : { ...cur, pagesArt: art, pagesArtPending: undefined }));
 }
 
 /* ------------------------------ tras el pago: la portada, si falta ------------------------------ */
@@ -864,13 +936,17 @@ export async function requestPages(
   store: GenStore,
   input: { bookId?: unknown; page?: unknown; reason?: unknown; note?: unknown },
   adapter: Pick<GenerationAdapter, "name">,
-  { dryRunPayment, env = process.env }: { dryRunPayment: boolean; env?: Env },
+  {
+    dryRunPayment,
+    env = process.env,
+    sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+    now = Date.now,
+  }: { dryRunPayment: boolean; env?: Env; sleep?: (ms: number) => Promise<void>; now?: () => number },
   llm: Llm = selectLlm("art"),
 ): Promise<{ ok: true; bookId: string; jobs: string[]; created: number } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  let { book } = loaded;
-  const { d } = loaded;
+  let { book, d } = loaded;
   if (!(await paidHere(store, book.id, env)) && !dryRunPayment) return fail(402, "not_paid");
   if (await printLocked(store, book.id)) return lockedFail();
   if (!d.castArt) return fail(409, "no_sheet");
@@ -879,13 +955,9 @@ export async function requestPages(
   const sheet = sheets.find((j) => j.id === d.approvedSheetJobId) ?? sheets[sheets.length - 1];
   if (!sheet) return fail(409, "sheet_not_ready");
 
-  const needKey = pagesArtKey(d.castArt, d.plan) !== d.pagesArt?.key;
-  if (!d.pagesArt || needKey) {
-    const r = await pagesArt(d.ficha, d.plan, d.castArt, llm);
-    d.pagesArt = r.art;
-    book = await save(store, book, d);
-    // la dirección de arte tarda: si otra petición (el webhook del pago y el navegador a la vez) ya ha encolado las
-    // páginas mientras, se ven aquí y no se pintan dos veces
+  if (pagesArtKey(d.castArt, d.plan) !== d.pagesArt?.key) {
+    ({ book, d } = await pagesArtOnce(store, book, d, llm, { sleep, now }));
+    // la dirección de arte tarda: lo que otra petición haya encolado mientras se ve aquí
     jobs = await store.listJobs(book.id);
   }
 

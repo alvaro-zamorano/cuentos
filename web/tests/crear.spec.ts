@@ -217,8 +217,15 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   await page.getByTestId("ship-save").click();
   await expect(page.getByTestId("print-address")).toContainText("4º A");
 
-  // un texto retocado antes de mandarlo viaja con el libro
+  // un texto retocado antes de mandarlo viaja con el libro. Se guarda solo; si el guardado falla, se dice y se
+  // reintenta, y no se da por guardado hasta que el servidor lo confirma (I13)
+  await page.route("**/api/libro/plan", (r) => r.abort(), { times: 1 });
   await page.getByLabel("Texto de la página 1", { exact: true }).fill("Aquella noche, Vera no tenía nada de sueño.");
+  await expect(page.getByTestId("save-error")).toContainText("Sin conexión");
+  errors.splice(0, errors.length); // el fallo de red provocado
+  await page.getByTestId("save-retry").click();
+  await expect(page.getByTestId("save-state")).toHaveText("Guardado");
+  await expect(page.getByTestId("save-error")).toHaveCount(0);
   await page.getByTestId("print-send").click();
   await page.getByTestId("print-confirm").click();
   await expect(panel).toHaveAttribute("data-status", /sent|failed/, { timeout: 180_000 });

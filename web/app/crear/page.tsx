@@ -102,6 +102,9 @@ function Crear() {
   const [saveError, setSaveError] = useState<string | null>(null);
   // solo cuenta la respuesta del último guardado: una vieja que llega tarde no pisa a la nueva (revisión 26 oct)
   const saveSeq = useRef(0);
+  // «Guardando…» y «Guardado» junto al texto; «Reintentar» vuelve a mandar lo último (auditoría 26 oct, I13)
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!bookId || !plan) return;
     const json = JSON.stringify(plan);
@@ -109,19 +112,41 @@ function Crear() {
       saved.current = json;
       return;
     }
-    if (json === saved.current) return;
-    const t = setTimeout(async () => {
-      saved.current = json;
-      const seq = ++saveSeq.current;
-      try {
-        const r = await postJson("/api/libro/plan", { bookId, plan });
-        if (seq === saveSeq.current) setSaveError(r.status === 200 ? null : errorMessage(r.json, "Inténtalo de nuevo en un momento."));
-      } catch {
-        if (seq === saveSeq.current) setSaveError("Sin conexión. Cuando vuelva, cambia algo y se guardará.");
-      }
-    }, 1200);
+    if (json === saved.current) {
+      // se ha deshecho lo que no se pudo guardar: lo que se ve ya es lo guardado
+      const t = setTimeout(() => setSaveError(null), 0);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(
+      async () => {
+        const seq = ++saveSeq.current;
+        setSaveState("saving");
+        let r: Awaited<ReturnType<typeof postJson>> | null = null;
+        try {
+          r = await postJson("/api/libro/plan", { bookId, plan });
+        } catch {
+          r = null;
+        }
+        if (seq !== saveSeq.current) return;
+        // solo se da por guardado cuando el servidor lo dice: antes se marcaba al mandarlo y un fallo no se repetía
+        if (r?.status === 200) {
+          saved.current = json;
+          setSaveError(null);
+          setSaveState("saved");
+        } else {
+          setSaveState("idle");
+          setSaveError(r ? errorMessage(r.json, "Inténtalo de nuevo en un momento.") : "Sin conexión.");
+        }
+      },
+      retry ? 0 : 1200,
+    );
     return () => clearTimeout(t);
-  }, [bookId, plan]);
+  }, [bookId, plan, retry]);
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const t = setTimeout(() => setSaveState("idle"), 2500);
+    return () => clearTimeout(t);
+  }, [saveState]);
 
   // embudo (lib/analytics.ts): un evento cada vez que se ve un paso; sin datos del niño
   const step = s?.step;
@@ -157,9 +182,27 @@ function Crear() {
           {saveError && (
             <p className="rise fixed inset-x-4 top-3 z-30 mx-auto flex max-w-xl items-start justify-between gap-3 rounded-2xl bg-[#f6ded6] px-4 py-3 text-[15px] text-danger shadow-[0_12px_30px_-18px_rgba(35,32,54,0.6)]" role="alert" data-testid="save-error">
               <span>No se ha guardado tu último cambio. {saveError}</span>
-              <button type="button" aria-label="Cerrar el aviso" className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-black/5" onClick={() => setSaveError(null)}>
-                <Icon.close size={15} />
-              </button>
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="rounded-full px-3 py-1 text-sm font-semibold underline-offset-2 hover:underline"
+                  onClick={() => {
+                    setSaveError(null);
+                    setRetry((x) => x + 1);
+                  }}
+                  data-testid="save-retry"
+                >
+                  Reintentar
+                </button>
+                <button type="button" aria-label="Cerrar el aviso" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/5" onClick={() => setSaveError(null)}>
+                  <Icon.close size={15} />
+                </button>
+              </span>
+            </p>
+          )}
+          {saveState !== "idle" && !saveError && (
+            <p className="rise fixed inset-x-0 top-3 z-30 mx-auto w-fit rounded-full bg-ink px-3 py-1.5 text-[13px] text-paper shadow-[0_8px_20px_-12px_rgba(35,32,54,0.7)]" role="status" data-testid="save-state">
+              {saveState === "saving" ? "Guardando…" : "Guardado"}
             </p>
           )}
           <div key={s.step} className="rise">
