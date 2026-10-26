@@ -13,6 +13,11 @@ import type { BookObject, CastId, CastMember, Ficha, Place, Plan, PlanPage, Shot
 export interface Issue {
   msg: string;
   hard: boolean;
+  /**
+   * El mismo problema dicho para el padre, cuando lo puede causar él al escribir (texto, título, dedicatoria). Los `msg`
+   * van al modelo y no se enseñan (auditoría 26 oct, B6).
+   */
+  parent?: string;
 }
 
 export interface PlanValidation {
@@ -110,12 +115,24 @@ export function allowedNamesFor(f: Ficha, plan: Pick<Plan, "extraCast" | "places
   return set;
 }
 
-function commonChecks(label: string, text: string, issues: Issue[]) {
-  if (EMOJI_RE.test(text)) issues.push({ msg: `${label}: contiene emojis.`, hard: true });
+/** La palabra tal como la escribió (mayúsculas incluidas), si se encuentra; si no, como llega. */
+function asWritten(text: string, word: string): string {
+  const i = text.toLowerCase().indexOf(word.toLowerCase());
+  return i >= 0 ? text.slice(i, i + word.length) : word;
+}
+
+/** `where`: dónde está, dicho para el padre («la página 3», «el título»), si es texto que él puede escribir. */
+function commonChecks(label: string, text: string, issues: Issue[], where?: string) {
+  if (EMOJI_RE.test(text)) issues.push({ msg: `${label}: contiene emojis.`, hard: true, parent: where && `Quita el emoji de ${where}: no se puede imprimir.` });
   const bad = blockedWord(text);
-  if (bad) issues.push({ msg: `${label}: palabra no apta para un cuento infantil («${bad}»).`, hard: true });
+  if (bad) issues.push({ msg: `${label}: palabra no apta para un cuento infantil («${bad}»).`, hard: true, parent: where && `Eso no lo podemos poner en un cuento infantil («${asWritten(text, bad)}», en ${where}).` });
   const ip = namedIp(text);
-  if (ip) issues.push({ msg: `${label}: nombra una marca o un personaje con derechos («${ip}»); sustitúyelo por uno inventado y avisa en notices.`, hard: true });
+  if (ip)
+    issues.push({
+      msg: `${label}: nombra una marca o un personaje con derechos («${ip}»); sustitúyelo por uno inventado y avisa en notices.`,
+      hard: true,
+      parent: where && `«${asWritten(text, ip)}» es una marca o un personaje con derechos y no lo podemos poner en el libro. Cámbialo en ${where} por algo inventado.`,
+    });
   for (const w of tokens(norm(text))) if (DIMINUTIVE_SET.has(w)) issues.push({ msg: `${label}: diminutivo «${w}».`, hard: false });
 }
 
@@ -124,7 +141,8 @@ export function validatePage(p: PlanPage, f: Ficha, plan: Plan): Issue[] {
   const label = `Página ${p.n}`;
   const len = lengthRule(f.hero.age);
   const names = [f.hero.name, ...f.cast.map((c) => c.name), ...plan.extraCast.map((c) => c.name)].filter(Boolean);
-  if (!p.text) issues.push({ msg: `${label}: falta el texto.`, hard: true });
+  const where = `la página ${p.n}`;
+  if (!p.text) issues.push({ msg: `${label}: falta el texto.`, hard: true, parent: `Falta el texto de ${where}.` });
   else {
     const words = countWords(p.text, names);
     if (words < len.hardMin || words > len.hardMax) issues.push({ msg: `${label}: ${words} palabras; tienen que ser entre ${len.min} y ${len.max}.`, hard: false });
@@ -132,7 +150,7 @@ export function validatePage(p: PlanPage, f: Ficha, plan: Plan): Issue[] {
       const long = sentences(p.text).find((s) => countWords(s, names) > len.maxSentence! + 2);
       if (long) issues.push({ msg: `${label}: frase de más de ${len.maxSentence} palabras («${long.slice(0, 60)}»).`, hard: false });
     }
-    commonChecks(label, p.text, issues);
+    commonChecks(label, p.text, issues, where);
     const wrong = disallowedNames(p.text, allowedNamesFor(f, plan));
     if (wrong.length) issues.push({ msg: `${label}: nombres propios que no están en la ficha (${[...new Set(wrong)].join(", ")}); usa descripciones sin nombre.`, hard: false });
   }
@@ -181,29 +199,54 @@ export function familyIn(text: string): Set<string> {
   return out;
 }
 
-/** Parentescos que salen en el plan (reparto inventado, extras o texto) sin que el adulto los haya puesto. */
-export function inventedFamily(plan: Pick<Plan, "extraCast" | "pages">, f: Ficha): string[] {
-  const given = familyIn([f.idea, ...f.details, f.from ?? "", f.dedication ?? "", ...f.cast.map((c) => `${c.name} ${c.relation}`)].join(" \n "));
+/** Las palabras de familia de un texto, una por parentesco («abuela», «mamá»), para decírselas al padre. */
+export function familyMentions(text: string): { kin: string; word: string }[] {
+  const t = text.replace(/pap[aá]\s+noel/giu, "");
+  const out: { kin: string; word: string }[] = [];
+  for (const [re, kin] of FAMILY) {
+    const m = t.match(re);
+    if (m) out.push({ kin, word: m[0].toLowerCase() });
+  }
+  return out;
+}
+
+/** Parentescos que pone el adulto en la ficha: idea, detalles, quién lo regala, dedicatoria y reparto. */
+export function familyGiven(f: Ficha): Set<string> {
+  return familyIn([f.idea, ...f.details, f.from ?? "", f.dedication ?? "", ...f.cast.map((c) => `${c.name} ${c.relation}`)].join(" \n "));
+}
+
+/**
+ * Parentescos que salen en el plan (reparto inventado, extras o texto) sin que el adulto los haya puesto. `given`: más
+ * texto que cuenta como del adulto (lo que ha escrito o pedido en el paso 3; auditoría 26 oct, B6).
+ */
+export function inventedFamily(plan: Pick<Plan, "extraCast" | "pages">, f: Ficha, given: string[] = []): string[] {
+  const fromAdult = new Set([...familyGiven(f), ...familyIn(given.join(" \n "))]);
   const used = familyIn(
     [...plan.extraCast.map((c) => `${c.name} ${c.relation}`), ...plan.pages.flatMap((p) => [p.text, ...p.extras])].join(" \n "),
   );
-  return [...used].filter((k) => !given.has(k));
+  return [...used].filter((k) => !fromAdult.has(k));
 }
 
-export function validatePlan(plan: Plan, f: Ficha): PlanValidation {
+/**
+ * `fromParent` (auditoría 26 oct, B6): el plan llega del navegador (paso 4, guardado automático) y sus textos pueden ser
+ * del padre: lo escrito a mano y lo pedido con «Cambiar esta página». Lo del modelo ya pasó esta validación al
+ * escribirse, así que los familiares del texto, del título y de la dedicatoria cuentan como suyos («Mamá le dio un
+ * beso»). Lo que el padre no escribe (reparto inventado, extras de cada página) sigue sin poder inventar familia.
+ */
+export function validatePlan(plan: Plan, f: Ficha, { fromParent = false }: { fromParent?: boolean } = {}): PlanValidation {
   const issues: Issue[] = [];
-  if (!plan.title) issues.push({ msg: "Falta el título.", hard: true });
+  if (!plan.title) issues.push({ msg: "Falta el título.", hard: true, parent: "Falta el título." });
   else {
     if (countWords(plan.title, [f.hero.name]) > TITLE_MAX_WORDS) issues.push({ msg: `El título tiene más de ${TITLE_MAX_WORDS} palabras.`, hard: false });
-    commonChecks("Título", plan.title, issues);
+    commonChecks("Título", plan.title, issues, "el título");
   }
-  if (!plan.dedication) issues.push({ msg: "Falta la dedicatoria.", hard: true });
+  if (!plan.dedication) issues.push({ msg: "Falta la dedicatoria.", hard: true, parent: "Falta la dedicatoria." });
   else if (!f.dedication) {
     if (countWords(plan.dedication, [f.hero.name]) > DEDICATION_MAX_WORDS) issues.push({ msg: `La dedicatoria tiene más de ${DEDICATION_MAX_WORDS} palabras.`, hard: false });
-    commonChecks("Dedicatoria", plan.dedication, issues);
+    commonChecks("Dedicatoria", plan.dedication, issues, "la dedicatoria");
   }
   if (f.cast.length + plan.extraCast.length > MAX_CAST) issues.push({ msg: `El reparto tiene más de ${MAX_CAST} recurrentes.`, hard: true });
-  const kin = inventedFamily(plan, f);
+  const kin = inventedFamily(plan, f, fromParent ? [plan.title, plan.dedication, ...plan.pages.map((p) => p.text)] : []);
   if (kin.length) issues.push({ msg: `Aparecen familiares que el adulto no ha puesto (${kin.join(", ")}): quítalos del texto, de extraCast y de extras; si hace falta un adulto, que sea alguien sin parentesco ni nombre en una sola página.`, hard: true });
   for (const c of plan.extraCast) {
     if (!c.look) issues.push({ msg: `extraCast ${c.id}: falta el aspecto.`, hard: true });

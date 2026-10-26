@@ -8,7 +8,7 @@ import { fichaHash, normalizeFicha } from "./ficha";
 import { mockPlan } from "./mock";
 import { blockedWord, contactData, moderateFicha } from "./moderation";
 import { fixMessage, plannerSystem, plannerUser, rewriteSystem, rewriteUser } from "./prompt";
-import { normalizePlan, validatePage, validatePlan, type Issue, type PlanValidation } from "./validate";
+import { inventedFamily, normalizePlan, validatePage, validatePlan, type Issue, type PlanValidation } from "./validate";
 import type { Ficha, Plan, PlanPage, PlanRecord } from "./types";
 
 export interface Usage {
@@ -191,6 +191,10 @@ export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknow
     const candidate = normalizePlan({ ...plan, pages: [{ ...(parsed as object), n }] }, fWithAsk).pages[0];
     const merged: Plan = { ...plan, pages: plan.pages.map((p) => (p.n === n ? candidate : p)) };
     const issues = validatePage(candidate, fWithAsk, merged);
+    // familiares: valen los que el padre pide ahora o ya están en su cuento; el modelo no puede inventar otros (B6)
+    const others = plan.pages.filter((p) => p.n !== n).map((p) => p.text);
+    const kin = inventedFamily({ extraCast: plan.extraCast, pages: [candidate] }, fWithAsk, [plan.title, plan.dedication, ...others]);
+    if (kin.length) issues.push({ msg: `Aparecen familiares que el adulto no ha puesto (${kin.join(", ")}): quítalos del texto y de extras.`, hard: true });
     if (!candidate.who.includes("hero") && merged.pages.filter((p) => p.who.includes("hero")).length < 10) {
       issues.push({ msg: "El protagonista tiene que salir en esta imagen (who).", hard: true });
     }
