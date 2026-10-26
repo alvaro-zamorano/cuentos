@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { selectLlm } from "@/lib/llm";
 import { fichaHash, normalizeFicha } from "@/lib/plan/ficha";
 import { planBook } from "@/lib/plan/planner";
+import { TEXT_BUDGET_MESSAGE, recordText, textRoom } from "@/lib/plan/textBudget";
 import type { PlanRecord } from "@/lib/plan/types";
 import { clientIp, envInt, rateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -12,7 +13,7 @@ import type { Json } from "@/lib/supabase/types";
  * POST /api/plan { ficha } → { record, warnings } (paso 3: el cuento escrito en 12 tarjetas).
  * Con Supabase guarda cada plan en cuentos_stories (input_hash = huella de la ficha) y reutiliza el último plan válido
  * de esa huella: volver atrás y adelante no paga dos veces. «Escribirlo de otra manera» cambia la semilla de la ficha.
- * Límite: PLAN_RATE_PER_HOUR por IP (12 por defecto).
+ * Límite: PLAN_RATE_PER_HOUR por IP (12 por defecto) y el tope diario de gasto, que también cuenta el texto (I6).
  */
 export const maxDuration = 300;
 
@@ -52,8 +53,14 @@ export async function POST(req: Request) {
   const limit = rateLimit(`plan:${clientIp(req)}`, envInt("PLAN_RATE_PER_HOUR", 12));
   if (!limit.ok) return NextResponse.json({ ok: false, error: "rate_limited", message: "Has pedido muchos cuentos seguidos. Espera un poco y vuelve a intentarlo." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
 
+  const room = await textRoom(db, "plan", llm);
+  if (!room.ok) {
+    console.warn(`[plan] sin presupuesto: ${room.reason}`);
+    return NextResponse.json({ ok: false, error: "budget", message: TEXT_BUDGET_MESSAGE }, { status: 503 });
+  }
   const result = await planBook(ficha, llm);
   if (!result.ok) return NextResponse.json(result, { status: result.status });
+  await recordText(db, "plan", llm, result.costCents);
 
   if (db) {
     const { error } = await db.from("cuentos_stories").insert({

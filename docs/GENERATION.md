@@ -6,7 +6,7 @@ Cómo se pintan la muestra (antes del pago) y el libro (después), y qué camino
 
 avatar → detalles → cuento completo (gratis) → email (paso 4, con la declaración del tutor) → `/ilustrado`: hoja de personaje + página 9 (`mesa-tarta`) → las otras 11 bloqueadas con su texto y el precio → pago → 11 páginas + portada → PDF.
 
-Antes del pago se pintan 2 imágenes por lead (más hasta 2 «Otra versión de la hoja»), todas contra el presupuesto del lead (`LEAD_CAP_CENTS`, 20 c por defecto). Tras el pago, los jobs llevan `paid: true` (sin tope por lead; el diario `DAILY_CAP_CENTS` y el de libro `MAX_COST_CENTS_PER_BOOK` siguen).
+Antes del pago se pintan 2 imágenes por lead (más hasta 2 «Otra versión de la hoja»), todas contra el presupuesto del lead (`LEAD_CAP_CENTS`, 20 c por defecto). Tras el pago, los jobs llevan `paid: true` (sin tope por lead; el de libro `MAX_COST_CENTS_PER_BOOK` sigue, y el diario `DAILY_CAP_CENTS` solo si el cobro no es real: desde el 26 oct lo pintado para libros cobrados de verdad no cuenta en él).
 
 ## Rutas (`web/app/api/generate/*`, lógica en `web/lib/generation/service.ts`)
 

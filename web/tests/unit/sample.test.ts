@@ -267,9 +267,16 @@ type Row = { lead_id: string; cost_cents: number; created_at: string };
 
 /** Cliente Supabase falso con lo que usa budget.ts (cuentos_spend: select → eq|gte, insert; cuentos_orders: sin pedidos). */
 function fakeSpendDb(rows: Row[]) {
+  // sin pedidos: cualquier consulta encadenada (eq, like, gte) devuelve una lista vacía
+  const none = () => {
+    const q: Record<string, unknown> = {};
+    for (const m of ["eq", "like", "gte"]) q[m] = () => q;
+    q.then = (ok: (x: unknown) => unknown, ko?: (e: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok, ko);
+    return q;
+  };
   const client = {
     from(table: string) {
-      if (table === "cuentos_orders") return { select: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }) };
+      if (table === "cuentos_orders") return { select: none };
       return {
         select() {
           return {
