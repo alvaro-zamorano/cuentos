@@ -3,8 +3,7 @@
 import { useState } from "react";
 import type { BookView } from "@/lib/book/service";
 import { errorMessage, postJson } from "@/lib/bookClient";
-import { shippingLine } from "@/lib/print/shipping";
-import type { Shipping } from "@/lib/print/types";
+import type { ShippingSummary } from "@/lib/print/types";
 import { Icon, Sparkle } from "@/components/brand";
 import { ShippingForm, type ShippingDraft } from "./ShippingForm";
 import { ErrorNote, Status } from "./ui";
@@ -13,9 +12,10 @@ import { ErrorNote, Status } from "./ui";
  * Tras pagar la tapa dura (B8): la dirección, «Mandar a imprimir» (solo cuando el padre lo dice; decisión de Álvaro del
  * 18 oct) y después el estado en la imprenta y el seguimiento.
  */
-export function PrintPanel({ view, allDone, onSend, onShipping }: { view: BookView; allDone: boolean; onSend: () => Promise<string | null>; onShipping: (s: Shipping) => void }) {
+export function PrintPanel({ view, allDone, onSend, onShipping }: { view: BookView; allDone: boolean; onSend: () => Promise<string | null>; onShipping: (s: ShippingSummary) => void }) {
   const print = view.print!;
   const [editing, setEditing] = useState(!print.shipping);
+  // la vista no trae la calle ni el teléfono (I16): al cambiarla se vuelven a escribir
   const [draft, setDraft] = useState<ShippingDraft>(print.shipping ?? {});
   const [field, setField] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -28,7 +28,7 @@ export function PrintPanel({ view, allDone, onSend, onShipping }: { view: BookVi
     setBusy(true);
     setErr(null);
     setField(null);
-    const r = await postJson<{ shipping?: Shipping; field?: string }>("/api/libro/shipping", { bookId: view.bookId, shipping: draft });
+    const r = await postJson<{ shipping?: ShippingSummary; field?: string }>("/api/libro/shipping", { bookId: view.bookId, shipping: draft });
     setBusy(false);
     if (r.status === 200 && r.json.shipping) {
       onShipping(r.json.shipping);
@@ -64,10 +64,17 @@ export function PrintPanel({ view, allDone, onSend, onShipping }: { view: BookVi
       {print.shipping && !editing && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-paper px-4 py-3 text-[15px]" data-testid="print-address">
           <span>
-            <strong>{print.shipping.name}</strong> · {shippingLine(print.shipping)}
+            <strong>{print.shipping.name}</strong> · {print.shipping.postcode} {print.shipping.city}
+            <span className="block text-[13px] text-mute">Por privacidad, aquí no enseñamos la calle ni el teléfono.</span>
           </span>
           {open && (
-            <button className="text-sm font-semibold text-accent-deep hover:underline" onClick={() => setEditing(true)}>
+            <button
+              className="text-sm font-semibold text-accent-deep hover:underline"
+              onClick={() => {
+                setDraft(print.shipping ?? {});
+                setEditing(true);
+              }}
+            >
               Cambiar
             </button>
           )}
@@ -94,7 +101,9 @@ export function PrintPanel({ view, allDone, onSend, onShipping }: { view: BookVi
             </button>
           ) : (
             <div className="grid gap-3 rounded-2xl bg-butter/70 p-4" role="alertdialog" aria-label="Confirmar">
-              <p className="text-[15px] text-ink">Después ya no se pueden cambiar los textos ni las ilustraciones. ¿Lo mandamos a imprimir?</p>
+              <p className="text-[15px] text-ink">
+                Lo enviaremos a {print.shipping.name}, {print.shipping.postcode} {print.shipping.city}. Después ya no se pueden cambiar los textos ni las ilustraciones. ¿Lo mandamos a imprimir?
+              </p>
               <div className="flex flex-wrap gap-2">
                 <button className="btn-primary" disabled={busy} onClick={() => void send()} data-testid="print-confirm">
                   {busy ? "Mandando…" : "Sí, mandar a imprimir"}

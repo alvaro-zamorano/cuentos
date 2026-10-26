@@ -1,4 +1,4 @@
-import type { Shipping } from "./types";
+import type { Shipping, ShippingSummary } from "./types";
 
 /**
  * Dirección de envío del libro impreso (B8). Se valida antes de abrir el pago, con los límites de la imprenta (Gelato:
@@ -55,7 +55,12 @@ export function cleanShipping(input: unknown): ShippingResult {
   };
 }
 
-/** La dirección en una línea, para la pantalla y los emails. */
+/** La dirección en una línea, para los emails y la imprenta. */
 export function shippingLine(s: Shipping): string {
   return [s.line1, s.line2, `${s.postcode} ${s.city}`, s.province].filter(Boolean).join(", ");
+}
+
+/** Lo que va a la pantalla: nombre, código postal y población; ni calle ni teléfono (I16). */
+export function shippingSummary(s: Shipping): ShippingSummary {
+  return { name: s.name, postcode: s.postcode, city: s.city, ...(s.province ? { province: s.province } : {}) };
 }

@@ -262,7 +262,13 @@ test("pago: la tapa dura pide dirección y el pedido nace esperando a que el pad
   // la dirección se puede cambiar mientras no haya salido
   const moved = await updateShipping(store, { bookId, shipping: { ...ADDRESS, postcode: "07001", city: "Palma" } });
   assert.ok(moved.ok);
+  assert.deepEqual(moved.shipping, { name: ADDRESS.name, postcode: "07001", city: "Palma" });
   assert.equal((await bookView(store, bookId) as { print: { shipping: { city: string } } }).print.shipping.city, "Palma");
+  // la vista y la respuesta no llevan la calle ni el teléfono (I16); el pedido sí
+  const shown = JSON.stringify([(await bookView(store, bookId) as { print: unknown }).print, moved]);
+  assert.ok(!shown.includes(ADDRESS.line1) && !shown.includes("600"), shown);
+  const kept = await store.getOrder((await store.findBook({ publicId: bookId }))!.id);
+  assert.equal(kept?.shipping?.line1, ADDRESS.line1);
 });
 
 test("PDF solo: sin dirección y sin imprenta", async () => {
