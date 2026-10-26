@@ -18,7 +18,9 @@ import {
   parseGeminiImageResponse,
   resolveRefPath,
 } from "../../lib/generation/adapter";
-import { canSpend, leadCapCents, recordSpend, utcDayStart } from "../../lib/generation/budget";
+import { canSpend, freeSpendToday, leadCapCents, recordSpend, utcDayStart } from "../../lib/generation/budget";
+import { TEXT_ESTIMATE_CENTS, recordText, textRoom } from "../../lib/plan/textBudget";
+import { MOCK_LLM } from "../../lib/llm";
 import { DEFAULT_TRAITS } from "../../lib/traits";
 import type { Database } from "../../lib/supabase/types";
 import type { Traits } from "../../lib/types";
@@ -218,41 +220,36 @@ test("dry-run: la página redeclara el bible y no cuesta nada", async () => {
 
 type Row = { lead_id: string; cost_cents: number; created_at: string; kind?: string; provider?: string; model?: string };
 
-type Order = { book_id: string; stripe_session_id: string | null; status?: string };
+type Order = { book_id: string; stripe_session_id: string | null; status?: string; created_at?: string };
 
-/** Cliente Supabase falso: solo lo que usa budget.ts (from → select → eq|gte, insert; pedidos con eq → eq). */
+/**
+ * Cliente Supabase falso: solo lo que usa budget.ts. `select` devuelve una consulta que admite eq, gte y like
+ * encadenados y se resuelve al esperarla; `insert` guarda la fila (también la ven las lecturas siguientes).
+ */
 function fakeDb(rows: Row[], opts: { failRead?: boolean; orders?: Order[] } = {}) {
   const inserted: Row[] = [];
-  const result = <T,>(data: T[]) => Promise.resolve(opts.failRead ? { data: null, error: { message: "x" } } : { data, error: null });
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const like = (v: unknown, pat: string) => new RegExp(`^${pat.split("%").map((a) => a.split("_").map(esc).join(".")).join(".*")}$`).test(String(v ?? ""));
+  const query = (data: () => Record<string, unknown>[]) => {
+    const filters: ((r: Record<string, unknown>) => boolean)[] = [];
+    const q = {
+      eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
+      gte: (c: string, v: string) => (filters.push((r) => String(r[c]) >= v), q),
+      like: (c: string, pat: string) => (filters.push((r) => like(r[c], pat)), q),
+      then: (ok: (x: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+        Promise.resolve(opts.failRead ? { data: null, error: { message: "x" } } : { data: data().filter((r) => filters.every((f) => f(r))), error: null }).then(ok, ko),
+    };
+    return q;
+  };
   const client = {
     from(table: string) {
       if (table === "cuentos_orders") {
-        return {
-          select: (cols: string) => (
-            assert.equal(cols, "stripe_session_id"),
-            {
-              eq: (c1: string, book: string) => (
-                assert.equal(c1, "book_id"),
-                {
-                  eq: (c2: string, st: string) => (
-                    assert.equal(c2, "status"),
-                    result((opts.orders ?? []).filter((o) => o.book_id === book && (o.status ?? "paid") === st))
-                  ),
-                }
-              ),
-            }
-          ),
-        };
+        const all = () => (opts.orders ?? []).map((o) => ({ status: "paid", created_at: "2026-10-01T00:00:00.000Z", ...o }));
+        return { select: () => query(all) };
       }
       assert.equal(table, "cuentos_spend");
       return {
-        select(cols: string) {
-          assert.equal(cols, "cost_cents");
-          return {
-            eq: (col: string, v: string) => (assert.equal(col, "lead_id"), result(rows.filter((r) => r.lead_id === v))),
-            gte: (col: string, v: string) => (assert.equal(col, "created_at"), result(rows.filter((r) => r.created_at >= v))),
-          };
-        },
+        select: () => query(() => [...rows, ...inserted]),
         insert(row: Row) {
           inserted.push({ ...row, created_at: new Date().toISOString() });
           return Promise.resolve({ error: null });
@@ -324,6 +321,73 @@ test("canSpend: respeta el tope diario UTC (500 c por defecto), salvo libros cob
     assert.equal((await canSpend(db, { leadId: "nuevo", cents: 21, now: NOW })).ok, false);
   });
   assert.equal(utcDayStart(NOW), "2026-10-11T00:00:00.000Z");
+});
+
+test("tope diario: lo pintado para libros cobrados tras el cobro no cuenta; lo de antes del pago y lo de prueba, sí (B2)", async () => {
+  await withEnv({ LEAD_CAP_CENTS: undefined, DAILY_CAP_CENTS: undefined }, async () => {
+    const PAID = "2026-10-11T10:00:00.000Z";
+    const orders: Order[] = [
+      { book_id: "venta1", stripe_session_id: "cs_live_1", created_at: PAID },
+      { book_id: "venta2", stripe_session_id: "cs_live_2", created_at: PAID },
+      { book_id: "prueba", stripe_session_id: "cs_test_1", created_at: PAID },
+    ];
+    const rows: Row[] = [
+      // cinco ventas del día: 12 páginas y su repetición, después del cobro
+      { lead_id: "venta1", cost_cents: 230, created_at: "2026-10-11T10:05:00.000Z" },
+      { lead_id: "venta2", cost_cents: 230, created_at: "2026-10-11T11:05:00.000Z" },
+      // la hoja y la portada gratis de venta1, antes de pagar: sí cuentan
+      { lead_id: "venta1", cost_cents: 10, created_at: "2026-10-11T09:30:00.000Z" },
+      { lead_id: "gratis", cost_cents: 30, created_at: TODAY },
+    ];
+    const { db } = fakeDb(rows, { orders });
+    assert.equal((await freeSpendToday(db, NOW))?.total, 40);
+    assert.equal((await canSpend(db, { leadId: "nuevo", cents: 10, now: NOW })).ok, true, "antes, 500 c de 500: cerrado");
+    assert.equal((await canSpend(db, { leadId: "nuevo", cents: 460, now: NOW, leadCap: 10_000 })).ok, true);
+    assert.equal((await canSpend(db, { leadId: "nuevo", cents: 461, now: NOW, leadCap: 10_000 })).ok, false);
+    // un libro pagado con la tarjeta de prueba sí cuenta (en la preview cualquiera «paga»)
+    const test2 = fakeDb([...rows, { lead_id: "prueba", cost_cents: 455, created_at: "2026-10-11T12:00:00.000Z" }], { orders });
+    assert.equal((await canSpend(test2.db, { leadId: "nuevo", cents: 10, now: NOW })).ok, false);
+  });
+});
+
+test("aviso por email al pasar del 80 % del tope diario, una vez; lo de libros cobrados no avisa (B2)", async () => {
+  await withEnv({ DAILY_CAP_CENTS: "100" }, async () => {
+    const sent: string[] = [];
+    const notify = async (subject: string) => (sent.push(subject), { sent: true });
+    // fakeDb fecha las filas nuevas con la hora real: aquí todo va con la hora real
+    const now = new Date();
+    const orders: Order[] = [{ book_id: "venta", stripe_session_id: "cs_live_1", created_at: new Date(now.getTime() - 3600_000).toISOString() }];
+    const { db } = fakeDb([{ lead_id: "x", cost_cents: 74, created_at: now.toISOString() }], { orders });
+    const spend = (leadId: string, cents: number) => recordSpend(db, { leadId, kind: "page", provider: "gemini-images", model: "m", cents }, { now, notify });
+    await spend("venta", 30);
+    assert.deepEqual(sent, [], "lo de un libro cobrado no cuenta");
+    await spend("y", 4);
+    assert.deepEqual(sent, [], "78 c de 100");
+    await spend("y", 4);
+    assert.deepEqual(sent, ["Gasto del día al 82 %"]);
+    await spend("y", 4);
+    assert.equal(sent.length, 1, "ya había pasado: no se repite");
+  });
+});
+
+test("el texto cuenta en el tope diario: se mira antes de escribir y se apunta después (I6)", async () => {
+  await withEnv({ DAILY_CAP_CENTS: "100" }, async () => {
+    const claude = { name: "anthropic" as const, model: "claude-sonnet-5-5" };
+    const now = new Date();
+    const { db, inserted } = fakeDb([{ lead_id: "x", cost_cents: 85, created_at: now.toISOString() }]);
+    assert.equal((await textRoom(db, "plan", claude, now)).ok, true, "85 + 12 caben en 100");
+    await recordText(db, "plan", claude, 7.2);
+    assert.deepEqual({ ...inserted[0], created_at: undefined }, { lead_id: "texto:plan", kind: "story", provider: "anthropic", model: "claude-sonnet-5-5", cost_cents: 8, created_at: undefined });
+    assert.equal((await textRoom(db, "plan", claude, now)).ok, false, "93 + 12 ya no");
+    assert.equal((await textRoom(db, "page", claude, now)).ok, true, "una página (2 c) sí");
+    await recordText(db, "page", claude, null);
+    assert.equal(inserted[1].cost_cents, TEXT_ESTIMATE_CENTS.page, "sin precio conocido, la estimación");
+    // con el modelo de prueba o sin base, ni se mira ni se apunta
+    assert.equal((await textRoom(db, "plan", MOCK_LLM, now)).ok, true);
+    await recordText(db, "plan", MOCK_LLM, 5);
+    assert.equal(inserted.length, 2);
+    assert.equal((await textRoom(null, "plan", claude, now)).ok, true);
+  });
 });
 
 test("canSpend: si la lectura falla no se gasta; recordSpend inserta la fila", async () => {
