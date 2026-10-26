@@ -125,13 +125,37 @@ export function eventModeAllowed(event: Pick<StripeEvent, "livemode">, env: Reco
   return env.VERCEL_ENV !== "production" || event.livemode === true;
 }
 
+/** ¿Es un cobro real de Stripe (`cs_live_…`)? Las sesiones de prueba son `cs_test_…`; el pago simulado, `dry-run:<libro>`. */
+export function isLiveSession(sessionId: string | null | undefined): boolean {
+  return typeof sessionId === "string" && sessionId.startsWith("cs_live_");
+}
+
+/**
+ * ¿Cuenta este pedido como pagado en este entorno? La base es la misma en la preview y en producción. En producción solo
+ * cuentan los cobros reales: un libro pagado en la preview con la tarjeta 4242 o con el pago simulado no se abre como
+ * pagado en www, no se imprime y no hace pasar por «duplicado» un cobro real del mismo libro (auditoría 26 oct, B1).
+ * Fuera de producción cuenta cualquiera, para poder probar.
+ */
+export function paidInEnv(sessionId: string | null | undefined, env: Record<string, string | undefined> = process.env): boolean {
+  return env.VERCEL_ENV !== "production" || isLiveSession(sessionId);
+}
+
+/**
+ * ¿Toca este entorno este pedido? Producción, solo los cobros reales. Fuera de producción, solo los de prueba: la preview
+ * no manda a la imprenta (como borrador) ni recuerda por email los pedidos reales de los clientes, que dejaría marcados
+ * en la base compartida (auditoría 26 oct, B1).
+ */
+export function orderBelongsToEnv(sessionId: string | null | undefined, env: Record<string, string | undefined> = process.env): boolean {
+  return env.VERCEL_ENV === "production" ? isLiveSession(sessionId) : !isLiveSession(sessionId);
+}
+
 /**
  * ¿El pedido se cobró de verdad? Producción solo manda a la imprenta pedidos con sesión real (`cs_live_…`): la base es la
  * misma que la de la preview, y un libro pagado allí con la tarjeta 4242 (o con el pago de prueba) se puede abrir en el
  * dominio de producción.
  */
 export function printableInEnv(sessionId: string | null | undefined, env: Record<string, string | undefined> = process.env): boolean {
-  return env.VERCEL_ENV !== "production" || (typeof sessionId === "string" && sessionId.startsWith("cs_live_"));
+  return paidInEnv(sessionId, env);
 }
 
 /**

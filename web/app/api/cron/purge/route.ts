@@ -6,7 +6,7 @@ import { cronAuthorized } from "@/lib/print/server";
 /**
  * GET /api/cron/purge[?dry=1] — borrado a 30 días (lib/purge.ts). Lo lanza el cron diario de Vercel (vercel.json), que
  * manda `Authorization: Bearer $CRON_SECRET`. Con CRON_SECRET puesto, sin esa cabecera → 401. Sin CRON_SECRET solo
- * funciona fuera de producción (para probarlo en la preview). `dry=1` cuenta sin borrar nada.
+ * funciona en local (en la preview, con CRON_SECRET en Preview; lib/cronAuth.ts). `dry=1` cuenta sin borrar nada.
  */
 export const maxDuration = 60;
 

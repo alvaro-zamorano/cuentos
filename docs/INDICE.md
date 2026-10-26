@@ -124,8 +124,8 @@ Sin claves en local se usan la memoria del proceso, imágenes `dry-run` y el cue
 **En la preview**
 
 - `GET /api/health`: qué está configurado (sin enseñar valores).
-- `GET /api/cron/purge?dry=1`: qué borraría el cron.
-- `GET /api/cron/print`: recordatorios y seguimiento de los pedidos impresos (con `CRON_SECRET` en Vercel).
+- `GET /api/cron/purge?dry=1`: qué borraría el cron. Desde el 26 oct, los crons piden `CRON_SECRET` en cualquier despliegue de Vercel: en la preview, con la variable en Preview y la cabecera `Authorization: Bearer …`.
+- `GET /api/cron/print`: recordatorios y seguimiento de los pedidos impresos (misma cabecera). La preview solo toca los pedidos de prueba.
 - PDF de imprenta del libro de muestra en local: `node --conditions=react-server --import tsx scripts/print-sample.mts`.
 - `/api/dev?task=…`: pruebas con Gemini y Claude de verdad (`models`, `plan`, `b3start`, `run`, `view`, `revise`, `pages`). Cuestan dinero: pocas tomas. En Vercel solo responde con `DEV_TOKEN` (en `?token=` o en la cabecera `x-dev-token`); sin la variable, 404.
 

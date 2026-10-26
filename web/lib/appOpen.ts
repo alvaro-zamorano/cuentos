@@ -23,14 +23,38 @@ export function appOpen(env: Env = process.env): boolean {
  */
 const OPEN_API = ["/api/health", "/api/cron/", "/api/mail/inbound", "/api/stripe/webhook", "/api/print/webhook"];
 
+/**
+ * Con la app abierta solo pasa la API que usa el flujo nuevo (/crear), más la de OPEN_API. Lo demás es del flujo antiguo
+ * (Clásico e Ilustrado: fuera del embudo por D1, sus páginas redirigen a /crear desde el 16 oct) y responde 404, también
+ * en la preview. Auditoría del 26 oct (B5): /api/generate/sample devolvía el enlace del libro de cualquier familia con
+ * solo su email. Una ruta nueva de la API hay que añadirla aquí: un test comprueba que cada ruta de app/api está en
+ * APP_API o en LEGACY_API.
+ */
+export const APP_API = ["/api/plan", "/api/libro/", "/api/generate/run", "/api/dev", ...OPEN_API];
+
+/** Rutas del flujo antiguo: nada de la web nueva las llama. Siempre 404 (el código se queda, por si se recupera algo). */
+export const LEGACY_API = ["/api/books", "/api/jobs", "/api/story", "/api/lead", "/api/pdf", "/api/generate/sample", "/api/generate/book", "/api/generate/status"];
+
 export type ClosedAction = { type: "pass" } | { type: "redirect"; to: string } | { type: "not_found" };
+
+/** `p` acaba en «/»: prefijo. Si no: la ruta exacta o algo por debajo de ella. */
+function listed(list: string[], pathname: string): boolean {
+  return list.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p || pathname.startsWith(`${p}/`)));
+}
+
+function isApi(pathname: string): boolean {
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
 
 /** Qué hace el proxy con una ruta cuando la app está cerrada. */
 export function closedAction(pathname: string): ClosedAction {
   if (pathname === "/crear" || pathname.startsWith("/crear/")) return { type: "redirect", to: "/#pronto" };
-  if (pathname === "/api" || pathname.startsWith("/api/")) {
-    const ok = OPEN_API.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p || pathname.startsWith(`${p}/`)));
-    return ok ? { type: "pass" } : { type: "not_found" };
-  }
+  if (isApi(pathname)) return listed(OPEN_API, pathname) ? { type: "pass" } : { type: "not_found" };
+  return { type: "pass" };
+}
+
+/** Qué hace el proxy con una ruta cuando la app está abierta: la API del flujo antiguo, 404. */
+export function openAction(pathname: string): ClosedAction {
+  if (isApi(pathname)) return listed(APP_API, pathname) ? { type: "pass" } : { type: "not_found" };
   return { type: "pass" };
 }

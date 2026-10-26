@@ -70,7 +70,8 @@ export interface GenStore {
   mode: "supabase" | "memory";
   /** Cliente para el presupuesto (cuentos_spend); null en memoria. */
   db: SupabaseClient<Database> | null;
-  findBook(q: { publicId?: string; email?: string }): Promise<BookRecord | null>;
+  /** Solo por id (el enlace del libro). Nunca por email: daría el libro de otra familia (auditoría 26 oct, B5). */
+  findBook(q: { publicId?: string }): Promise<BookRecord | null>;
   /** Libros con email de ese dominio creados desde `since` (para el límite de cuentos gratis por buzón). */
   listBooksByEmailDomain(domain: string, since: string): Promise<BookRecord[]>;
   getBookById(id: string): Promise<BookRecord | null>;
@@ -87,7 +88,8 @@ export interface GenStore {
   reopen(job: GenJob): Promise<boolean>;
   upload(path: string, data: Uint8Array, contentType: string): Promise<void>;
   signedUrl(path: string, seconds: number): Promise<string | null>;
-  hasPaidOrder(bookId: string): Promise<boolean>;
+  /** ¿Hay un pedido pagado? Con `accept`, solo cuenta si su sesión de Stripe pasa el filtro (ver `paidInEnv`). */
+  hasPaidOrder(bookId: string, accept?: (sessionId: string | null) => boolean): Promise<boolean>;
   markIllustrating(bookId: string): Promise<void>;
   /** Flujo nuevo: crea o actualiza el libro con su borrador v2. */
   saveBook(b: SaveBook): Promise<BookRecord>;
@@ -201,24 +203,11 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
   return {
     mode: "supabase",
     db,
-    async findBook({ publicId, email }) {
+    async findBook({ publicId }) {
+      if (!publicId) return null;
       const now = new Date().toISOString();
-      if (publicId) {
-        const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("public_id", publicId).gt("expires_at", now).maybeSingle();
-        return data ? toBook(data) : null;
-      }
-      if (email) {
-        const { data } = await db
-          .from("cuentos_books")
-          .select("id, public_id, email, draft, expires_at")
-          .eq("email", email)
-          .gt("expires_at", now)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        return data ? toBook(data) : null;
-      }
-      return null;
+      const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("public_id", publicId).gt("expires_at", now).maybeSingle();
+      return data ? toBook(data) : null;
     },
     async getBookById(id) {
       const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("id", id).maybeSingle();
@@ -277,9 +266,9 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds);
       return data?.signedUrl ?? null;
     },
-    async hasPaidOrder(bookId) {
-      const { data } = await db.from("cuentos_orders").select("id").eq("book_id", bookId).eq("status", "paid").limit(1);
-      return !!data && data.length > 0;
+    async hasPaidOrder(bookId, accept) {
+      const { data } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
+      return (data ?? []).some((o) => !accept || accept(o.stripe_session_id));
     },
     async markIllustrating(bookId) {
       await db.from("cuentos_books").update({ status: "illustrating" }).eq("id", bookId);
@@ -394,10 +383,8 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
   return {
     mode: "memory",
     db: null,
-    async findBook({ publicId, email }) {
-      if (publicId) return state.books.get(publicId) ?? null;
-      if (email) return [...state.books.values()].reverse().find((b) => b.email === email) ?? null;
-      return null;
+    async findBook({ publicId }) {
+      return publicId ? (state.books.get(publicId) ?? null) : null;
     },
     async getBookById(id) {
       return state.books.get(id) ?? null;
@@ -529,8 +516,9 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     async signedUrl() {
       return null;
     },
-    async hasPaidOrder(bookId) {
-      return !!state.paid?.has(bookId);
+    async hasPaidOrder(bookId, accept) {
+      if (!accept) return !!state.paid?.has(bookId);
+      return [...(state.orders?.values() ?? [])].some((o) => o.bookId === bookId && accept(o.sessionId ?? null));
     },
     async markIllustrating() {},
   };

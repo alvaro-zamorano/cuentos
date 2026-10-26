@@ -13,8 +13,8 @@ const nextConfig: NextConfig = {
     "/api/dev": ["./public/styles/*.jpg"],
   },
   partialPrefetching: true,
-  // flujo antiguo (16 oct, Álvaro): todo a /crear con 307, reversible; el código se queda. /api/pdf y /api/lead, del
-  // mismo flujo, siguen respondiendo pero nada de la web nueva los llama
+  // flujo antiguo (16 oct, Álvaro): todo a /crear con 307, reversible; el código se queda. Su API (/api/pdf, /api/lead,
+  // /api/books, /api/generate/sample…) responde 404 en el proxy también con la app abierta (lib/appOpen.ts, 26 oct)
   redirects() {
     return ["/clasico", "/ilustrado", "/libro", "/gratis"].map((source) => ({ source, destination: "/crear", permanent: false }));
   },
