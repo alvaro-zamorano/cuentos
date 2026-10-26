@@ -9,9 +9,28 @@ const BOX = "relative aspect-[3/2] w-full overflow-hidden rounded-[18px] bg-pape
  * Imagen de un job (hoja, portada o página) con sus estados. Sin job todavía (se está cargando el libro) no dice nada:
  * solo el brillo de espera; «en cola» y «pintando» solo cuando lo están de verdad.
  * `scene` (páginas del libro): mientras se pinta, «se verá:» con su escena y una mancha que se va llenando.
+ * `failedText`: lo que dice un fallo corriente (en el paso 4 no hay «Reintentar»: debajo está «Avísanos», I3).
  * `box`: clases del marco (por defecto 3:2 con esquinas redondeadas; dentro de BookCover, `absolute inset-0`; la imagen va siempre absoluta dentro del marco, para que ningún navegador la estire).
  */
-export function BookImage({ job, alt, testId, title, scene, tint, box = BOX }: { job?: BookJobView; alt: string; testId?: string; title?: string; scene?: string; tint?: number; box?: string }) {
+export function BookImage({
+  job,
+  alt,
+  testId,
+  title,
+  scene,
+  tint,
+  failedText = "No ha salido. Lo repetimos al reintentar.",
+  box = BOX,
+}: {
+  job?: BookJobView;
+  alt: string;
+  testId?: string;
+  title?: string;
+  scene?: string;
+  tint?: number;
+  failedText?: string;
+  box?: string;
+}) {
   if (!job) return <div className={`${box} shimmer`} data-testid={testId} data-state="loading" aria-busy="true" />;
   if (job.status === "pending" || job.status === "running") {
     const running = job.status === "running";
@@ -33,7 +52,7 @@ export function BookImage({ job, alt, testId, title, scene, tint, box = BOX }: {
   if (job.status === "failed") {
     return (
       <div className={`${box} grid place-items-center`} data-testid={testId} data-state="failed">
-        <span className="px-6 text-center text-sm text-danger">{job.error === "budget" ? "Sin presupuesto para esta imagen hoy." : job.error === "limit" ? "No podemos pintar más para este libro. Escríbenos y lo miramos." : "No ha salido. Lo repetimos al reintentar."}</span>
+        <span className="px-6 text-center text-sm text-danger">{job.error === "budget" ? "Sin presupuesto para esta imagen hoy." : job.error === "limit" ? "No podemos pintar más para este libro. Escríbenos y lo miramos." : failedText}</span>
       </div>
     );
   }

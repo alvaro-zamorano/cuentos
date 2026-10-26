@@ -65,6 +65,8 @@ export interface BookDraftV2 {
   readyMailedAt?: number;
   /** Cuándo se avisó a soporte de que el libro pagado no terminaba (rescate, auditoría 26 oct, B4): una vez por libro. */
   stuckAlertedAt?: number;
+  /** Cuándo se avisó a soporte de una imagen pagada que no sale (I3): una vez por libro. */
+  failAlertedAt?: number;
   /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
   edition?: PaidEdition;
   shipping?: Shipping;
@@ -692,6 +694,47 @@ export async function notifyBookReady(
   return true;
 }
 
+/**
+ * Una imagen pagada que no va a salir sola (I3): agotó sus intentos con un fallo que no es pasajero, o chocó con el tope
+ * de coste del libro. Los fallos pasajeros (429, 5xx, red) no cuentan: se reintentan solos.
+ */
+export function paidFailure(job: Pick<GenJob, "paid" | "status" | "attempts" | "error">): boolean {
+  if (!job.paid || job.status !== "failed") return false;
+  if (job.error?.includes("tope de coste por libro")) return true;
+  return job.attempts >= MAX_ATTEMPTS && !job.error?.startsWith("pasajero");
+}
+
+/**
+ * Aviso a soporte cuando una imagen pagada no sale (I3; I12): con las páginas afectadas y el motivo, una vez por libro.
+ * Devuelve si lo ha mandado. `bookId`: el id público.
+ */
+export async function alertPaidFailures(
+  store: GenStore,
+  bookId: string,
+  notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
+  link: (publicId: string) => string,
+  now = Date.now(),
+): Promise<boolean> {
+  const book = await store.findBook({ publicId: bookId });
+  const d = book ? draftV2(book) : null;
+  if (!book || !d || d.failAlertedAt) return false;
+  const failed = (await store.listJobs(book.id)).filter((j) => v2Of(j) && paidFailure(j));
+  if (failed.length === 0) return false;
+  const what = (j: GenJob) => (j.kind === "page" ? `página ${j.page_n}` : j.kind === "portrait" ? `retrato ${j.page_n}` : j.kind === "cover" ? "portada" : j.kind);
+  const r = await notify(
+    `Imagen pagada que no sale: «${d.plan.title}»`,
+    [
+      `En el libro «${d.plan.title}» (${book.public_id}) no salen: ${failed.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
+      "El padre puede pedir otra versión o avisarnos desde la página. Si es el tope por libro (MAX_COST_CENTS_PER_BOOK), hay que mirarlo a mano.",
+      `Libro: ${link(book.public_id)}`,
+    ].join("\n\n"),
+  ).catch(() => ({ sent: false }));
+  if (!r.sent) return false;
+  const fresh = draftV2((await store.findBook({ publicId: bookId })) ?? book) ?? d;
+  await save(store, book, { ...fresh, failAlertedAt: now });
+  return true;
+}
+
 /** Apunta que ya se avisó a soporte de este libro atascado (rescate, B4). */
 export async function markStuckAlerted(store: GenStore, bookId: string, at: number): Promise<void> {
   const book = await store.findBook({ publicId: bookId });
@@ -986,7 +1029,9 @@ export async function reportPage(
     `Escena: ${d.plan.pages[n - 1]?.scene ?? ""}`,
     `Libro: ${link(book.public_id)}`,
   ].join("\n\n");
-  const sent = await notify(`Sigue sin estar bien: página ${n} de «${d.plan.title}»`, text);
+  // si no ha salido ninguna versión, el asunto lo dice (I3: «Avísanos» también sin ninguna hecha)
+  const anyDone = (await store.listJobs(book.id)).some((j) => j.kind === "page" && j.page_n === n && j.status === "done");
+  const sent = await notify(`${anyDone ? "Sigue sin estar bien" : "No sale"}: página ${n} de «${d.plan.title}»`, text);
   if (!sent.sent) console.warn(`[report] aviso sin enviar (${book.public_id}, página ${n})`);
   return { ok: true };
 }

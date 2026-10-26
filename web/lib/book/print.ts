@@ -44,6 +44,30 @@ export interface PrintDeps {
   now?: () => Date;
   /** Entorno (por defecto, process.env): cada entorno solo toca sus pedidos (`orderBelongsToEnv`). */
   env?: Record<string, string | undefined>;
+  /** Aviso a soporte (MAIL_FORWARD_TO) cuando un pedido no sale hacia la imprenta o la imprenta lo da por fallido (I12). */
+  notify?: (subject: string, text: string) => Promise<{ sent: boolean }>;
+}
+
+/** Aviso a soporte de un pedido de tapa dura que falla; nunca rompe el flujo. */
+async function printAlert(store: GenStore, deps: PrintDeps, order: Pick<PaidOrder, "id" | "bookId">, error: string, phase: "send" | "printer"): Promise<void> {
+  if (!deps.notify) return;
+  try {
+    const book = await store.getBookById(order.bookId);
+    const title = (book ? draftV2(book) : null)?.plan.title ?? "libro";
+    const sending = phase === "send";
+    await deps.notify(
+      sending ? `Tapa dura que no sale hacia la imprenta: «${title}»` : `La imprenta ha parado una tapa dura: «${title}»`,
+      [
+        `El pedido ${order.id} ha fallado: ${error.slice(0, 300)}`,
+        sending
+          ? "El padre puede volver a pulsar «Mandar a imprimir». Si vuelve a fallar, míralo en Gelato y en los logs de Vercel (en Hobby duran una hora)."
+          : "El padre ya no puede reenviarlo desde la web. Míralo en Gelato y escríbele.",
+        book ? `Libro: ${deps.link(book.public_id)}` : "El libro ya no está.",
+      ].join("\n\n"),
+    );
+  } catch (e) {
+    console.warn(`[imprenta] aviso sin enviar: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+  }
 }
 
 const fail = (status: number, error: string, reason?: string): Fail => ({ ok: false, status, error, ...(reason ? { reason } : {}) });
@@ -90,6 +114,7 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
   const failWith = async (error: string): Promise<Fail> => {
     console.error("[imprenta]", order.id, error);
     await store.updateOrder(order.id, { printStatus: "failed", printError: error.slice(0, 300) });
+    await printAlert(store, deps, order, error, "send");
     return fail(502, "print_failed", error);
   };
   try {
@@ -187,6 +212,9 @@ export async function refreshPrint(store: GenStore, order: PaidOrder, deps: Prin
   }
   if (Object.keys(patch).length === 0) return "unchanged";
   await store.updateOrder(order.id, patch);
+  // la imprenta lo da por fallido, cancelado o devuelto: aviso a soporte, al cambiar a ese estado (I12)
+  const bad = patch.printStatus === "failed" || patch.printStatus === "canceled" || patch.printStatus === "returned";
+  if (bad) await printAlert(store, deps, order, patch.printError ?? `imprenta: ${g.status}`, "printer");
   return "updated";
 }
 

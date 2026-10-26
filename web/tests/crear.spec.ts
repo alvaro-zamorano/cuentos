@@ -145,6 +145,28 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await page.getByTestId("report-submit").click();
   await expect(p3.getByText("Nos has avisado")).toBeVisible();
 
+  // una página pagada que no ha salido nunca no deja al padre sin salida: puede avisar (I3). El dry-run no falla,
+  // así que la vista del libro se reescribe en el navegador con la página 4 fallida
+  await page.route(/\/api\/libro\/view\?/, async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    for (const j of body.jobs as { kind: string; page: number | null; status: string; url: string | null; error: string | null }[]) {
+      if (j.kind === "page" && j.page === 4) Object.assign(j, { status: "failed", url: null, error: "error" });
+    }
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.reload();
+  const p4 = page.getByTestId("book-page-4");
+  await expect(page.getByTestId("another-4")).toHaveCount(0);
+  await expect(page.getByTestId("report-4")).toHaveText("¿No sale esta ilustración? Avísanos", { timeout: 30_000 });
+  await expect(p4).toContainText("Esta ilustración no ha salido.");
+  await p4.screenshot({ path: test.info().outputPath("pagina-sin-salir.png") });
+  await page.getByTestId("report-4").click();
+  await page.getByTestId("report-form").getByLabel("Qué falla").fill("se queda en blanco");
+  await page.getByTestId("report-submit").click();
+  await expect(p4.getByText("Nos has avisado")).toBeVisible();
+  await page.unroute(/\/api\/libro\/view\?/);
+
   // sin claves de Stripe: ni checkout ni webhook
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
   expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);
