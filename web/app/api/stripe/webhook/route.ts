@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
-import { notifyBookReady, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
+import { notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { readyMail } from "@/lib/book/readyMail";
 import { sendSupportNotice } from "@/lib/mail";
@@ -11,6 +11,8 @@ import { paintLater } from "../../libro/_shared";
  * POST /api/stripe/webhook (B5). Verifica la firma con STRIPE_WEBHOOK_SECRET, registra el pedido de
  * `checkout.session.completed` (idempotente) y, después de responder a Stripe, encola y pinta las 12 páginas y manda el
  * email de «tu libro está listo». Si el padre sigue en la página, su navegador también pinta los mismos jobs.
+ * Si la base falla al leer o al escribir, 500: Stripe reintenta. Un cobro que no se puede registrar, doble o con un importe
+ * que no cuadra manda un aviso a soporte (`paymentNotice`).
  */
 export const maxDuration = 300;
 
@@ -33,15 +35,12 @@ export async function POST(req: Request) {
   try {
     const r = await recordStripePayment(store, event);
     console.log(`[stripe] ${event.type} → ${r.action}${r.action === "ignored" ? ` (${r.reason})` : ""}`);
-    const s = event.data.object;
-    if (r.action === "ignored" && s.metadata?.upgrade === "1" && s.payment_status === "paid") {
-      // mejora a tapa dura cobrada que no se ha podido registrar (libro caducado, sin PDF pagado, PDF de prueba o ya en
-      // tapa dura): devolverla a mano. El error queda en los logs aunque falle el aviso por email
-      console.error(`[stripe] mejora cobrada sin registrar: ${r.reason} · libro ${s.metadata?.bookId ?? "?"} · sesión ${s.id ?? "?"} · ${s.amount_total ?? "?"} céntimos`);
-      await sendSupportNotice(
-        "Mejora a tapa dura cobrada sin registrar",
-        `Stripe cobró una mejora a tapa dura que no se ha podido registrar (${r.reason}).\nLibro: ${s.metadata?.bookId ?? "?"}\nSesión: ${s.id ?? "?"}\nImporte: ${((s.amount_total ?? 0) / 100).toFixed(2)} €\n\nRevísala y devuélvela desde el panel de Stripe si hace falta.`,
-      ).catch(() => null);
+    // cobro sin pedido, cobro doble o importe que no cuadra: aviso para devolverlo a mano. El error queda en los logs
+    // aunque falle el email (auditoría 26 oct, B7)
+    const notice = paymentNotice(r, event);
+    if (notice) {
+      console.error(`[stripe] ${notice.subject}: ${notice.text.split("\n")[0]} · sesión ${event.data.object.id ?? "?"}`);
+      await sendSupportNotice(notice.subject, notice.text).catch(() => null);
     }
     if (r.action === "paid") {
       const origin = publicOrigin(req);

@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Política de privacidad" };
 export default function Privacidad() {
   const t = titular();
   return (
-    <LegalPage title="Política de privacidad" updated="25 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="26 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
         Responsable del tratamiento: {holderLine(t)}. Contacto para privacidad: <ContactEmail value={t.email} />.
@@ -68,8 +68,8 @@ export default function Privacidad() {
       <h2>4. Cuánto tiempo los guardamos</h2>
       <ul>
         <li>
-          El libro (lo que pones en el formulario, el cuento y las ilustraciones) se <strong>borra a los 30 días</strong> de empezarlo, también si
-          lo compras. Si has comprado el libro impreso y aún no lo has mandado a imprimir, se guarda hasta que lo hagas. La dirección de envío,
+          El libro (lo que pones en el formulario, el cuento y las ilustraciones) se <strong>borra a los 30 días</strong> de empezarlo; si lo
+          compras, a los 30 días de la compra. Si has comprado el libro impreso y aún no lo has mandado a imprimir, se guarda hasta que lo hagas. La dirección de envío,
           hasta que llega el paquete.
         </li>
         <li>

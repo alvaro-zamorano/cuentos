@@ -70,8 +70,12 @@ export interface GenStore {
   mode: "supabase" | "memory";
   /** Cliente para el presupuesto (cuentos_spend); null en memoria. */
   db: SupabaseClient<Database> | null;
-  /** Solo por id (el enlace del libro). Nunca por email: daría el libro de otra familia (auditoría 26 oct, B5). */
-  findBook(q: { publicId?: string }): Promise<BookRecord | null>;
+  /**
+   * Solo por id (el enlace del libro). Nunca por email: daría el libro de otra familia (auditoría 26 oct, B5).
+   * Sin `includeExpired`, un libro caducado no existe; con él, sí (solo para registrar un cobro que llega tarde).
+   * Si la base falla, lanza: antes devolvía null y un cobro se daba por «libro no encontrado» (auditoría 26 oct, B7).
+   */
+  findBook(q: { publicId?: string; includeExpired?: boolean }): Promise<BookRecord | null>;
   /** Libros con email de ese dominio creados desde `since` (para el límite de cuentos gratis por buzón). */
   listBooksByEmailDomain(domain: string, since: string): Promise<BookRecord[]>;
   getBookById(id: string): Promise<BookRecord | null>;
@@ -203,10 +207,12 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
   return {
     mode: "supabase",
     db,
-    async findBook({ publicId }) {
+    async findBook({ publicId, includeExpired = false }) {
       if (!publicId) return null;
-      const now = new Date().toISOString();
-      const { data } = await db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("public_id", publicId).gt("expires_at", now).maybeSingle();
+      let q = db.from("cuentos_books").select("id, public_id, email, draft, expires_at").eq("public_id", publicId);
+      if (!includeExpired) q = q.gt("expires_at", new Date().toISOString());
+      const { data, error } = await q.maybeSingle();
+      if (error) throw new Error(`books: ${error.message}`);
       return data ? toBook(data) : null;
     },
     async getBookById(id) {
@@ -383,8 +389,12 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
   return {
     mode: "memory",
     db: null,
-    async findBook({ publicId }) {
-      return publicId ? (state.books.get(publicId) ?? null) : null;
+    async findBook({ publicId, includeExpired = false }) {
+      const b = publicId ? state.books.get(publicId) : undefined;
+      if (!b) return null;
+      // como en Supabase: un libro caducado no existe, salvo para registrar un cobro
+      if (!includeExpired && b.expiresAt && b.expiresAt <= new Date().toISOString()) return null;
+      return b;
     },
     async getBookById(id) {
       return state.books.get(id) ?? null;

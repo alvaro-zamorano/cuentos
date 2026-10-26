@@ -36,8 +36,8 @@ function paidHere(store: GenStore, bookUuid: string, env: Env): Promise<boolean>
   return store.hasPaidOrder(bookUuid, (s) => paidInEnv(s, env));
 }
 
-/** Pagada la tapa dura (también la mejora), el libro se guarda al menos este tiempo para poder mandarlo a imprimir. */
-const KEEP_AFTER_HARDCOVER_MS = 30 * 24 * 3600 * 1000;
+/** Un libro pagado se guarda 30 días desde el pago (no desde que se empezó): auditoría 26 oct, B3. */
+const KEEP_AFTER_PAYMENT_MS = 30 * 24 * 3600 * 1000;
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
 /**
@@ -143,10 +143,10 @@ async function save(store: GenStore, book: BookRecord, d: BookDraftV2, edition =
   return store.saveBook({ publicId: book.public_id, email: book.email, draft: { ...d, updatedAt: Date.now() }, edition });
 }
 
-export async function loadBook(store: GenStore, bookId: unknown): Promise<{ book: BookRecord; d: BookDraftV2 } | Fail> {
+export async function loadBook(store: GenStore, bookId: unknown, { includeExpired = false }: { includeExpired?: boolean } = {}): Promise<{ book: BookRecord; d: BookDraftV2 } | Fail> {
   const id = typeof bookId === "string" && /^[a-z0-9]{8,16}$/.test(bookId) ? bookId : null;
   if (!id) return fail(400, "book_id");
-  const book = await store.findBook({ publicId: id });
+  const book = await store.findBook({ publicId: id, includeExpired });
   if (!book) return fail(404, "not_found");
   const d = draftV2(book);
   if (!d) return fail(409, "not_v2");
@@ -472,32 +472,50 @@ export async function updateShipping(store: GenStore, input: { bookId?: unknown;
 
 export interface PaidEvent {
   type: string;
-  data: { object: { id?: string; payment_status?: string; amount_total?: number | null; metadata?: Record<string, string> | null; client_reference_id?: string | null } };
+  data: { object: { id?: string; payment_status?: string; amount_total?: number | null; currency?: string | null; metadata?: Record<string, string> | null; client_reference_id?: string | null } };
 }
 
 export type PaymentOutcome =
-  | { action: "paid"; bookId: string }
-  | { action: "upgraded"; bookId: string }
+  | { action: "paid"; bookId: string; mismatch?: string }
+  | { action: "upgraded"; bookId: string; mismatch?: string }
+  /** La misma sesión otra vez (Stripe reintenta): nada que hacer. */
   | { action: "duplicate"; bookId: string }
+  /** Otra sesión pagada para un libro ya pagado: cobro doble que hay que devolver (el webhook avisa). */
+  | { action: "double_charge"; bookId: string }
   | { action: "ignored"; reason: string };
+
+/** Importe o moneda distintos de lo esperado (no frena el pedido: el cliente ha pagado; el webhook avisa). */
+function paymentMismatch(expectedCents: number | null, s: PaidEvent["data"]["object"]): string | undefined {
+  const out: string[] = [];
+  if (expectedCents !== null && typeof s.amount_total === "number" && s.amount_total !== expectedCents) out.push(`importe ${s.amount_total} c, se esperaban ${expectedCents} c`);
+  if (typeof s.currency === "string" && s.currency.toLowerCase() !== "eur") out.push(`moneda ${s.currency}`);
+  return out.length ? out.join("; ") : undefined;
+}
 
 /**
  * Registra el pedido de un `checkout.session.completed` (o `async_payment_succeeded`) ya verificado.
  * Idempotente: la misma sesión dos veces (Stripe reintenta) no crea otro pedido.
+ * Auditoría 26 oct (B7 y B3): un libro caducado pero aún guardado se registra igual y se alarga; si la base falla, lanza
+ * (el webhook responde 500 y Stripe reintenta); otra sesión pagada para el mismo libro es un cobro doble, no un
+ * duplicado silencioso. El pago alarga el libro 30 días desde ese momento.
  */
 export async function recordStripePayment(store: GenStore, event: PaidEvent, env: Record<string, string | undefined> = process.env): Promise<PaymentOutcome> {
   if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return { action: "ignored", reason: event.type };
   const s = event.data?.object ?? {};
   if (s.payment_status !== "paid") return { action: "ignored", reason: `payment_status:${s.payment_status ?? "?"}` };
   const bookId = s.metadata?.bookId ?? s.client_reference_id ?? null;
-  const loaded = await loadBook(store, bookId);
+  const loaded = await loadBook(store, bookId, { includeExpired: true });
   if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
+  const publicId = loaded.book.public_id;
+  if (s.id && (await store.hasPaidOrder(loaded.book.id, (x) => x === s.id))) return { action: "duplicate", bookId: publicId };
   if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
-  if (await paidHere(store, loaded.book.id, env)) return { action: "duplicate", bookId: loaded.book.public_id };
+  if (await paidHere(store, loaded.book.id, env)) return { action: "double_charge", bookId: publicId };
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
   await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
-  return { action: "paid", bookId: loaded.book.public_id };
+  await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
+  const mismatch = paymentMismatch(PRICES[edition], s);
+  return { action: "paid", bookId: publicId, ...(mismatch ? { mismatch } : {}) };
 }
 
 
@@ -513,19 +531,44 @@ async function recordUpgrade(
   env: Record<string, string | undefined>,
 ): Promise<PaymentOutcome> {
   const order = await store.getOrder(book.id);
-  if (order?.edition === "hardcover") {
-    return order.sessionId && order.sessionId === s.id ? { action: "duplicate", bookId: book.public_id } : { action: "ignored", reason: "upgrade:already_hardcover" };
-  }
+  if (order?.edition === "hardcover") return { action: "ignored", reason: "upgrade:already_hardcover" };
   if (!order) return { action: "ignored", reason: "upgrade:not_paid" };
   if (!printableInEnv(order.sessionId, env)) return { action: "ignored", reason: "upgrade:test_order" };
-  const amount = typeof s.amount_total === "number" ? s.amount_total : (upgradeCents(order.amountCents) ?? 0);
+  const expected = upgradeCents(order.amountCents);
+  const amount = typeof s.amount_total === "number" ? s.amount_total : (expected ?? 0);
   await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
   // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
   // caducara al pedir la mejora
-  await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_HARDCOVER_MS).toISOString());
+  await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
   d.edition = "hardcover";
   await save(store, book, d, "hardcover").catch(() => null);
-  return { action: "upgraded", bookId: book.public_id };
+  const mismatch = paymentMismatch(expected, s);
+  return { action: "upgraded", bookId: book.public_id, ...(mismatch ? { mismatch } : {}) };
+}
+
+/**
+ * Aviso a soporte (`MAIL_FORWARD_TO`) cuando un cobro de Stripe no acaba bien: no se ha podido registrar, es un cobro
+ * doble o el importe no cuadra. Puro, para probarlo; lo manda el webhook. Auditoría 26 oct, B7: antes solo se avisaba de
+ * las mejoras a tapa dura y el resto de cobros sin pedido pasaban sin que nadie se enterara.
+ */
+export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: string; text: string } | null {
+  const s = event.data?.object ?? {};
+  const paidSession = (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && s.payment_status === "paid";
+  const upgrade = s.metadata?.upgrade === "1";
+  const facts = `Libro: ${s.metadata?.bookId ?? s.client_reference_id ?? "?"}\nSesión: ${s.id ?? "?"}\nImporte: ${typeof s.amount_total === "number" ? (s.amount_total / 100).toFixed(2) : "?"} ${(s.currency ?? "eur").toUpperCase()}`;
+  if (r.action === "ignored" && paidSession) {
+    return {
+      subject: upgrade ? "Mejora a tapa dura cobrada sin registrar" : "Cobro sin pedido",
+      text: `Stripe cobró ${upgrade ? "una mejora a tapa dura" : "un libro"} que no se ha podido registrar (${r.reason}).\n${facts}\n\nRevísalo y devuélvelo desde el panel de Stripe si hace falta.`,
+    };
+  }
+  if (r.action === "double_charge") {
+    return { subject: "Cobro doble de un libro ya pagado", text: `El libro ya estaba pagado y ha llegado otro cobro de otra sesión de Stripe.\n${facts}\n\nDevuelve este segundo cobro desde el panel de Stripe.` };
+  }
+  if ((r.action === "paid" || r.action === "upgraded") && r.mismatch) {
+    return { subject: "Cobro con un importe que no cuadra", text: `El pedido se ha registrado, pero ${r.mismatch}.\n${facts}\n\nRevísalo en el panel de Stripe.` };
+  }
+  return null;
 }
 
 /**
@@ -892,6 +935,8 @@ export interface BookView {
   printMode?: PrintView["mode"];
   mail?: boolean;
   background?: boolean;
+  /** Email de contacto (LEGAL_EMAIL), para «si te han cobrado y no aparece, escríbenos». Lo añade la ruta. */
+  contact?: string | null;
 }
 
 export interface UpgradeOffer {

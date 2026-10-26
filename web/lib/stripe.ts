@@ -50,10 +50,16 @@ export interface CheckoutInput {
   upgrade?: boolean;
 }
 
+/** Vida de una sesión de pago: 35 minutos. */
+export const CHECKOUT_TTL_S = 35 * 60;
+
 /** Cuerpo form-encoded de /v1/checkout/sessions (exportado para los tests). */
-export function checkoutBody({ bookId, email, title, amountCents, origin, waiverAt, edition = "illustrated", upgrade = false }: CheckoutInput): URLSearchParams {
+export function checkoutBody({ bookId, email, title, amountCents, origin, waiverAt, edition = "illustrated", upgrade = false }: CheckoutInput, now = Date.now()): URLSearchParams {
   const p = new URLSearchParams();
   p.set("mode", "payment");
+  // la sesión caduca a los 35 min (Stripe admite de 30 min a 24 h; por defecto, 24 h): menos tiempo con dos pagos
+  // abiertos para el mismo libro si se vuelve atrás o se abre en dos pestañas (auditoría 26 oct, B7)
+  p.set("expires_at", String(Math.floor(now / 1000) + CHECKOUT_TTL_S));
   p.set("success_url", `${origin}/crear?b=${bookId}&pagado=1${upgrade ? "&mejora=1" : ""}`);
   p.set("cancel_url", `${origin}/crear?b=${bookId}`);
   p.set("client_reference_id", bookId);
@@ -114,7 +120,7 @@ export interface StripeEvent {
   type: string;
   /** true en modo real, false en modo de prueba (Stripe lo manda siempre). */
   livemode?: boolean;
-  data: { object: { id?: string; payment_status?: string; amount_total?: number; metadata?: Record<string, string>; client_reference_id?: string; customer_email?: string; customer_details?: { email?: string } } };
+  data: { object: { id?: string; payment_status?: string; amount_total?: number; currency?: string; metadata?: Record<string, string>; client_reference_id?: string; customer_email?: string; customer_details?: { email?: string } } };
 }
 
 /**
