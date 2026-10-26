@@ -11,7 +11,7 @@ import { StepStory } from "@/components/crear/StepStory";
 import { StepCast } from "@/components/crear/StepCast";
 import { StepBook } from "@/components/crear/StepBook";
 import { track } from "@/lib/analytics";
-import { fetchView, postJson } from "@/lib/bookClient";
+import { errorMessage, fetchView, postJson } from "@/lib/bookClient";
 import { fichaHash, TONES } from "@/lib/plan/ficha";
 import { STARTERS, starterIdea } from "@/lib/plan/starters";
 import { resetCrear, setCrear, useCrear, type CrearState, type Step } from "@/lib/crearStore";
@@ -98,6 +98,8 @@ function Crear() {
   const plan = s?.record?.plan;
   const bookId = s?.bookId;
   const saved = useRef<string>("");
+  // si un cambio no se guarda, se dice (auditoría 26 oct, B6): antes se perdía sin aviso y el PDF llevaba el texto viejo
+  const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => {
     if (!bookId || !plan) return;
     const json = JSON.stringify(plan);
@@ -106,9 +108,14 @@ function Crear() {
       return;
     }
     if (json === saved.current) return;
-    const t = setTimeout(() => {
+    const t = setTimeout(async () => {
       saved.current = json;
-      void postJson("/api/libro/plan", { bookId, plan });
+      try {
+        const r = await postJson("/api/libro/plan", { bookId, plan });
+        setSaveError(r.status === 200 ? null : errorMessage(r.json, "Inténtalo de nuevo en un momento."));
+      } catch {
+        setSaveError("Sin conexión. Cuando vuelva, cambia algo y se guardará.");
+      }
     }, 1200);
     return () => clearTimeout(t);
   }, [bookId, plan]);
@@ -144,10 +151,18 @@ function Crear() {
               </button>
             </p>
           )}
+          {saveError && (
+            <p className="rise fixed inset-x-4 top-3 z-30 mx-auto flex max-w-xl items-start justify-between gap-3 rounded-2xl bg-[#f6ded6] px-4 py-3 text-[15px] text-danger shadow-[0_12px_30px_-18px_rgba(35,32,54,0.6)]" role="alert" data-testid="save-error">
+              <span>No se ha guardado tu último cambio. {saveError}</span>
+              <button type="button" aria-label="Cerrar el aviso" className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-black/5" onClick={() => setSaveError(null)}>
+                <Icon.close size={15} />
+              </button>
+            </p>
+          )}
           <div key={s.step} className="rise">
             {s.step === 1 && <StepIdea ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(2)} />}
             {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
-            {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(4)} />}
+            {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} drawn={!!s.bookId} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(4)} />}
             {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => {
                   update({ bookId: id, email });
                   track({ name: "libro_empezado" });

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fichaHash, normalizeFicha } from "@/lib/plan/ficha";
+import { familyGiven, familyMentions } from "@/lib/plan/validate";
 import type { Ficha, Plan, PlanPage, PlanRecord } from "@/lib/plan/types";
 import { track } from "@/lib/analytics";
 import { postJson } from "@/lib/bookClient";
@@ -23,6 +24,7 @@ export function StepStory({
   onFicha,
   onBack,
   onNext,
+  drawn = false,
 }: {
   ficha: Ficha;
   record?: PlanRecord;
@@ -30,6 +32,8 @@ export function StepStory({
   onFicha: (f: Ficha) => void;
   onBack: () => void;
   onNext: () => void;
+  /** Ya hay personajes dibujados: lo que se añada ahora en el paso 2 no cambia los dibujos. */
+  drawn?: boolean;
 }) {
   const clean = normalizeFicha(ficha);
   const hash = fichaHash(clean);
@@ -117,6 +121,13 @@ export function StepStory({
     );
   }
 
+  // familiares que salen en el texto sin estar en la ficha (B6): en los dibujos no salen como son de verdad
+  const given = familyGiven(clean);
+  const familyHint = (text: string) => {
+    if (drawn) return null;
+    const words = familyMentions(text).filter((m) => !given.has(m.kin)).map((m) => `«${m.word}»`);
+    return words.length ? `Sale ${words.join(" y ")} en el texto. Para que salga también en los dibujos, y como es de verdad, añade a esa persona en «Quién más sale» (paso 2).` : null;
+  };
   return (
     <div className="grid gap-7">
       <div className="grid gap-4">
@@ -167,7 +178,7 @@ export function StepStory({
 
       <ol className="grid gap-4" data-testid="plan-pages">
         {plan.pages.map((p) => (
-          <PageCard key={p.n} page={p} ficha={clean} plan={plan} onText={(text) => setPage(p.n, { text })} onReplace={(np) => setPage(p.n, np)} />
+          <PageCard key={p.n} page={p} ficha={clean} plan={plan} hint={familyHint(p.text)} onText={(text) => setPage(p.n, { text })} onReplace={(np) => setPage(p.n, np)} />
         ))}
       </ol>
 
@@ -246,7 +257,7 @@ function Trail() {
   );
 }
 
-function PageCard({ page, ficha, plan, onText, onReplace }: { page: PlanPage; ficha: Ficha; plan: Plan; onText: (t: string) => void; onReplace: (p: PlanPage) => void }) {
+function PageCard({ page, ficha, plan, hint, onText, onReplace }: { page: PlanPage; ficha: Ficha; plan: Plan; hint: string | null; onText: (t: string) => void; onReplace: (p: PlanPage) => void }) {
   const [open, setOpen] = useState(false);
   const [ask, setAsk] = useState("");
   const [busy, setBusy] = useState(false);
@@ -285,6 +296,11 @@ function PageCard({ page, ficha, plan, onText, onReplace }: { page: PlanPage; fi
         onChange={(e) => onText(e.target.value)}
         aria-label={`Texto de la página ${page.n}`}
       />
+      {hint && (
+        <p className="notice m-0" data-testid={`family-hint-${page.n}`}>
+          {hint}
+        </p>
+      )}
       <p className="hand flex gap-2.5 rounded-2xl bg-paper px-4 py-3 text-[17px] leading-snug text-ink-soft">
         <Icon.image size={18} className="mt-0.5 shrink-0 text-accent" />
         <span>

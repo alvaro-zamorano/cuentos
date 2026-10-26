@@ -22,7 +22,7 @@ import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_FIX_EN, REDO_REASONS, cleanNote, i
 import { fichaHash, normalizeFicha } from "../plan/ficha";
 import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
-import { validatePlan } from "../plan/validate";
+import { validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping } from "../print/shipping";
 import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
@@ -205,6 +205,16 @@ export interface FreeLimitFail extends Fail {
   books: { publicId: string; title: string }[];
 }
 
+/**
+ * Lo que se le dice al padre si el cuento que manda no vale (auditoría 26 oct, B6): el primer problema dicho para él.
+ * Los mensajes para el modelo («quítalos de extraCast…») solo van al log.
+ */
+function planProblem(v: PlanValidation): string {
+  const hard = v.issues.filter((i) => i.hard);
+  console.warn(`[libro] plan no válido: ${hard.map((i) => i.msg).join(" | ").slice(0, 300)}`);
+  return hard.find((i) => i.parent)?.parent ?? "Hay algo en el cuento que no podemos usar. Revisa los textos o escríbenos.";
+}
+
 /** Guarda ficha + plan con el email, prepara la dirección de arte del reparto y encola hoja + portada (una vez). */
 export async function startBook(store: GenStore, input: StartInput, adapter: Pick<GenerationAdapter, "name">, llm: Llm = selectLlm("art")): Promise<StartResult | Fail> {
   const email = cleanEmail(input.email);
@@ -213,8 +223,8 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   if (!ficha.hero.name) return fail(400, "ficha");
   const plan = planFromClient(ficha, input.plan);
   if (!plan) return fail(400, "plan");
-  const v = validatePlan(plan, ficha);
-  if (!v.usable) return fail(422, "plan_invalid", v.issues.filter((i) => i.hard).map((i) => i.msg).slice(0, 3).join(" "));
+  const v = validatePlan(plan, ficha, { fromParent: true });
+  if (!v.usable) return fail(422, "plan_invalid", planProblem(v));
   if (!getStyle(ficha.styleId)) return fail(400, "style_id");
   const meta = (input.planMeta && typeof input.planMeta === "object" ? input.planMeta : {}) as Record<string, unknown>;
 
@@ -419,8 +429,8 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
     const same = plan.title === d.plan.title && plan.dedication === d.plan.dedication && plan.pages.every((p, i) => p.text === d.plan.pages[i]?.text);
     return same ? { ok: true } : lockedFail();
   }
-  const v = validatePlan(plan, d.ficha);
-  if (!v.usable) return fail(422, "plan_invalid", v.issues.filter((i) => i.hard).map((i) => i.msg).slice(0, 3).join(" "));
+  const v = validatePlan(plan, d.ficha, { fromParent: true });
+  if (!v.usable) return fail(422, "plan_invalid", planProblem(v));
   // el reparto inventado y la portada no cambian después del email: la hoja ya está pintada con ellos
   d.plan = { ...plan, extraCast: d.plan.extraCast, cover: d.plan.cover, places: d.plan.places, objects: d.plan.objects };
   await save(store, book, d);

@@ -401,3 +401,31 @@ test("Si falla el dibujo de los personajes, «Reintentar» lo repite aquí sin e
   await expect(page.getByTestId("approve")).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("«Que salga la abuela»: el paso 3 avisa de cómo sacarla en los dibujos, se puede dibujar y un cambio que no se guarda se dice", async ({ page }) => {
+  await writeStory(page);
+  const p4 = page.getByTestId("page-4");
+  await p4.getByRole("button", { name: "Cambiar esta página" }).click();
+  await p4.getByRole("button", { name: "que salga la abuela" }).click();
+  await p4.getByRole("button", { name: "Cambiar", exact: true }).click();
+  await expect(p4.getByRole("textbox", { name: "Texto de la página 4" })).toHaveValue(/Que salga la abuela\./);
+  await expect(page.getByTestId("family-hint-4")).toContainText("«abuela»");
+  await expect(page.getByTestId("family-hint-4")).toContainText("Quién más sale");
+  // antes: 422 con «Aparecen familiares que el adulto no ha puesto…» al dibujar
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("abril@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+
+  // con los personajes ya dibujados, el paso 3 ya no manda al paso 2; y un cambio que no vale se dice
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("page-4")).toBeVisible();
+  await expect(page.getByTestId("family-hint-4")).toHaveCount(0);
+  const t2 = page.getByTestId("page-2").getByRole("textbox", { name: "Texto de la página 2" });
+  await t2.fill(`${await t2.inputValue()} 🚀`);
+  await expect(page.getByTestId("save-error")).toContainText("Quita el emoji de la página 2", { timeout: 10_000 });
+  await t2.fill((await t2.inputValue()).replace(" 🚀", ""));
+  await expect(page.getByTestId("save-error")).toHaveCount(0, { timeout: 10_000 });
+  expect(errors).toEqual([]);
+});
