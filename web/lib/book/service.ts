@@ -36,7 +36,6 @@ function paidHere(store: GenStore, bookUuid: string, env: Env): Promise<boolean>
   return store.hasPaidOrder(bookUuid, (s) => paidInEnv(s, env));
 }
 
-/** Pagada la tapa dura (también la mejora), el libro se guarda al menos este tiempo para poder mandarlo a imprimir. */
 /** Un libro pagado se guarda 30 días desde el pago (no desde que se empezó): auditoría 26 oct, B3. */
 const KEEP_AFTER_PAYMENT_MS = 30 * 24 * 3600 * 1000;
 
