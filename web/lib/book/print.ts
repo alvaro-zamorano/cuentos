@@ -208,9 +208,13 @@ export interface PrintCronReport {
   reminded: number;
   refreshed: number;
   unstuck: number;
+  /** Tapas duras sin mandar a imprimir cuyo libro se ha alargado para que siga abriéndose. */
+  kept: number;
 }
 
 const HOUR = 3_600_000;
+/** Tapa dura sin mandar a imprimir: cuánto se alarga el libro cada vez que se acerca a su fecha. */
+const KEEP_FOR_PRINT_MS = 30 * 24 * HOUR;
 
 /**
  * Cron diario: recordatorio a quien pagó la tapa dura y no la ha mandado a imprimir (a los 2 días y otra vez a los 7, con
@@ -219,10 +223,19 @@ const HOUR = 3_600_000;
  */
 export async function printCron(store: GenStore, deps: PrintDeps): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
-  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0 };
+  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0 };
   // cada entorno, solo sus pedidos: la preview no escribe a clientes reales ni toca sus pedidos; producción no recuerda
   // los de prueba (auditoría 26 oct, B1)
   const mine = (o: { sessionId?: string | null }) => orderBelongsToEnv(o.sessionId, deps.env ?? process.env);
+  // una tapa dura pagada sin mandar a imprimir no tiene plazo (Álvaro, 26 oct; auditoría B3): el libro sigue abriéndose
+  // hasta que se manda. El borrado ya la conservaba (`printPending`), pero el enlace dejaba de abrir a los 30 días
+  for (const o of await store.listPrintOrders(["awaiting_approval", "failed"], 500)) {
+    if (!mine(o)) continue;
+    const book = await store.getBookById(o.bookId);
+    if (!book?.expiresAt || Date.parse(book.expiresAt) - now.getTime() > 3 * 24 * HOUR) continue;
+    await store.extendBook(book.id, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString());
+    report.kept++;
+  }
   for (const o of await store.listPrintOrders(["awaiting_approval"], 200)) {
     if (!mine(o)) continue;
     const age = now.getTime() - Date.parse(o.createdAt);

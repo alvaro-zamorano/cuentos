@@ -87,7 +87,8 @@ export default function Condiciones() {
 
       <h2>10. Guarda tu PDF</h2>
       <p>
-        El libro se borra a los 30 días de empezarlo o, si lo compras, a los 30 días de la compra. Descarga el PDF antes. Detalle en la{" "}
+        El libro se borra a los 30 días de empezarlo o, si lo compras, a los 30 días de la compra. Si has comprado el libro de tapa dura y aún
+        no lo has mandado a imprimir, se guarda hasta que lo hagas. Descarga el PDF antes. Detalle en la{" "}
         <Link href="/privacidad" className="link">política de privacidad</Link>.
       </p>
 
