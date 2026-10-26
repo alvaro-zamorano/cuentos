@@ -15,7 +15,8 @@ import { MAX_ATTEMPTS, gateSpend, v2Of, type Fail, type V2Spec } from "../genera
 import { jobKey } from "../generation/keys";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
-import { canSpend } from "../generation/budget";
+import { canSpend, freeBookCapCents } from "../generation/budget";
+import { FREE_BOOKS, freeUse } from "./freeLimit";
 import { castArt, castArtKey, coverPrompt, pageArtKey, pagePrompt, pagesArt, pagesArtKey, portraitPrompt, redoScene, reviseCast, sheetPrompt, type CastArt, type PageFix, type PagesArt } from "../plan/art";
 import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_FIX_EN, REDO_REASONS, cleanNote, isRedoReason, type RedoReason } from "./feedback";
 import { fichaHash, normalizeFicha } from "../plan/ficha";
@@ -165,8 +166,16 @@ export interface StartResult {
   reopened?: number;
   /** Primera hoja de este libro: se manda el email con el enlace para volver. */
   fresh?: boolean;
+  /** Cuentos con dibujos gratis que le quedan a este buzón después de este (0 = este es el último del periodo). */
+  freeLeft?: number;
   email?: string;
   title?: string;
+}
+
+/** El buzón ya tiene sus cuentos gratis del periodo: no se dibuja; la ruta le manda por email los que tiene empezados. */
+export interface FreeLimitFail extends Fail {
+  error: "free_limit";
+  books: { publicId: string; title: string }[];
 }
 
 /** Guarda ficha + plan con el email, prepara la dirección de arte del reparto y encola hoja + portada (una vez). */
@@ -221,8 +230,17 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   }
   if (sheets.length >= MAX_SHEETS) return fail(409, "max_versions", "Ya has usado las versiones de la hoja de este libro.");
 
-  // hoja + portada tienen que caber juntas en el tope del lead y del día
-  const both = await gateSpendCents(store, email, sheetAndCoverCents(adapter.name));
+  // la puerta (26 oct): cuántos cuentos con dibujos lleva este buzón sin pagar. Se mira antes de dibujar el primero:
+  // un cuento que empieza siempre termina
+  let freeLeft: number | undefined;
+  if (sheets.length === 0) {
+    const use = await freeUse(store, email, { exceptBookId: book.id });
+    if (use.used >= FREE_BOOKS) return { ok: false, status: 429, error: "free_limit", books: use.books.map((b) => ({ publicId: b.public_id, title: draftV2(b)?.plan.title ?? "Tu cuento" })) } as FreeLimitFail;
+    freeLeft = use.left;
+  }
+
+  // hoja + portada tienen que caber en el presupuesto del libro y en el del día
+  const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
   if (!both.ok) return fail(402, "budget", both.reason);
 
   if (d.castArt?.key !== key) {
@@ -239,13 +257,13 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   await store.insertJobs([coverRow(book, d, variant, sheet.id)]);
   const cover = coverJobs(await store.listJobs(book.id)).find((c) => sheetRefOf(c) === sheet.id);
   if (!cover) return fail(500, "db");
-  return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 2, fresh: variant === 1, email, title: plan.title };
+  return { ok: true, bookId: book.public_id, sheetJobId: sheet.id, coverJobId: cover.id, created: 2, fresh: variant === 1, email, title: plan.title, freeLeft };
 }
 
-/** Comprueba que `cents` caben en el tope del lead y del día. */
-async function gateSpendCents(store: GenStore, leadId: string, cents: number): Promise<{ ok: boolean; reason?: string }> {
+/** Comprueba que `cents` caben en el presupuesto del libro (antes del pago) y en el del día. */
+async function gateSpendCents(store: GenStore, bookId: string, cents: number): Promise<{ ok: boolean; reason?: string }> {
   if (cents <= 0) return { ok: true };
-  return canSpend(store.db, { leadId, cents });
+  return canSpend(store.db, { leadId: bookId, cents, leadCap: freeBookCapCents() });
 }
 
 function sheetAndCoverCents(provider: string): number {
@@ -268,7 +286,7 @@ export async function reviseSheet(store: GenStore, input: { bookId?: unknown; in
   const sheets = sheetJobs(existing);
   if (sheets.length === 0) return fail(409, "no_sheet");
   if (sheets.length >= MAX_SHEETS) return fail(409, "max_versions", "Ya has usado los dos cambios de la hoja.");
-  const both = await gateSpendCents(store, book.email, sheetAndCoverCents(adapter.name));
+  const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
   if (!both.ok) return fail(402, "budget", both.reason);
 
   const r = await reviseCast(d.ficha, d.plan, d.castArt, instruction, llm);

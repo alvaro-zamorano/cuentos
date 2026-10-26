@@ -17,7 +17,7 @@ import { characterBible } from "./character";
 import { estimatedCostCents, type GenerationAdapter, type GenerationResult, type ImageRef, type ImageSize } from "./adapter";
 import { thumbnail, toJpeg } from "./postprocess";
 import { qcImage, type QcResult } from "../plan/qc";
-import { canSpend, recordSpend, type SpendCheck, type SpendKind } from "./budget";
+import { canSpend, freeBookCapCents, recordSpend, type SpendCheck, type SpendKind } from "./budget";
 import {
   MAX_PAGE_VERSIONS,
   MAX_SHEET_VERSIONS,
@@ -65,11 +65,11 @@ export function cleanEmail(v: unknown): string | null {
  */
 export async function gateSpend(
   db: SupabaseClient<Database> | null,
-  { leadId, images, provider, paid = false, now, size }: { leadId: string; images: number; provider: string; paid?: boolean; now?: Date; size?: ImageSize },
+  { leadId, images, provider, paid = false, now, size, leadCap }: { leadId: string; images: number; provider: string; paid?: boolean; now?: Date; size?: ImageSize; leadCap?: number },
 ): Promise<SpendCheck & { cents: number }> {
   const cents = images * estimatedCostCents(provider, size);
   if (cents === 0) return { ok: true, cents };
-  return { ...(await canSpend(db, { leadId, cents, paid, now })), cents };
+  return { ...(await canSpend(db, { leadId, cents, paid, now, leadCap })), cents };
 }
 
 /* ------------------------------ libro ------------------------------ */
@@ -372,10 +372,12 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
   }
 
   // presupuesto antes de reclamar: si no hay, el job pagado espera (429) y el de muestra falla con el motivo
-  const lead = job.paid ? book.id : book.email;
-  if (!lead) return finish(store, job, "failed", "lead sin email");
   const v2 = v2Of(job);
-  const gate = await gateSpend(store.db, { leadId: lead, images: 1, provider: adapter.name, paid: job.paid, size: v2?.size });
+  // flujo nuevo (26 oct): antes del pago, el presupuesto es del libro (el número de libros por persona se mira al
+  // empezar, lib/book/freeLimit.ts). El flujo antiguo sigue contando por email
+  const lead = job.paid || v2 ? book.id : book.email;
+  if (!lead) return finish(store, job, "failed", "lead sin email");
+  const gate = await gateSpend(store.db, { leadId: lead, images: 1, provider: adapter.name, paid: job.paid, size: v2?.size, leadCap: v2 && !job.paid ? freeBookCapCents() : undefined });
   if (!gate.ok) {
     if (job.paid) return fail(429, "budget", gate.reason);
     // 26 oct (Álvaro): si ya hay una imagen pintada que el control de calidad mandó repetir y no queda presupuesto para

@@ -35,6 +35,8 @@ export function StepCast({
   const [view, setView] = useState<BookView | null>(null);
   const [painting, setPainting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // el último cuento con dibujos gratis del periodo: se dice una vez, con suavidad (26 oct)
+  const [lastFree, setLastFree] = useState(false);
   const cancel = useRef({ cancelled: false });
   useEffect(() => {
     const c = cancel.current;
@@ -88,7 +90,8 @@ export function StepCast({
         ficha={ficha}
         record={record}
         initialEmail={email}
-        onStarted={async (id, mail, sheet, cover) => {
+        onStarted={async (id, mail, sheet, cover, freeLeft) => {
+          setLastFree(freeLeft === 0);
           onBook(id, mail);
           resumed.current = true;
           await refresh(id);
@@ -111,6 +114,7 @@ export function StepCast({
         <p className="hand text-[20px] text-accent">{ready ? "aquí están" : "manos a la obra"}</p>
         <h2 className="display text-[32px] sm:text-[42px]">Así será {name}</h2>
         <p className="text-ink-soft">Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras.</p>
+        {lastFree && <p className="m-0 text-[13px] text-mute" data-testid="last-free">Es tu tercer cuento con dibujos gratis de este mes.</p>}
       </div>
 
       {/* la tarjeta de espera, solo hasta que estén los personajes: la portada (otro minuto) se espera ya viéndolos */}
@@ -271,13 +275,15 @@ function EmailGate({
   ficha: Ficha;
   record: PlanRecord;
   initialEmail?: string;
-  onStarted: (bookId: string, email: string, sheetJobId: string, coverJobId: string) => Promise<void>;
+  onStarted: (bookId: string, email: string, sheetJobId: string, coverJobId: string, freeLeft?: number) => Promise<void>;
 }) {
   const [email, setEmail] = useState(initialEmail ?? "");
   const [consent, setConsent] = useState(false);
   const [marketing, setMarketing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 26 oct: el buzón ya tiene sus cuentos gratis del periodo; no es un error, se le mandan por email
+  const [limit, setLimit] = useState(false);
   const name = ficha.hero.name.trim();
   const others = ficha.cast.map((c) => c.name.trim()).filter(Boolean);
   const who = others.length ? `a ${name} y a ${others.join(" y a ")}` : `a ${name}`;
@@ -291,7 +297,7 @@ function EmailGate({
         setBusy(true);
         setErr(null);
         try {
-          const r = await postJson<{ bookId?: string; sheetJobId?: string; coverJobId?: string }>("/api/libro/start", {
+          const r = await postJson<{ bookId?: string; sheetJobId?: string; coverJobId?: string; freeLeft?: number; error?: string }>("/api/libro/start", {
             email,
             consent,
             marketing,
@@ -299,12 +305,17 @@ function EmailGate({
             plan: record.plan,
             planMeta: { provider: record.provider, model: record.model },
           });
+          if (r.json.error === "free_limit") {
+            setLimit(true);
+            setBusy(false);
+            return;
+          }
           if (r.status !== 200 || !r.json.bookId) {
             setErr(errorMessage(r.json));
             setBusy(false);
             return;
           }
-          await onStarted(r.json.bookId, email.trim().toLowerCase(), r.json.sheetJobId!, r.json.coverJobId!);
+          await onStarted(r.json.bookId, email.trim().toLowerCase(), r.json.sheetJobId!, r.json.coverJobId!, r.json.freeLeft);
         } catch {
           setErr("Sin conexión. Inténtalo de nuevo.");
           setBusy(false);
@@ -330,7 +341,10 @@ function EmailGate({
 
       <label className="grid gap-1.5">
         <span className="field-label text-ink">Tu email</span>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@email.com" autoComplete="email" className="input" data-testid="email" />
+        <input type="email" required value={email} onChange={(e) => {
+            setEmail(e.target.value);
+            setLimit(false);
+          }} placeholder="tu@email.com" autoComplete="email" className="input" data-testid="email" />
         <span className="text-[13px] text-mute">Lo necesitamos para guardar el libro y mandarte el enlace con el que vuelves a él desde cualquier sitio.</span>
       </label>
       <div className="grid gap-2.5">
@@ -358,8 +372,20 @@ function EmailGate({
         No pedimos fotos, apellidos ni fecha de nacimiento. A los 30 días, el libro se borra.
       </p>
       {err && <ErrorNote>{err}</ErrorNote>}
+      {limit && (
+        <div className="rise grid gap-2 rounded-[22px] bg-sage px-5 py-4 text-sage-ink" role="status" data-testid="free-limit">
+          <p className="m-0 flex items-center gap-2 font-display text-[20px]">
+            <Sparkle size={14} color="currentColor" /> Tus cuentos te esperan
+          </p>
+          <p className="m-0 text-[15px] leading-relaxed">
+            Con este email ya tienes tres cuentos con sus personajes dibujados. Te los acabamos de mandar para que elijas el que más te guste y lo termines.
+            En cuanto tengas uno, puedes empezar otro.
+          </p>
+          <p className="m-0 text-[13px]">Este cuento escrito no se pierde: se queda guardado en este navegador.</p>
+        </div>
+      )}
       <div className="actionbar">
-        <button type="submit" className="btn-primary btn-lg w-full sm:w-auto" disabled={busy} data-testid="start">
+        <button type="submit" className="btn-primary btn-lg w-full sm:w-auto" disabled={busy || limit} data-testid="start">
           {busy ? <Sparkle className="twinkle" size={16} color="#fff" /> : <Icon.brush />}
           {busy ? "Preparando…" : `Dibujar a ${name}`}
         </button>
