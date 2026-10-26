@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/brand";
 import { EYES, GLASSES, HAIR_COLORS, SKINS } from "@/lib/traits";
-import { GLASSES_PICKS, HAIR_PICKS, OUTFIT_PICKS, PET_PICKS } from "@/lib/crearPicks";
+import { GLASSES_PICKS, HAIR_PICKS, OUTFIT_PICKS, PERSON_PICKS, PET_PICKS } from "@/lib/crearPicks";
 import { LIMITS } from "@/lib/plan/ficha";
 import type { CastMember, Ficha, Look } from "@/lib/plan/types";
 import { mergeDetails, needsQuickQuestions } from "@/lib/plan/quick";
@@ -219,19 +219,17 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
                   <input className="input" value={c.relation} maxLength={LIMITS.castRelation} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, relation: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "su perro" : "su abuela"} />
                 </label>
               </div>
-              {c.kind === "mascota" && (
-                <Tiles
-                  label={`Cómo es ${c.name.trim() || "la mascota"}`}
-                  picks={PET_PICKS}
-                  value={PET_PICKS.find((p) => p.text === c.look)?.id}
-                  cols="grid-cols-4 sm:grid-cols-8"
-                  onPick={(id) => {
-                    const pick = PET_PICKS.find((p) => p.id === id)!;
-                    const off = c.look === pick.text;
-                    setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: off ? "" : pick.text, relation: x.relation.trim() || off ? x.relation : pick.relation } : x)));
-                  }}
-                />
-              )}
+              <Tiles
+                label={`Cómo es ${c.name.trim() || (c.kind === "mascota" ? "la mascota" : "la persona")}`}
+                picks={castPicks(c.kind)}
+                value={castPicks(c.kind).find((p) => p.text === c.look)?.id}
+                cols="grid-cols-4 sm:grid-cols-8"
+                onPick={(id) => {
+                  const pick = castPicks(c.kind).find((p) => p.id === id)!;
+                  const off = c.look === pick.text;
+                  setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: off ? "" : pick.text, relation: x.relation.trim() || off ? x.relation : pick.relation } : x)));
+                }}
+              />
               <label className="grid gap-1.5">
                 <span className="field-label">Cómo es, en una línea</span>
                 <input className="input" value={c.look} maxLength={LIMITS.castLook} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "media melena gris, gafas de pasta y zapatillas blancas"} />
@@ -268,6 +266,9 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
     </form>
   );
 }
+
+/** Ejemplos con imagen de «Quién más sale»: mascotas o personas. */
+const castPicks = (kind: CastMember["kind"]) => (kind === "mascota" ? PET_PICKS : PERSON_PICKS);
 
 /** Fila plegable: icono, título y resumen de lo elegido; check si ya tiene algo. */
 function Row({ icon, tint, title, summary, done, children }: { icon: React.ReactNode; tint: string; title: string; summary?: string; done: boolean; children: React.ReactNode }) {
