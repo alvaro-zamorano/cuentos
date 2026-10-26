@@ -46,6 +46,8 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // vuelta de Stripe sin confirmación del pago: no se vuelve a enseñar el pago, que llevaba a pagar dos veces (B7)
+  const [payPending, setPayPending] = useState(false);
   const cancel = useRef({ cancelled: false });
   useEffect(() => {
     const c = cancel.current;
@@ -112,7 +114,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
         }
         setBusy(null);
         if (!v.paid) {
-          setError("El pago aún no nos ha llegado. Si ya se ha cobrado, el libro aparecerá aquí en unos minutos: recarga esta página o vuelve con tu enlace.");
+          setPayPending(true);
           return;
         }
       }
@@ -277,7 +279,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
       ) : (
         <>
           <LockedPages pages={plan.pages} onText={setText} />
-          {!busy && <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />}
+          {!busy && (payPending ? <PayPending contact={view.contact ?? null} /> : <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />)}
         </>
       )}
 
@@ -349,6 +351,36 @@ function LockedPages({ pages, onText }: { pages: PlanPage[]; onText: (n: number,
         ))}
       </ol>
     </section>
+  );
+}
+
+/**
+ * Se vuelve de Stripe (?pagado=1) y en dos minutos no ha llegado la confirmación del pago. En vez del pago otra vez, que
+ * llevaba a pagar dos veces (auditoría 26 oct, B7), un aviso y un botón para volver a mirar.
+ */
+function PayPending({ contact }: { contact: string | null }) {
+  return (
+    <div className="card grid gap-3 p-6" role="status" data-testid="pay-pending">
+      <h3 className="display text-[22px]">Estamos esperando la confirmación del pago</h3>
+      <p className="m-0 text-ink-soft">Si ya te han cobrado, no vuelvas a pagar. El libro aparecerá aquí en cuanto nos llegue, normalmente en unos minutos.</p>
+      <p className="m-0 text-ink-soft">
+        Si te han cobrado y en un rato no aparece, escríbenos
+        {contact ? (
+          <>
+            {" a "}
+            <a className="link" href={`mailto:${contact}`}>
+              {contact}
+            </a>
+          </>
+        ) : null}
+        . Lo arreglamos.
+      </p>
+      <div>
+        <button className="btn-soft" onClick={() => window.location.reload()} data-testid="pay-recheck">
+          Volver a mirar
+        </button>
+      </div>
+    </div>
   );
 }
 
