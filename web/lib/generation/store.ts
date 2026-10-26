@@ -109,6 +109,8 @@ export interface GenStore {
   claimPrint(id: string, from: PrintStatus[], to: PrintStatus): Promise<boolean>;
   /** Pedidos de tapa dura en alguno de estos estados (para el cron), los más antiguos primero. */
   listPrintOrders(statuses: PrintStatus[], limit: number): Promise<PaidOrder[]>;
+  /** Pedidos pagados desde `since`, de cualquier edición, los más antiguos primero (para el rescate, auditoría 26 oct, B4). */
+  listPaidOrdersSince(since: string, limit: number): Promise<PaidOrder[]>;
   addFeedback(row: FeedbackRow): Promise<void>;
   listFeedback(bookId: string): Promise<FeedbackRow[]>;
 }
@@ -345,6 +347,11 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       if (error) throw new Error(`orders: ${error.message}`);
       return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
     },
+    async listPaidOrdersSince(since, limit) {
+      const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").gte("created_at", since).order("created_at", { ascending: true }).limit(limit);
+      if (error) throw new Error(`orders: ${error.message}`);
+      return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
+    },
     async addFeedback(row) {
       const { error } = await db.from("cuentos_feedback").insert(row);
       if (error) throw new Error(`feedback: ${error.message}`);
@@ -469,6 +476,9 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async listPrintOrders(statuses, limit) {
       return [...(state.orders?.values() ?? [])].filter((o) => o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus)).slice(0, limit).map((o) => ({ ...o }));
+    },
+    async listPaidOrdersSince(since, limit) {
+      return [...(state.orders?.values() ?? [])].filter((o) => o.createdAt >= since).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).slice(0, limit).map((o) => ({ ...o }));
     },
     async addFeedback(row) {
       (state.feedback ??= []).push({ ...row });

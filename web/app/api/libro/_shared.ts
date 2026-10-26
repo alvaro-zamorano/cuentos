@@ -33,13 +33,17 @@ export async function withContext<T extends { ok: true } | Fail>(tag: string, fn
 
 export const bad = (error = "json") => NextResponse.json({ ok: false, error }, { status: 400 });
 
+/** Margen al final de la función (auditoría 26 oct, B4): antes 75 s, y una imagen empezada tarde se cortaba a mitad. */
+export const PAINT_MARGIN_S = 120;
+
 /** Pintar en segundo plano (B5); BACKGROUND_PAINT=0 lo apaga y entonces solo pinta el navegador. */
 export const backgroundPaint = () => process.env.BACKGROUND_PAINT !== "0";
 
 /**
  * Pinta con `after()` después de responder: la hoja, la portada o las páginas se terminan aunque el padre cierre la
  * pestaña. El navegador, si sigue abierto, pide los mismos jobs y el bloqueo optimista evita pintarlos dos veces.
- * Para con margen antes del maxDuration de la ruta (si Vercel corta a mitad, el job se queda «pintando» 5 minutos).
+ * Para con margen antes del maxDuration de la ruta (si Vercel corta a mitad, el job se queda «pintando» 5 minutos): no
+ * empieza una imagen con menos de PAINT_MARGIN_S por delante (una imagen con su espera máxima, 90 s, y su control).
  */
 export function paintLater(
   tag: string,
@@ -53,7 +57,7 @@ export function paintLater(
     try {
       const list = typeof ids === "function" ? await ids() : ids;
       if (list.length === 0) return;
-      const out = await paintAll(store, adapter, list, { concurrency, deadline: t0 + (maxDurationS - 75) * 1000 });
+      const out = await paintAll(store, adapter, list, { concurrency, deadline: t0 + (maxDurationS - PAINT_MARGIN_S) * 1000 });
       const count = (o: PaintOutcome) => Object.values(out).filter((x) => x === o).length;
       console.log(`[libro/${tag}] segundo plano: ${count("done")} hechas, ${count("failed")} fallidas, ${count("timeout")} sin tiempo, ${count("budget")} sin presupuesto`);
       await then?.(out);

@@ -33,7 +33,8 @@ function needsRequest(v: BookView): boolean {
 
 function paintingCopy(v: BookView | null): string {
   if (!v?.background) return "Pintando las páginas: tarda unos minutos. Deja esta pestaña abierta hasta que terminen.";
-  return `Pintando las páginas: tarda unos minutos. Puedes cerrar esta pestaña: seguimos pintando${v.mail ? " y te avisamos por email cuando esté" : ""}, y con tu enlace vuelves al libro.`;
+  // B4: con la pestaña abierta va más rápido; cerrada, el segundo plano y el rescate diario (/api/cron/rescue) lo terminan
+  return `Pintando las páginas: tarda unos minutos. Mejor no cierres esta pestaña hasta que estén: así va más rápido. Si la cierras, seguimos pintando${v.mail ? " y te avisamos por email cuando esté" : ""}, y con tu enlace vuelves al libro.`;
 }
 
 /**

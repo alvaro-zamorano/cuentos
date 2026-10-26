@@ -88,7 +88,8 @@ El detalle está en `PLAN.md` §5. Resumen:
 | PDF y maqueta del libro | `lib/pdf/printHtml.ts` (maqueta única del libro apaisado: impreso y PDF), `lib/pdf/book2.ts` (PDF en A4 apaisado), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf`; en la web, `BookCover` y `BookSpread` en `components/brand.tsx` |
 | Libro en 3D (tapa dura) | `lib/book3d/scene.ts` (Three.js: hojas que se curvan, giro con el libro cerrado, texturas bajo demanda), `components/book3d/Book3D.tsx` (carga diferida, portada 2D mientras carga o sin WebGL); se usa en `StepBook.tsx` |
 | Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra y los dos PDF que se descargan), migración `0005` |
-| Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (dos crons: borrado e imprenta) |
+| Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (tres crons diarios: borrado, imprenta y rescate) |
+| Rescate de libros pagados | `lib/book/rescue.ts` (termina lo pendiente, lo fallido y lo colgado, manda el «listo» y avisa a soporte si un libro pagado lleva horas atascado), `app/api/cron/rescue`. Diario en Hobby; con Pro, cada 10 minutos |
 | Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`; sin ellos, el nombre comercial); proveedores en `docs/PROVEEDORES.md` |
 | Buscadores | `app/robots.ts`, `app/sitemap.ts`, `lib/site.ts` (solo producción con `SITE_URL`) |
 | Páginas de ocasión (SEO y GEO) | `lib/ocasiones.ts` (contenido), `app/cuento-personalizado/` (índice y `[ocasion]`), `components/ocasiones/parts.tsx`, `components/JsonLd.tsx`; 404 de las que no existen en `proxy.ts` |
@@ -126,6 +127,7 @@ Sin claves en local se usan la memoria del proceso, imágenes `dry-run` y el cue
 - `GET /api/health`: qué está configurado (sin enseñar valores).
 - `GET /api/cron/purge?dry=1`: qué borraría el cron. Desde el 26 oct, los crons piden `CRON_SECRET` en cualquier despliegue de Vercel: en la preview, con la variable en Preview y la cabecera `Authorization: Bearer …`.
 - `GET /api/cron/print`: recordatorios y seguimiento de los pedidos impresos (misma cabecera). La preview solo toca los pedidos de prueba.
+- `GET /api/cron/rescue`: termina los libros pagados a medias y manda el «listo» que falte (misma cabecera; pinta de verdad con el proveedor del entorno). La preview solo toca los pedidos de prueba.
 - PDF de imprenta del libro de muestra en local: `node --conditions=react-server --import tsx scripts/print-sample.mts`.
 - `/api/dev?task=…`: pruebas con Gemini y Claude de verdad (`models`, `plan`, `b3start`, `run`, `view`, `revise`, `pages`). Cuestan dinero: pocas tomas. En Vercel solo responde con `DEV_TOKEN` (en `?token=` o en la cabecera `x-dev-token`); sin la variable, 404.
 

@@ -14,7 +14,7 @@
 import { newPublicId } from "../ids";
 import { buildBook, normalizeDraft } from "../story";
 import { characterBible } from "./character";
-import { estimatedCostCents, type GenerationAdapter, type GenerationResult, type ImageRef, type ImageSize } from "./adapter";
+import { estimatedCostCents, isTransient, type GenerationAdapter, type GenerationResult, type ImageRef, type ImageSize } from "./adapter";
 import { thumbnail, toJpeg } from "./postprocess";
 import { qcImage, type QcResult } from "../plan/qc";
 import { canSpend, freeBookCapCents, recordSpend, type SpendCheck, type SpendKind } from "./budget";
@@ -452,8 +452,11 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
     await record();
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
-    await store.updateJob(job.id, { status: "failed", error: msg.slice(0, 300) });
-    console.error(`[generate] ${job.kind} ${job.id} falló`);
+    // un fallo pasajero del proveedor (429, 5xx, red, tiempo agotado) no gasta el intento: el job queda fallido y se
+    // reabre al volver al libro, al reintentar o en el rescate (auditoría 26 oct, B4)
+    const transient = isTransient(e);
+    await store.updateJob(job.id, { status: "failed", error: `${transient ? "pasajero: " : ""}${msg}`.slice(0, 300), ...(transient ? { attempts: Math.max(0, claimed.attempts - 1) } : {}) });
+    console.error(`[generate] ${job.kind} ${job.id} falló${transient ? " (pasajero)" : ""}`);
   }
   const after = await store.getJob(job.id);
   return { ok: true, job: after ?? job, ran: true };
