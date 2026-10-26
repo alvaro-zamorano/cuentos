@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
-import { notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
+import { chargeNotice, isChargeEvent, recordChargeEvent, type ChargeEvent } from "@/lib/book/refunds";
+import { mailReceipt, notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { readyMail } from "@/lib/book/readyMail";
-import { sendSupportNotice } from "@/lib/mail";
-import { eventModeAllowed, verifyWebhook } from "@/lib/stripe";
+import { holderLine, titular } from "@/lib/legal";
+import { sendOrderConfirmed, sendSupportNotice } from "@/lib/mail";
+import { eventModeAllowed, sessionForPaymentIntent, verifyWebhook } from "@/lib/stripe";
 import { paintLater } from "../../libro/_shared";
 
 /**
@@ -12,7 +14,8 @@ import { paintLater } from "../../libro/_shared";
  * `checkout.session.completed` (idempotente) y, después de responder a Stripe, encola y pinta las 12 páginas y manda el
  * email de «tu libro está listo». Si el padre sigue en la página, su navegador también pinta los mismos jobs.
  * Si la base falla al leer o al escribir, 500: Stripe reintenta. Un cobro que no se puede registrar, doble o con un importe
- * que no cuadra manda un aviso a soporte (`paymentNotice`).
+ * que no cuadra manda un aviso a soporte (`paymentNotice`). Al registrar el pago manda el recibo (I28).
+ * Devoluciones y disputas (`charge.refunded`, `charge.dispute.*`, I5): marcan el pedido, paran la tapa dura y avisan.
  */
 export const maxDuration = 300;
 
@@ -33,6 +36,15 @@ export async function POST(req: Request) {
   if ("error" in ctx) return NextResponse.json({ ok: false, error: ctx.error }, { status: 503 }); // Stripe reintenta
   const { store, adapter } = ctx;
   try {
+    const origin = publicOrigin(req);
+    const link = (id: string) => `${origin}/crear?b=${id}`;
+    if (isChargeEvent(event.type)) {
+      const c = await recordChargeEvent(store, event as unknown as ChargeEvent, { sessionOf: (pi) => sessionForPaymentIntent(pi) });
+      console.log(`[stripe] ${event.type} → ${c.action}${c.action === "unmatched" || c.action === "ignored" ? ` (${c.reason})` : ""}`);
+      const notice = chargeNotice(c, event as unknown as ChargeEvent, link);
+      if (notice) await sendSupportNotice(notice.subject, notice.text).catch(() => null);
+      return NextResponse.json({ received: true });
+    }
     const r = await recordStripePayment(store, event);
     console.log(`[stripe] ${event.type} → ${r.action}${r.action === "ignored" ? ` (${r.reason})` : ""}`);
     // cobro sin pedido, cobro doble o importe que no cuadra: aviso para devolverlo a mano. El error queda en los logs
@@ -42,10 +54,18 @@ export async function POST(req: Request) {
       console.error(`[stripe] ${notice.subject}: ${notice.text.split("\n")[0]} · sesión ${event.data.object.id ?? "?"}`);
       await sendSupportNotice(notice.subject, notice.text).catch(() => null);
     }
+    // el recibo, después de responder a Stripe (una vez por sesión, también si Stripe reintenta)
+    if (r.action === "paid" || r.action === "upgraded" || r.action === "duplicate") {
+      const t = titular();
+      after(() =>
+        mailReceipt(store, r, event, { send: sendOrderConfirmed, link, conditionsLink: `${origin}/condiciones`, seller: holderLine(t), contact: t.email ?? null }).catch((e) =>
+          console.warn(`[stripe] recibo sin enviar: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`),
+        ),
+      );
+    }
     // también con «duplicate»: si Stripe reintenta porque la vez anterior falló después de guardar el pedido, las páginas
     // no se habían pedido (revisión 26 oct). Pedirlas otra vez no repite nada
     if (r.action === "paid" || r.action === "duplicate") {
-      const origin = publicOrigin(req);
       paintLater(
         "stripe",
         store,

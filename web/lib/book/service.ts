@@ -24,7 +24,8 @@ import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
 import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
-import { cleanShipping } from "../print/shipping";
+import { cleanShipping, shippingLine } from "../print/shipping";
+import type { Receipt } from "../mail";
 import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
@@ -65,6 +66,8 @@ export interface BookDraftV2 {
   readyMailedAt?: number;
   /** Cuándo se avisó a soporte de que el libro pagado no terminaba (rescate, auditoría 26 oct, B4): una vez por libro. */
   stuckAlertedAt?: number;
+  /** Sesiones de Stripe de las que ya se mandó el recibo (I28): una vez por cobro, aunque Stripe reintente. */
+  receiptSessions?: string[];
   /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
   edition?: PaidEdition;
   shipping?: Shipping;
@@ -565,7 +568,18 @@ export async function updateShipping(store: GenStore, input: { bookId?: unknown;
 
 export interface PaidEvent {
   type: string;
-  data: { object: { id?: string; payment_status?: string; amount_total?: number | null; currency?: string | null; metadata?: Record<string, string> | null; client_reference_id?: string | null } };
+  data: {
+    object: {
+      id?: string;
+      payment_status?: string;
+      amount_total?: number | null;
+      currency?: string | null;
+      metadata?: Record<string, string> | null;
+      client_reference_id?: string | null;
+      customer_email?: string | null;
+      customer_details?: { email?: string | null } | null;
+    };
+  };
 }
 
 export type PaymentOutcome =
@@ -667,6 +681,53 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
     return { subject: "Cobro con un importe que no cuadra", text: `El pedido se ha registrado, pero ${r.mismatch}.\n${facts}\n\nRevísalo en el panel de Stripe.` };
   }
   return null;
+}
+
+/**
+ * Recibo de compra (I28): una vez por sesión de Stripe, cuando el webhook registra el pago o lo vuelve a ver porque Stripe
+ * reintenta. Va al email con el que se pagó; si no viene, al del libro. Devuelve si lo ha mandado.
+ */
+export async function mailReceipt(
+  store: GenStore,
+  r: PaymentOutcome,
+  event: PaidEvent,
+  deps: {
+    send: (to: string, receipt: Receipt) => Promise<{ sent: boolean }>;
+    link: (publicId: string) => string;
+    conditionsLink: string;
+    seller: string;
+    contact: string | null;
+  },
+): Promise<boolean> {
+  if (r.action !== "paid" && r.action !== "upgraded" && r.action !== "duplicate") return false;
+  const s = event.data?.object ?? {};
+  if (!s.id) return false;
+  const order = await store.getOrderBySession(s.id);
+  if (!order || (order.status ?? "paid") !== "paid") return false;
+  const loaded = await loadBook(store, r.bookId, { includeExpired: true });
+  if (isFail(loaded)) return false;
+  const { book, d } = loaded;
+  if (d.receiptSessions?.includes(s.id)) return false;
+  const to = s.customer_details?.email ?? s.customer_email ?? book.email;
+  if (!to) return false;
+  const res = await deps
+    .send(to, {
+      title: d.plan.title,
+      kind: s.metadata?.upgrade === "1" ? "upgrade" : order.edition,
+      amountCents: order.amountCents,
+      paidAt: order.createdAt,
+      address: order.edition === "hardcover" && order.shipping ? shippingLine(order.shipping) : null,
+      waiverAt: s.metadata?.withdrawal_waiver_at ?? null,
+      link: deps.link(book.public_id),
+      conditionsLink: deps.conditionsLink,
+      seller: deps.seller,
+      contact: deps.contact,
+    })
+    .catch(() => ({ sent: false }));
+  if (!res.sent) return false;
+  const fresh = draftV2((await store.findBook({ publicId: book.public_id, includeExpired: true })) ?? book) ?? d;
+  await save(store, book, { ...fresh, receiptSessions: [...(fresh.receiptSessions ?? []), s.id].slice(-5) }, fresh.edition ?? "illustrated");
+  return true;
 }
 
 /**

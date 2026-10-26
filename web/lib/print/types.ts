@@ -49,8 +49,13 @@ export interface PrintInfo {
   checkedAt?: string | null;
 }
 
+/** cuentos_orders.status. Todo lo que lee pedidos pagados filtra `paid`: uno `refunded` ya no abre descargas ni imprenta (I5). */
+export type OrderStatus = "pending" | "paid" | "refunded" | "cancelled";
+
 export interface PaidOrder {
   id: string;
+  /** Sin valor en los pedidos de antes: se leen como pagados. */
+  status?: OrderStatus;
   bookId: string;
   edition: PaidEdition;
   amountCents: number;
