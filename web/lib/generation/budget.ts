@@ -22,6 +22,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../supabase/types";
+import { isLiveSession } from "../stripe";
 
 export type SpendKind = "story" | "sheet" | "sample" | "page";
 
@@ -69,13 +70,14 @@ function sum(rows: { cost_cents: number | null }[] | null): number {
 }
 
 /**
- * ¿El libro tiene un pedido cobrado de verdad? Solo los crea el webhook firmado de Stripe; los pagos de prueba llevan
- * `dry-run:<libro>` como sesión. Si la lectura falla, se trata como no cobrado (se aplica el tope diario).
+ * ¿El libro tiene un pedido cobrado de verdad (`cs_live_…`)? Solo esos se saltan el tope diario. Un pago con la tarjeta
+ * de prueba de Stripe (`cs_test_…`) o el simulado (`dry-run:<libro>`) no: en la preview pública, la tarjeta 4242 pintaba
+ * libros con Gemini sin tope (auditoría 26 oct, B1). Si la lectura falla, se trata como no cobrado.
  */
 export async function hasChargedOrder(db: Db, bookId: string): Promise<boolean> {
   const { data, error } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
   if (error || !data) return false;
-  return data.some((o) => !!o.stripe_session_id && !o.stripe_session_id.startsWith("dry-run"));
+  return data.some((o) => isLiveSession(o.stripe_session_id));
 }
 
 /** ¿Se pueden gastar `cents` más para este lead hoy? Comprueba el tope por lead (salvo `paid`) y el diario (salvo libro cobrado con Stripe). */

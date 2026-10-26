@@ -85,7 +85,9 @@ async function resolveBook(
     const publicId = bookId ?? newPublicId();
     return store.saveMemoryBook!({ publicId, email: input.email ?? null, draft: normalizeDraft(input.draft as Partial<Draft>) });
   }
-  const book = await store.findBook({ publicId: bookId, email: bookId ? undefined : input.email ?? undefined });
+  // solo por id: buscar por email daba el enlace del libro de otra familia a quien supiera su email (auditoría 26 oct, B5)
+  if (!bookId) return fail(400, "book_id");
+  const book = await store.findBook({ publicId: bookId });
   return book ?? fail(404, "not_found");
 }
 

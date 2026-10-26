@@ -301,15 +301,18 @@ test("canSpend: respeta el tope diario UTC (500 c por defecto), salvo libros cob
     assert.match(over.reason!, /tope diario \(500 c\)/);
     assert.equal((await canSpend(db, { leadId: "libro", cents: 5, paid: true, now: NOW })).ok, false);
   });
-  // un libro cobrado con Stripe pasa el tope diario; uno con pago de prueba, no (16 oct)
+  // un libro cobrado de verdad con Stripe pasa el tope diario; uno con pago de prueba, no (16 oct). Desde el 26 oct
+  // (auditoría, B1) la tarjeta de prueba de Stripe (`cs_test_`) tampoco: en la preview pública pintaba sin tope
   await withEnv({ LEAD_CAP_CENTS: undefined, DAILY_CAP_CENTS: undefined }, async () => {
     const orders: Order[] = [
-      { book_id: "cobrado", stripe_session_id: "cs_test_a1" },
+      { book_id: "cobrado", stripe_session_id: "cs_live_a1" },
+      { book_id: "tarjeta-prueba", stripe_session_id: "cs_test_a1" },
       { book_id: "prueba", stripe_session_id: "dry-run:abc12345" },
-      { book_id: "pendiente", stripe_session_id: "cs_test_b2", status: "pending" },
+      { book_id: "pendiente", stripe_session_id: "cs_live_b2", status: "pending" },
     ];
     const { db } = fakeDb([{ lead_id: "x", cost_cents: 500, created_at: TODAY }], { orders });
     assert.equal((await canSpend(db, { leadId: "cobrado", cents: 12, paid: true, now: NOW })).ok, true);
+    assert.equal((await canSpend(db, { leadId: "tarjeta-prueba", cents: 12, paid: true, now: NOW })).ok, false);
     assert.equal((await canSpend(db, { leadId: "prueba", cents: 12, paid: true, now: NOW })).ok, false);
     assert.equal((await canSpend(db, { leadId: "pendiente", cents: 12, paid: true, now: NOW })).ok, false);
     // sin `paid` no se mira el pedido: el tope diario manda

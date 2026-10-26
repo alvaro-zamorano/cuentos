@@ -27,7 +27,14 @@ import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping } from "../print/shipping";
 import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping } from "../print/types";
-import { printableInEnv } from "../stripe";
+import { paidInEnv, printableInEnv } from "../stripe";
+
+type Env = Record<string, string | undefined>;
+
+/** ¿El libro está pagado en este entorno? En producción solo cuentan los cobros reales (`paidInEnv`, auditoría 26 oct). */
+function paidHere(store: GenStore, bookUuid: string, env: Env): Promise<boolean> {
+  return store.hasPaidOrder(bookUuid, (s) => paidInEnv(s, env));
+}
 
 /** Pagada la tapa dura (también la mejora), el libro se guarda al menos este tiempo para poder mandarlo a imprimir. */
 const KEEP_AFTER_HARDCOVER_MS = 30 * 24 * 3600 * 1000;
@@ -398,12 +405,12 @@ export interface CheckoutPrep {
  * Antes de abrir el pago (real o de prueba): el libro existe y no está pagado, la edición es válida y, si es la tapa dura,
  * la dirección también. La edición y la dirección se guardan en el borrador y pasan al pedido cuando llega el pago.
  */
-export async function prepareCheckout(store: GenStore, input: { bookId?: unknown; edition?: unknown; shipping?: unknown }): Promise<CheckoutPrep | Fail> {
+export async function prepareCheckout(store: GenStore, input: { bookId?: unknown; edition?: unknown; shipping?: unknown }, env: Env = process.env): Promise<CheckoutPrep | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   let { book } = loaded;
   const { d } = loaded;
-  if (await store.hasPaidOrder(book.id)) return fail(409, "already_paid");
+  if (await paidHere(store, book.id, env)) return fail(409, "already_paid");
   const edition = paidEdition(input.edition) ?? "illustrated";
   if (edition === "hardcover") {
     const s = cleanShipping(input.shipping);
@@ -486,7 +493,7 @@ export async function recordStripePayment(store: GenStore, event: PaidEvent, env
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
   if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
-  if (await store.hasPaidOrder(loaded.book.id)) return { action: "duplicate", bookId: loaded.book.public_id };
+  if (await paidHere(store, loaded.book.id, env)) return { action: "duplicate", bookId: loaded.book.public_id };
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
   await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
@@ -701,14 +708,14 @@ export async function requestPages(
   store: GenStore,
   input: { bookId?: unknown; page?: unknown; reason?: unknown; note?: unknown },
   adapter: Pick<GenerationAdapter, "name">,
-  { dryRunPayment }: { dryRunPayment: boolean },
+  { dryRunPayment, env = process.env }: { dryRunPayment: boolean; env?: Env },
   llm: Llm = selectLlm("art"),
 ): Promise<{ ok: true; bookId: string; jobs: string[]; created: number } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   let { book } = loaded;
   const { d } = loaded;
-  if (!(await store.hasPaidOrder(book.id)) && !dryRunPayment) return fail(402, "not_paid");
+  if (!(await paidHere(store, book.id, env)) && !dryRunPayment) return fail(402, "not_paid");
   if (await printLocked(store, book.id)) return lockedFail();
   if (!d.castArt) return fail(409, "no_sheet");
   let jobs = await store.listJobs(book.id);
@@ -801,11 +808,12 @@ export async function reportPage(
   input: { bookId?: unknown; page?: unknown; note?: unknown },
   notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
   link: (publicId: string) => string,
+  env: Env = process.env,
 ): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
-  if (!(await store.hasPaidOrder(book.id))) return fail(402, "not_paid");
+  if (!(await paidHere(store, book.id, env))) return fail(402, "not_paid");
   const n = Number(input.page);
   if (!Number.isInteger(n) || n < 1 || n > 12) return fail(400, "page");
   const note = cleanNote(input.note);
@@ -904,7 +912,7 @@ export function upgradeOffer(
   return cents !== null && until ? { cents, until } : null;
 }
 
-export async function bookView(store: GenStore, bookId: unknown): Promise<BookView | Fail> {
+export async function bookView(store: GenStore, bookId: unknown, env: Env = process.env): Promise<BookView | Fail> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
@@ -947,7 +955,9 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     // sin nombre, el reparto usa la relación («su perro»): bajo el retrato, con mayúscula
     return { name: c.name.charAt(0).toUpperCase() + c.name.slice(1), job: done[done.length - 1]?.id ?? null };
   });
-  const order = await store.getOrder(book.id);
+  // en producción, un pedido de prueba de la preview no existe: ni pagado, ni edición, ni panel de imprenta
+  const lastOrder = await store.getOrder(book.id);
+  const order = lastOrder && paidInEnv(lastOrder.sessionId, env) ? lastOrder : null;
   const feedback = await store.listFeedback(book.id).catch(() => []);
   // ya enviado a la imprenta, el libro no cambia: no se piden retratos que no van a ir en él
   const portraitsToRequest =
@@ -966,9 +976,9 @@ export async function bookView(store: GenStore, bookId: unknown): Promise<BookVi
     reported: [...new Set(feedback.filter((f) => f.kind === "report").map((f) => f.page_n))],
     ficha: d.ficha,
     plan: d.plan,
-    paid: await store.hasPaidOrder(book.id),
+    paid: await paidHere(store, book.id, env),
     edition: order?.edition ?? null,
-    upgrade: upgradeOffer(book, order ?? null),
+    upgrade: upgradeOffer(book, order ?? null, Date.now(), env),
     print:
       order?.edition === "hardcover" && order.printStatus
         ? {

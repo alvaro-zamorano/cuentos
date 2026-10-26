@@ -340,3 +340,15 @@ test("requestSample con proveedor de pago: el presupuesto del lead corta la mues
     assert.equal((await s.listJobs(a.bookId)).length, 2);
   });
 });
+
+test("requestSample (26 oct, B5): con Supabase nunca busca el libro por email; sin id, 400", async () => {
+  const mem = memoryStore(newMemoryState());
+  const asked: unknown[] = [];
+  const s: GenStore = { ...mem, mode: "supabase", findBook: async (q) => (asked.push(q), mem.findBook(q)) };
+  const r = await requestSample(s, { email: "vera@example.com", styleId: "gouache" }, dryRunAdapter);
+  assert.equal(r.ok, false);
+  assert.equal((r as { error: string }).error, "book_id");
+  assert.deepEqual(asked, [], "no se consulta la base con el email");
+  const b = await requestBook(s, { email: "vera@example.com", styleId: "gouache" }, dryRunAdapter, { dryRunPayment: true });
+  assert.equal((b as { error: string }).error, "book_id");
+});

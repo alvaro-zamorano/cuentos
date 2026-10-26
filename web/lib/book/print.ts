@@ -14,7 +14,7 @@ import type { PaidOrder, PrintInfo, PrintStatus, PrintStep } from "../print/type
 import type { GenStore } from "../generation/store";
 import type { Fail } from "../generation/service";
 import type { PrintBookInput } from "../pdf/printHtml";
-import { printableInEnv } from "../stripe";
+import { isLiveSession, orderBelongsToEnv, printableInEnv } from "../stripe";
 import { bookView, draftV2, loadBook } from "./service";
 
 export interface PrintDeps {
@@ -42,6 +42,8 @@ export interface PrintDeps {
   /** Página propia de seguimiento del pedido (cuentos_orders.id). */
   trackLink(orderId: string): string;
   now?: () => Date;
+  /** Entorno (por defecto, process.env): cada entorno solo toca sus pedidos (`orderBelongsToEnv`). */
+  env?: Record<string, string | undefined>;
 }
 
 const fail = (status: number, error: string, reason?: string): Fail => ({ ok: false, status, error, ...(reason ? { reason } : {}) });
@@ -67,6 +69,9 @@ export async function startPrint(
   if (!order || order.edition !== "hardcover" || !order.printStatus) return fail(409, "not_hardcover");
   if (order.printStatus !== "awaiting_approval" && order.printStatus !== "failed") return fail(409, "already_sent");
   if (!printableInEnv(order.sessionId, env)) return fail(409, "test_order", "Este libro se pagó en modo de prueba y no se imprime.");
+  // la preview no manda a la imprenta (como borrador) un pedido real: lo dejaría como enviado en la base compartida y
+  // producción ya no podría mandarlo (auditoría 26 oct, B1)
+  if (env.VERCEL_ENV !== "production" && isLiveSession(order.sessionId)) return fail(409, "live_order", "Este pedido es real: se manda a imprimir desde erasesuvez.com.");
   if (!order.shipping) return fail(409, "no_shipping", "Falta la dirección de envío.");
   const view = await bookView(store, bookId);
   if (!view.ok) return view;
@@ -215,7 +220,11 @@ const HOUR = 3_600_000;
 export async function printCron(store: GenStore, deps: PrintDeps): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
   const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0 };
+  // cada entorno, solo sus pedidos: la preview no escribe a clientes reales ni toca sus pedidos; producción no recuerda
+  // los de prueba (auditoría 26 oct, B1)
+  const mine = (o: { sessionId?: string | null }) => orderBelongsToEnv(o.sessionId, deps.env ?? process.env);
   for (const o of await store.listPrintOrders(["awaiting_approval"], 200)) {
+    if (!mine(o)) continue;
     const age = now.getTime() - Date.parse(o.createdAt);
     const sinceReminder = o.remindedAt ? now.getTime() - Date.parse(o.remindedAt) : Infinity;
     const due = (!o.remindedAt && age >= 48 * HOUR) || (!!o.remindedAt && age >= 7 * 24 * HOUR && sinceReminder >= 4 * 24 * HOUR && Date.parse(o.remindedAt) - Date.parse(o.createdAt) < 7 * 24 * HOUR);
@@ -231,7 +240,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     }
   }
   for (const o of await store.listPrintOrders(["sending"], 50)) {
-    if (o.sentAt) continue;
+    if (o.sentAt || !mine(o)) continue;
     const book = await store.getBookById(o.bookId);
     // `sending` sin terminar: la función se cortó. Se libera para que el padre lo reintente.
     if (book && now.getTime() - Date.parse(o.updatedAt ?? o.createdAt) > 15 * 60_000 && (await store.claimPrint(o.id, ["sending"], "failed"))) {
@@ -240,6 +249,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     }
   }
   for (const o of await store.listPrintOrders(["sent", "in_production", "shipped"], 100)) {
+    if (!mine(o)) continue;
     if ((await refreshPrint(store, o, deps)) === "updated") report.refreshed++;
   }
   return report;

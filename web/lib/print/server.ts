@@ -24,9 +24,5 @@ export function printDeps(origin: string): PrintDeps {
   };
 }
 
-/** Cron de Vercel: `Authorization: Bearer $CRON_SECRET`. Sin secreto, solo fuera de producción. */
-export function cronAuthorized(req: Request): "ok" | "unauthorized" | "missing" {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (secret) return req.headers.get("authorization") === `Bearer ${secret}` ? "ok" : "unauthorized";
-  return process.env.VERCEL_ENV === "production" ? "missing" : "ok";
-}
+/** Cron de Vercel: `Authorization: Bearer $CRON_SECRET`. Sin secreto, solo en local (ver lib/cronAuth.ts). */
+export { cronAuthorized } from "../cronAuth";
