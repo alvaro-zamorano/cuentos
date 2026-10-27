@@ -158,12 +158,14 @@ test("0013 (I7): email_norm es normalizeEmail, también en las filas que ya hab�
   await db.close();
 });
 
-test("0015: las filas de leads que ya había reciben su llave de baja, una distinta cada una", async () => {
+test("0015: las filas de leads que ya había reciben su llave de baja, una distinta cada una, y su buzón", async () => {
   const db = await rebuilt({ before: "0015" });
-  await db.query(`insert into cuentos_leads (email, marketing, edition) values ('ana@example.com', true, 'illustrated'), ('luis@example.com', false, 'illustrated')`);
+  await db.query(`insert into cuentos_leads (email, marketing, edition) values ('ana.lopez+cuentos@googlemail.com', true, 'illustrated'), ('luis@example.com', false, 'illustrated')`);
   for (const f of migrations().filter((f) => f >= "0015")) await apply(db, f);
-  const rows = (await db.query<{ unsubscribe_token: string; marketing_at: Date | null }>(`select unsubscribe_token, marketing_at from cuentos_leads order by email`)).rows;
+  const rows = (await db.query<{ unsubscribe_token: string; marketing_at: Date | null; email_norm: string }>(`select unsubscribe_token, marketing_at, email_norm from cuentos_leads order by email`)).rows;
   assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r) => r.email_norm), [normalizeEmail("ana.lopez+cuentos@googlemail.com"), "luis@example.com"]);
+  assert.equal(rows[0].email_norm, "analopez@gmail.com");
   assert.ok(rows.every((r) => /^[0-9a-f-]{36}$/.test(r.unsubscribe_token)));
   assert.notEqual(rows[0].unsubscribe_token, rows[1].unsubscribe_token);
   assert.equal(rows[0].marketing_at, null, "los de antes no tienen fecha: no se guardaba");

@@ -7,7 +7,8 @@
  *   - Sin grabaciones de sesión (Álvaro, 21 oct): apagadas aquí, aunque se activen en el panel de PostHog.
  *   - Nunca se identifica a nadie (sin identify, sin email). Los eventos son anónimos.
  *   - Ningún evento lleva datos del niño ni del cuento: solo el paso, la edición y tiempos.
- *   - El parámetro `b` de /crear?b=… abre un libro: se enmascara en todas las URL que salen.
+ *   - El parámetro `b` de /crear?b=… abre un libro, y el `t` de /baja?t=… da de baja de las novedades: se enmascaran en
+ *     todas las URL que salen.
  *   - Sin clics automáticos en ningún sitio (autocapture, rabietas, clics muertos): su texto puede ser el nombre del
  *     niño o el enlace del libro. Tampoco heatmaps, excepciones, web vitals ni extensiones descargadas: todo apagado
  *     aquí, porque si no lo decide el panel de PostHog (25 oct).
@@ -63,8 +64,11 @@ export function posthogKeyOk(key: string | undefined): key is string {
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 export const POSTHOG_ENABLED = posthogKeyOk(POSTHOG_KEY);
 
-/** Parámetros de URL que nunca deben salir: `b` abre un libro guardado sin más contraseña. */
-const SECRET_PARAMS = ["b"];
+/**
+ * Parámetros de URL que nunca deben salir: `b` abre un libro guardado sin más contraseña y `t` es la llave de baja de las
+ * novedades (/baja?t=…).
+ */
+const SECRET_PARAMS = ["b", "t"];
 
 /** Rutas con una llave dentro: `/seguimiento/<id del pedido>` abre el pedido (título, portada y población). */
 const SECRET_PATH = /\/seguimiento\/[^/?#\s]+/g;
@@ -101,7 +105,7 @@ const ELEMENT_PROPS = ["$elements", "$elements_chain", "$el_text", "$element_sel
 
 /**
  * Última barrera antes de enviar: ningún evento con elementos de la página (clics automáticos, rabietas, clics
- * muertos, heatmaps), aunque el panel de PostHog los encienda, y sin `b` en ninguna URL.
+ * muertos, heatmaps), aunque el panel de PostHog los encienda, y sin `b` ni `t` en ninguna URL.
  */
 export const beforeSend: BeforeSendFn = (event) => {
   if (!event) return event;

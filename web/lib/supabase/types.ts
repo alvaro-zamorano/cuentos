@@ -312,6 +312,7 @@ export type Database = {
           created_at: string
           edition: string
           email: string
+          email_norm: string | null
           id: number
           marketing: boolean
           marketing_at: string | null
@@ -324,6 +325,7 @@ export type Database = {
           created_at?: string
           edition?: string
           email: string
+          email_norm?: never
           id?: never
           marketing?: boolean
           marketing_at?: string | null
@@ -336,6 +338,7 @@ export type Database = {
           created_at?: string
           edition?: string
           email?: string
+          email_norm?: never
           id?: never
           marketing?: boolean
           marketing_at?: string | null
