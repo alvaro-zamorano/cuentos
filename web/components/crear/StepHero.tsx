@@ -239,6 +239,8 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
                 <span className="field-label">Cómo es, en una línea</span>
                 <input className="input" value={c.look} maxLength={LIMITS.castLook} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "media melena gris, gafas de pasta y zapatillas blancas"} />
               </label>
+              {/* también el aspecto del reparto: «la abuela va en silla de ruedas» (revisión 27 oct) */}
+              {c.kind !== "mascota" && <HealthNote cast />}
             </div>
           ))}
           {ficha.cast.length < LIMITS.cast && (
@@ -263,8 +265,8 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
 
       {/* lo que pasa con estos datos, antes de mandarlos (auditoría 26 oct, I26 e I27): antes se sabía en el paso 4 */}
       <p className="m-0 rounded-2xl bg-paper-deep px-4 py-3 text-[13px] leading-snug text-ink-soft" data-testid="before-write">
-        Para escribir el cuento, lo que has puesto, también lo de su salud si lo hay, va a un proveedor de IA que no lo usa para entrenar sus
-        modelos. Lo guardamos 30 días y después se borra.
+        Escribirlo tarda medio minuto. Para hacerlo, lo que has puesto, también lo de su salud si lo hay, va a un proveedor de IA que no lo usa
+        para entrenar sus modelos. Lo guardamos 30 días y después se borra.
       </p>
 
       <div className="actionbar">
@@ -273,7 +275,9 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
           Escribir el cuento
         </button>
         <p className="m-0 w-full text-center text-[12.5px] leading-snug text-mute sm:w-auto sm:flex-1 sm:text-left" data-testid="write-consent">
-          Tarda medio minuto. Al pulsar, declaras ser su madre, padre o tutor (o tener su permiso) y aceptas cómo usamos estos datos:{" "}
+          {/* la barra fija no crece en el móvil: el «tarda medio minuto» va arriba (revisión 27 oct) */}
+          Al pulsar, declaras ser su madre, padre o tutor (o tener su permiso) y consientes que usemos lo que has escrito, también lo de su
+          salud si lo hay, solo para este cuento:{" "}
           <Link href="/privacidad" target="_blank" className="underline underline-offset-2">
             privacidad
           </Link>
@@ -288,10 +292,11 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
  * Bajo los campos libres (auditoría 26 oct, I27): un audífono o una silla de ruedas son datos de salud de un menor. No
  * se piden ni se prohíben; se dice para qué se usan.
  */
-function HealthNote() {
+function HealthNote({ cast = false }: { cast?: boolean }) {
   return (
-    <p className="m-0 text-[12.5px] leading-snug text-mute" data-testid="health-note">
-      Si cuentas algo de su salud (un audífono, una silla de ruedas…), lo usamos solo para este cuento y se borra con él.
+    <p className="m-0 text-[12.5px] leading-snug text-mute" data-testid={cast ? "cast-health-note" : "health-note"}>
+      {cast ? "Si cuentas algo de salud (que la abuela va en silla de ruedas, por ejemplo)" : "Si cuentas algo de su salud (un audífono, una silla de ruedas…)"}, lo usamos solo para
+      este cuento y se borra con él.
     </p>
   );
 }

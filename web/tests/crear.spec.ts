@@ -39,6 +39,11 @@ async function writeStory(page: Page) {
   // el reparto va en una fila plegable
   await page.locator("summary", { hasText: "Quién más sale" }).click();
   await page.getByTestId("add-cast").click();
+  // una persona del reparto: su aspecto también puede llevar algo de salud (revisión 27 oct); una mascota, no
+  await page.getByTestId("cast-0").getByRole("button", { name: "Persona" }).click();
+  await expect(page.getByTestId("cast-0").getByTestId("cast-health-note")).toContainText("que la abuela va en silla de ruedas");
+  await page.getByTestId("cast-0").getByRole("button", { name: "Mascota" }).click();
+  await expect(page.getByTestId("cast-0").getByTestId("cast-health-note")).toHaveCount(0);
   await page.getByTestId("cast-0").getByPlaceholder("Toby").fill("Toby");
   await page.getByTestId("cast-0").getByPlaceholder("su perro").fill("su perro");
   // «Lo que solo tú sabes» está a la vista; con un detalle no salen las tres preguntas
@@ -46,6 +51,8 @@ async function writeStory(page: Page) {
   // antes de mandar la ficha se dice qué pasa con ella, y qué con los datos de salud (I26, I27)
   await expect(page.getByTestId("before-write")).toContainText("proveedor de IA");
   await expect(page.getByTestId("write-consent")).toContainText("declaras ser su madre, padre o tutor");
+  await expect(page.getByTestId("write-consent")).toContainText("consientes que usemos lo que has escrito, también lo de su salud si lo hay, solo para este cuento");
+  await page.screenshot({ path: test.info().outputPath("barra-consentimiento.png") });
   await expect(page.getByTestId("write-consent").getByRole("link", { name: "privacidad" })).toHaveAttribute("href", "/privacidad");
   await expect(page.getByTestId("health-note").first()).toContainText("solo para este cuento");
   await page.getByTestId("next-2").click();
