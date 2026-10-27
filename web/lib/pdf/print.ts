@@ -20,12 +20,12 @@ async function htmlToPdf(page: Page, html: string, widthMm: number, heightMm: nu
   return page.pdf({ width: `${widthMm}mm`, height: `${heightMm}mm`, printBackground: true, preferCSSPageSize: true, timeout: left() });
 }
 
-export function renderPrintPdf(input: PrintBookInput, size: PrintSize, cover: CoverGeometry, timeoutMs = 150_000): Promise<{ pdf: Uint8Array; pages: number }> {
+/** `timeoutMs` desde que le toca el turno; el turno se espera como mucho `maxWaitMs` (la ruta tiene 300 s). */
+export function renderPrintPdf(input: PrintBookInput, size: PrintSize, cover: CoverGeometry, timeoutMs = 150_000, maxWaitMs = 90_000): Promise<{ pdf: Uint8Array; pages: number }> {
   const interior = printInteriorHtml(input, size);
   const coverHtml = printCoverHtml(input, cover);
   // de uno en uno por instancia, como el PDF que se descarga; el plazo empieza al tocarle el turno (lib/pdf/queue.ts)
-  return withBrowser(async (browser) => {
-    const t0 = Date.now();
+  return withBrowser(async (browser, t0) => {
     const deadline = t0 + timeoutMs;
     const page = await browser.newPage();
     const coverPdf = await htmlToPdf(page, coverHtml.html, coverHtml.widthMm, coverHtml.heightMm, deadline);
@@ -50,5 +50,5 @@ export function renderPrintPdf(input: PrintBookInput, size: PrintSize, cover: Co
     const pdf = await doc.save();
     console.log(`[print] ${doc.getPageCount()} páginas, ${pdf.length} bytes en ${Date.now() - t0} ms (cubierta ${cover.source})`);
     return { pdf, pages: doc.getPageCount() };
-  });
+  }, { maxWaitMs });
 }

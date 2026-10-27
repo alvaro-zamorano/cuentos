@@ -52,16 +52,20 @@ export async function launch(): Promise<Browser> {
   return puppeteer.launch({ executablePath: local, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"] });
 }
 
-/** Abre un Chromium, hace `fn` con él y lo cierra, de uno en uno por instancia (lib/pdf/queue.ts). */
-export function withBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> {
+/**
+ * Abre un Chromium, hace `fn` con él y lo cierra, de uno en uno por instancia (lib/pdf/queue.ts). `fn` recibe cuándo le
+ * tocó el turno (antes de arrancar Chromium): su plazo cuenta desde ahí. `maxWaitMs`: lo que espera el turno como mucho.
+ */
+export function withBrowser<T>(fn: (browser: Browser, startedAt: number) => Promise<T>, opts: { maxWaitMs?: number } = {}): Promise<T> {
   return oneAtATime(async () => {
+    const startedAt = Date.now();
     const browser = await launch();
     try {
-      return await fn(browser);
+      return await fn(browser, startedAt);
     } finally {
       await browser.close().catch(() => undefined);
     }
-  });
+  }, opts);
 }
 
 export interface RenderPdfOptions {

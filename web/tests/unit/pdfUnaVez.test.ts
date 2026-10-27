@@ -10,7 +10,7 @@ import { memoryStore, newMemoryState, type GenStore } from "../../lib/generation
 import { paintAll } from "../../lib/book/background";
 import { payDryRun, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
 import { bookPdf, pdfKey, type PdfDeps } from "../../lib/book/pdf";
-import { oneAtATime } from "../../lib/pdf/queue";
+import { oneAtATime, QueueBusy } from "../../lib/pdf/queue";
 import { rateLimit } from "../../lib/rateLimit";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -100,11 +100,41 @@ test("I10: si cambia lo que sale en el PDF, se pinta otro", async () => {
   assert.equal(files.size, 3);
 });
 
-test("I10: la huella no depende de las URL firmadas (cambian en cada vista) y sí de la versión del código", () => {
-  const view = { plan, ficha, chosen: { sheet: "s", cover: "c", pages: { 1: "p1" }, portraits: [] } };
-  assert.equal(pdfKey(view, "full", {}), pdfKey(JSON.parse(JSON.stringify(view)), "full", {}));
-  assert.notEqual(pdfKey(view, "full", { VERCEL_GIT_COMMIT_SHA: "a" }), pdfKey(view, "full", { VERCEL_GIT_COMMIT_SHA: "b" }));
-  assert.notEqual(pdfKey(view, "full", {}), pdfKey(view, "free", {}));
+test("I10: la huella es la maqueta con las imágenes por job: no cambia con las URL firmadas ni con un despliegue, sí con el contenido", () => {
+  const pages: Record<number, string | null> = {};
+  for (let n = 1; n <= 12; n++) pages[n] = `p${n}`;
+  const view = { plan, ficha, chosen: { sheet: "s", cover: "c", pages, portraits: [] } };
+  const k = pdfKey(view, "full");
+  assert.equal(pdfKey(JSON.parse(JSON.stringify(view)), "full"), k);
+  assert.notEqual(pdfKey(view, "free"), k);
+  assert.notEqual(pdfKey({ ...view, chosen: { ...view.chosen, pages: { ...pages, 3: "otra" } } }, "full"), k, "otra versión de una página");
+  assert.notEqual(pdfKey({ ...view, plan: { ...plan, title: "Otro título" } }, "full"), k);
+  assert.notEqual(pdfKey({ ...view, ficha: { ...ficha, from: "Con cariño, la abuela" } }, "full"), k);
+});
+
+test("revisión: el PDF gratis tampoco se guarda sin portada si su URL no se pudo firmar", async () => {
+  const { state, store, bookId } = await paidBook();
+  const { s, files } = withBucket(store);
+  // la portada está en Storage, pero la firma no sale
+  const cover = [...state.jobs.values()].find((j) => j.kind === "cover" && j.status === "done")!;
+  cover.storage_path = "books/x/portada.jpg";
+  const c = counting();
+  const r = await bookPdf(s, bookId, "free", c.deps);
+  assert.ok(!r.ok && r.status === 503 && r.error === "render_failed", JSON.stringify(r));
+  assert.equal(c.renders(), 0);
+  assert.equal(files.size, 0, "nada guardado");
+});
+
+test("revisión: si el turno de Chromium no llega a tiempo, 503 «ocupado» en castellano y sin gastar el límite", async () => {
+  const { store, bookId } = await paidBook();
+  const ip = `pdf2:busy-${Math.random()}`;
+  const blocker = oneAtATime(() => new Promise((r) => setTimeout(r, 300)));
+  const deps = { render: () => oneAtATime(async () => PDF, { maxWaitMs: 50 }), allowRender: () => rateLimit(ip, 1, 0) };
+  const r = await bookPdf(store, bookId, "full", deps);
+  assert.ok(!r.ok && r.error === "pdf_busy" && /otros PDF/.test(r.reason ?? ""), JSON.stringify(r));
+  await blocker;
+  // el turno se devolvió: con el límite en 1, la siguiente pasa
+  assert.ok((await bookPdf(store, bookId, "full", deps)).ok);
 });
 
 test("I10: dos descargas a la vez del mismo PDF comparten el pintado", async () => {
@@ -191,4 +221,18 @@ test("I10: los Chromium van de uno en uno, y uno que falla no para la cola", asy
     results.map((r) => r.status),
     ["fulfilled", "rejected", "fulfilled", "fulfilled"],
   );
+});
+
+test("revisión: quien se rinde en la cola no se pinta después, y la cola sigue", async () => {
+  const order: string[] = [];
+  const long = oneAtATime(async () => {
+    await new Promise((r) => setTimeout(r, 120));
+    order.push("largo");
+  });
+  const quitter = oneAtATime(async () => void order.push("no debería"), { maxWaitMs: 30 });
+  const after = oneAtATime(async () => void order.push("siguiente"));
+  await assert.rejects(quitter, QueueBusy);
+  await long;
+  await after;
+  assert.deepEqual(order, ["largo", "siguiente"]);
 });

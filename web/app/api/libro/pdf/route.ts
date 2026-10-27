@@ -33,7 +33,8 @@ async function make(req: Request, bookId: unknown, kind: PdfKind): Promise<PdfRe
   if (!rateLimit(`pdf:${ip}`, 60, 0).ok) return { ok: false, status: 429, error: "rate_limited", reason: pdfErrorMessage("rate_limited") };
   const ctx = generationContext();
   if ("error" in ctx) return { ok: false, status: 503, error: ctx.error, reason: pdfErrorMessage(ctx.error) };
-  return bookPdf(ctx.store, bookId, kind, { render: (input) => renderBook2Pdf(input), allowRender: () => rateLimit(`pdf2:${ip}`, 6) });
+  // dentro de los 120 s de la ruta: hasta 20 s esperando el turno de Chromium y 85 s para arrancarlo y pintar
+  return bookPdf(ctx.store, bookId, kind, { render: (input) => renderBook2Pdf(input, 85_000, { maxWaitMs: 20_000 }), allowRender: () => rateLimit(`pdf2:${ip}`, 6, 0) });
 }
 
 const kindOf = (v: unknown): PdfKind => (v === "full" ? "full" : "free");
