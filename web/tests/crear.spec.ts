@@ -484,10 +484,11 @@ test("Vuelta de Stripe sin red: no dice que el pago no ha llegado, dice que no p
   await page.goto(`/crear?b=${bookId}&pagado=1`);
   await expect(page.getByText("Confirmando el pago…")).toBeVisible();
   offline = true;
-  // dos minutos de espera, de 3 s en 3 s, dejando que cada petición fallida vuelva antes de seguir
+  // dos minutos de espera, de 3 s en 3 s, dejando que cada petición fallida vuelva antes de seguir. fastForward salta el
+  // tiempo sin pasar por cada fotograma del libro en 3D (runFor los pintaba todos y en una máquina lenta no daba tiempo)
   for (let i = 0; i < 42; i++) {
-    await page.clock.runFor(3_000);
-    await page.waitForTimeout(30);
+    await page.clock.fastForward(3_000);
+    await page.waitForTimeout(50);
   }
   await expect(page.getByTestId("pay-pending")).toBeVisible();
   await expect(page.getByTestId("pay-offline")).toContainText("parece que no hay conexión");
