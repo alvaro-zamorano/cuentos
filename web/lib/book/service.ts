@@ -247,7 +247,8 @@ export interface FreeLimitFail extends Fail {
  */
 function planProblem(v: PlanValidation): string {
   const hard = v.issues.filter((i) => i.hard);
-  console.warn(`[libro] plan no válido: ${hard.map((i) => i.msg).join(" | ").slice(0, 300)}`);
+  // solo cuántos: el texto de los avisos lleva nombres del cuento (I24)
+  console.warn(`[libro] plan no válido: ${hard.length} avisos graves`);
   return hard.find((i) => i.parent)?.parent ?? "Hay algo en el cuento que no podemos usar. Revisa los textos o escríbenos.";
 }
 

@@ -66,11 +66,16 @@ export const POSTHOG_ENABLED = posthogKeyOk(POSTHOG_KEY);
 /** Parámetros de URL que nunca deben salir: `b` abre un libro guardado sin más contraseña. */
 const SECRET_PARAMS = ["b"];
 
-/** Quita los parámetros secretos de una URL (absoluta o relativa). Exportada para los tests. */
+/** Rutas con una llave dentro: `/seguimiento/<id del pedido>` abre el pedido (título, portada y población). */
+const SECRET_PATH = /\/seguimiento\/[^/?#\s]+/g;
+
+/** Quita los parámetros y las rutas secretas de una URL (absoluta o relativa). Exportada para los tests. */
 export function scrubUrl(value: unknown): unknown {
-  if (typeof value !== "string" || !value.includes("?")) return value;
+  if (typeof value !== "string") return value;
+  const path = value.replace(SECRET_PATH, "/seguimiento/:id");
+  if (!path.includes("?")) return path;
   try {
-    const u = new URL(value, "https://x.invalid");
+    const u = new URL(path, "https://x.invalid");
     let changed = false;
     for (const p of SECRET_PARAMS) {
       if (u.searchParams.has(p)) {
@@ -78,14 +83,18 @@ export function scrubUrl(value: unknown): unknown {
         changed = true;
       }
     }
-    if (!changed) return value;
-    return value.startsWith("http") ? u.toString() : `${u.pathname}${u.search}${u.hash}`;
+    if (!changed) return path;
+    return path.startsWith("http") ? u.toString().replace(/%3Aid/g, ":id") : `${u.pathname.replace(/%3Aid/g, ":id")}${u.search}${u.hash}`;
   } catch {
-    return value;
+    return path;
   }
 }
 
-const URL_PROPS = ["$current_url", "$referrer", "$initial_referrer", "$initial_current_url", "$session_entry_url", "$prev_pageview_url"];
+/**
+ * Toda propiedad que acabe en «url», «referrer» o «pathname» (auditoría 26 oct, I22). Antes eran seis nombres fijos, y
+ * el `b` salía en `$session_entry_referrer` y el id del pedido en `$pathname`.
+ */
+const isUrlProp = (key: string) => /(url|referrer|pathname)$/i.test(key);
 
 /** Propiedades que solo traen los eventos de clic (texto y enlaces de la página). */
 const ELEMENT_PROPS = ["$elements", "$elements_chain", "$el_text", "$element_selectors"];
@@ -102,7 +111,7 @@ export const beforeSend: BeforeSendFn = (event) => {
   for (const bag of [props, event.$set, event.$set_once, props.$set, props.$set_once]) {
     if (!bag || typeof bag !== "object") continue;
     const b = bag as Record<string, unknown>;
-    for (const k of URL_PROPS) if (k in b) b[k] = scrubUrl(b[k]);
+    for (const k of Object.keys(b)) if (isUrlProp(k)) b[k] = scrubUrl(b[k]);
   }
   return event;
 };
@@ -136,6 +145,8 @@ export function startPostHog(): Promise<void> {
       disable_conversations: true,
       disable_web_experiments: true,
       disable_external_dependency_loading: true,
+      // sin flags: su petición no pasa por before_send y llevaba el referrer con el `b` (I22)
+      advanced_disable_flags: true,
       before_send: beforeSend,
     });
     posthog.register({ entorno: process.env.NEXT_PUBLIC_VERCEL_ENV ?? "local" });

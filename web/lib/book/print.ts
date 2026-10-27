@@ -209,6 +209,9 @@ export function mergeInfo(prev: PrintInfo | null, g: GelatoOrder, status: PrintS
 /** Pregunta a la imprenta por el pedido y apunta el estado, el seguimiento y la entrega estimada; al salir, manda el email (una vez). */
 export async function refreshPrint(store: GenStore, order: PaidOrder, deps: PrintDeps): Promise<RefreshOutcome> {
   if (deps.mode !== "gelato" || !order.printOrderId || order.printOrderId.startsWith("dry-run")) return "skipped";
+  // entregado y ya sin dirección (el borrado de I23): un aviso tardío de la imprenta no vuelve a traer el seguimiento,
+  // que después ya no se borraría (revisión 27 oct)
+  if (order.printStatus === "delivered" && !order.shipping) return "skipped";
   const g = await deps.getOrder(order.printOrderId);
   if (!g) return "not_found";
   const now = deps.now?.() ?? new Date();

@@ -60,3 +60,25 @@ test("posthogKeyOk: solo identificadores de proyecto", () => {
 test("track: sin navegador ni consentimiento no hace nada", () => {
   assert.doesNotThrow(() => track({ name: "crear_paso", props: { paso: 1 } }));
 });
+
+test("I22: ni el b del libro ni el id del pedido salen en ninguna propiedad de URL, referrer o ruta", () => {
+  const props = {
+    $current_url: "https://www.erasesuvez.com/seguimiento/9f3c2a77-1111-4222-8333-944455556666",
+    $pathname: "/seguimiento/9f3c2a77-1111-4222-8333-944455556666",
+    $session_entry_url: "https://www.erasesuvez.com/seguimiento/9f3c2a77-1111-4222-8333-944455556666?utm=mail",
+    $session_entry_referrer: "https://www.erasesuvez.com/crear?b=abc12345",
+    $session_entry_pathname: "/crear",
+    $prev_pageview_pathname: "/seguimiento/9f3c2a77-1111-4222-8333-944455556666",
+    $referring_domain: "www.erasesuvez.com",
+    paso: 5,
+  };
+  const out = beforeSend(ev("$pageview", { ...props }, { $set_once: { $initial_referrer: "https://www.erasesuvez.com/crear?b=abc12345&pagado=1" } }))!;
+  const all = JSON.stringify(out);
+  assert.ok(!all.includes("9f3c2a77") && !all.includes("abc12345"), all);
+  assert.equal(out.properties.$pathname, "/seguimiento/:id");
+  assert.equal(out.properties.$current_url, "https://www.erasesuvez.com/seguimiento/:id");
+  assert.equal(out.properties.$session_entry_url, "https://www.erasesuvez.com/seguimiento/:id?utm=mail");
+  assert.equal(out.properties.$session_entry_pathname, "/crear");
+  assert.equal(out.properties.paso, 5);
+  assert.equal(scrubUrl("/seguimiento/abc"), "/seguimiento/:id");
+});
