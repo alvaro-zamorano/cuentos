@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../lib/supabase/types";
 import { purgeExpired, supabasePurgeDb } from "../../lib/purge";
+import { memoryStore, newMemoryState } from "../../lib/generation/store";
+import { refreshPrint, type PrintDeps } from "../../lib/book/print";
 import { fichaHash, normalizeFicha, planCacheKey } from "../../lib/plan/ficha";
 import { planBook } from "../../lib/plan/planner";
 import type { Llm } from "../../lib/llm";
@@ -36,7 +38,7 @@ function fakeClient(rows: Record<string, unknown[]>) {
   return { client: { from } as unknown as SupabaseClient<Database>, calls };
 }
 
-const ADDRESS = { name: "Ana García López", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid", country: "ES", phone: "600111222" };
+const ADDRESS = { name: "Ana García López", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid", country: "ES" as const, phone: "600111222" };
 
 test("I23: al entregarse, el pedido pierde la dirección, el teléfono y el seguimiento; y un borrador de hace un día, su dirección", async () => {
   const { client, calls } = fakeClient({
@@ -54,6 +56,23 @@ test("I23: al entregarse, el pedido pierde la dirección, el teléfono y el segu
   const book = calls.find((c) => c.table === "cuentos_books" && c.op === "update")!;
   assert.deepEqual(book.payload, { draft: { v: 2, plan: { title: "T" } } });
   assert.ok(book.filters.includes('eq("updated_at","2026-10-01T10:00:00.123456+00:00")'), "solo si nadie lo ha tocado entre medias");
+});
+
+test("I23: un aviso tardío de la imprenta no devuelve el seguimiento a un pedido ya entregado y borrado (revisión 27 oct)", async () => {
+  const store = memoryStore(newMemoryState());
+  await store.addPaidOrder("libro-1", { edition: "hardcover", amountCents: 3490, sessionId: "cs_test_e", shipping: ADDRESS, printStatus: "awaiting_approval" });
+  const order = (await store.getOrder("libro-1"))!;
+  await store.updateOrder(order.id, { printStatus: "delivered", printOrderId: "gel-1", shipping: null, trackingUrl: null });
+  let asked = 0;
+  const deps = {
+    mode: "gelato",
+    getOrder: async () => (asked++, { id: "gel-1", status: "delivered", orderReferenceId: order.id, trackingUrl: "https://s.correos.es/x", trackingCode: "ABC123", method: null, etaFrom: null, etaTo: null }),
+  } as unknown as PrintDeps;
+  assert.equal(await refreshPrint(store, (await store.getOrderById(order.id))!, deps), "skipped");
+  assert.equal(asked, 0);
+  const after = (await store.getOrderById(order.id))!;
+  assert.equal(after.trackingUrl, null);
+  assert.equal(JSON.stringify(after.info ?? {}).includes("ABC123"), false);
 });
 
 test("I23: con dry=1 solo cuenta; la purga lo pide con un día de margen", async () => {
