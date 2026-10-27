@@ -1,5 +1,6 @@
 // Tipos de Supabase limitados a las tablas cuentos_* (la base es compartida con otros productos).
-// Generado con generate_typescript_types (MCP Supabase) el 8 oct 2026 y filtrado; regenerar al cambiar el esquema.
+// Generado con generate_typescript_types (MCP Supabase) el 8 oct 2026 y filtrado; puesto al día el 27 oct (I14). Regenerar
+// al cambiar el esquema; tests/unit/migraciones.test.ts comprueba que las migraciones reconstruyen la base.
 export type Json =
   | string
   | number
@@ -80,7 +81,6 @@ export type Database = {
         }
         Relationships: []
       }
-      // job_key, variant, paid y storage_path añadidas a mano (brief 7, docs/sql/cuentos_generation_jobs_b3.sql).
       cuentos_feedback: {
         Row: {
           book_id: string | null
@@ -118,7 +118,22 @@ export type Database = {
           style_id?: string | null
           variant?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cuentos_feedback_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "cuentos_books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentos_feedback_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "cuentos_generation_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cuentos_generation_jobs: {
         Row: {
@@ -194,7 +209,7 @@ export type Database = {
           },
         ]
       }
-      // Añadida a mano (brief 5) con las columnas acordadas; regenerar los tipos cuando la tabla exista.
+      // Migración 0008 (cuentos_stories): al día con la base del 27 oct.
       cuentos_stories: {
         Row: {
           cost_cents: number
@@ -217,7 +232,7 @@ export type Database = {
           input: Json
           input_hash: string
           issues?: Json
-          model: string
+          model?: string
           provider: string
           story: Json
           usage?: Json
@@ -237,7 +252,6 @@ export type Database = {
         }
         Relationships: []
       }
-      // Añadida a mano (brief 6, docs/sql/cuentos_spend.sql); regenerar los tipos cuando la tabla exista.
       cuentos_spend: {
         Row: {
           cost_cents: number

@@ -1,6 +1,6 @@
 /**
  * Presupuesto de generación (B3): cuánto se puede gastar por lead y por día UTC. Tabla `cuentos_spend`
- * (docs/sql/cuentos_spend.sql; RLS sin políticas: solo service role).
+ * (supabase/migrations/0009_cuentos_9_spend.sql; RLS sin políticas: solo service role).
  *
  *   LEAD_CAP_CENTS   tope por lead antes del pago (por defecto 30, D2 del 13 oct: hoja 1K + portada 2K y hasta 2 cambios de hoja,
  *                    cada uno con su portada: 3 × (4 + 6) c). `paid: true` lo salta (libro pagado;

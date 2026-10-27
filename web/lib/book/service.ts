@@ -48,7 +48,7 @@ const KEEP_AFTER_PAYMENT_MS = 30 * 24 * 3600 * 1000;
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
 /**
- * Lo que admite la base (cuentos_generation_jobs_variant_check): 1..4 desde docs/sql/cuentos_8_variant_hasta_4.sql
+ * Lo que admite la base (cuentos_generation_jobs_variant_check): 1..4 desde supabase/migrations/0012_cuentos_12_variant_hasta_4.sql
  * (aplicada el 25 oct). Si se cambia, cambiar las dos cosas a la vez: sin este tope, una versión de más fallaba al
  * guardarse (500) en vez de decir que no hay más.
  */
