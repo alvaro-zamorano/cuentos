@@ -76,7 +76,7 @@ test("devolución entera: el libro deja de estar pagado (sin descarga) y soporte
   const n = chargeNotice(r, refund())!;
   assert.match(n.subject, /^Devolución: «Vera y la gran idea»/);
   assert.match(n.text, /ya no se descarga ni se manda a imprimir/);
-  assert.ok(n.text.includes(`ref. ${bookId.slice(0, 6)}`) && !n.text.includes(bookId), "sin el enlace ni el id entero (I30)");
+  assert.ok(!n.text.includes(bookId) && !n.text.includes("crear?b="), "sin el enlace ni el id del libro (I30): el pedido basta");
   assert.equal((await recordChargeEvent(store, refund(), stripe)).action, "duplicate");
 });
 

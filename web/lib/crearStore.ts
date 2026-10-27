@@ -39,17 +39,19 @@ function fresh(): CrearState {
   return { v: 2, step: 1, ficha: emptyFicha() };
 }
 
-function read(): CrearState {
+/** Lee lo guardado (exportado para los tests). */
+export function read(): CrearState {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fresh();
     const s = JSON.parse(raw) as Partial<CrearState>;
     if (s?.v !== 2) return fresh();
-    // lo de antes de la caducidad no lleva fecha: cuenta desde hoy
     if (typeof s.savedAt === "number" && Date.now() - s.savedAt > LOCAL_TTL_MS) {
       localStorage.removeItem(KEY);
       return fresh();
     }
+    // lo de antes de la caducidad no lleva fecha: cuenta desde hoy, y se apunta ya (si no, sin tocarlo, no caducaría)
+    if (typeof s.savedAt !== "number") localStorage.setItem(KEY, JSON.stringify({ ...s, savedAt: Date.now() }));
     const step = [1, 2, 3, 4, 5].includes(Number(s.step)) ? (Number(s.step) as Step) : 1;
     return { v: 2, step, ficha: normalizeFicha(s.ficha), record: s.record?.plan?.pages?.length === 12 ? s.record : undefined, bookId: s.bookId, email: s.email, quickAsked: s.quickAsked === true || undefined, paid: (!!s.bookId && s.paid === true) || undefined, savedAt: typeof s.savedAt === "number" ? s.savedAt : undefined };
   } catch {

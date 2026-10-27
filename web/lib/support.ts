@@ -1,13 +1,13 @@
 /**
- * Cómo se nombra un libro en los avisos a soporte (auditoría 26 oct, I30): sin el enlace ni el id entero, que abren el
- * libro a quien lea el correo. Los seis primeros caracteres del id bastan para encontrarlo en Supabase
- * (cuentos_books.public_id empieza así) y no lo abren.
+ * Cómo se nombra un libro en los avisos a soporte (auditoría 26 oct, I30): sin el enlace ni el id público, que abren el
+ * libro a quien lea el correo. Se usa el id interno (cuentos_books.id, un uuid que no abre nada): con sus ocho primeros
+ * caracteres se encuentra en Supabase. No sale del id público: un trozo de ese sí ayudaría a adivinarlo (revisión 27 oct).
  */
-export function bookRef(publicId: string): string {
-  return `ref. ${publicId.slice(0, 6)}`;
+export function bookRef(bookUuid: string): string {
+  return `ref. ${bookUuid.slice(0, 8)}`;
 }
 
 /** La línea del libro en un aviso. */
-export function bookLine(publicId: string): string {
-  return `Libro: ${bookRef(publicId)} (en Supabase, cuentos_books con public_id que empieza así)`;
+export function bookLine(bookUuid: string): string {
+  return `Libro: ${bookRef(bookUuid)} (en Supabase, cuentos_books con id que empieza así)`;
 }

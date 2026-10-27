@@ -71,7 +71,7 @@ async function printAlert(store: GenStore, deps: PrintDeps, order: Pick<PaidOrde
       [
         `El pedido ${order.id} ha fallado: ${error.slice(0, 300)}`,
         advice[kind],
-        book ? bookLine(book.public_id) : "El libro ya no está.",
+        book ? bookLine(book.id) : "El libro ya no está.",
       ].join("\n\n"),
     );
   } catch (e) {

@@ -134,7 +134,7 @@ async function alertIfStuck(
       [
         `«${title}» se pagó el ${new Date(order.createdAt).toISOString().slice(0, 16).replace("T", " ")} (UTC) y ${missing ? `le faltan ${missing.length} de 12 páginas${missing.length ? ` (${missing.join(", ")})` : ""}` : "no se ha podido mirar cómo va"}.`,
         failure ? `El rescate ha fallado: ${failure}` : "",
-        `Edición: ${order.edition}. ${bookLine(pid)}`,
+        `Edición: ${order.edition}. Pedido: ${order.id}. ${bookLine(bookUuid)}`,
         "El rescate lo seguirá intentando. Si no avanza, mira el proveedor de imágenes (saldo, caídas), el de textos y el tope por libro (MAX_COST_CENTS_PER_BOOK).",
       ]
         .filter(Boolean)

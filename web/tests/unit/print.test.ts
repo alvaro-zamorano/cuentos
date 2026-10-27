@@ -529,7 +529,7 @@ test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprent
   assert.ok(!(await completePrint(signing, s.orderId, broken.deps)).ok);
   assert.equal(notices.length, 1);
   assert.match(notices[0], /^Tapa dura que no sale hacia la imprenta: «Vera y la gran idea»\|El pedido .* ha fallado: sin_medidas_de_cubierta/);
-  assert.ok(notices[0].includes(`ref. ${bookId.slice(0, 6)}`) && !notices[0].includes("crear?b="), "sin el enlace (I30)");
+  assert.ok(notices[0].includes("Libro: ref. ") && !notices[0].includes("crear?b=") && !notices[0].includes(bookId), "sin el enlace ni el id público (I30)");
 
   // se reintenta, sale, y después la imprenta lo cancela
   const again = await startPrint(store, bookId, "gelato");

@@ -20,7 +20,6 @@ import type { GenStore } from "../generation/store";
 import { DISPUTE_HOLD, REFUND_HOLD, type PaidOrder, type PrintStatus } from "../print/types";
 import { orderBelongsToEnv } from "../stripe";
 import { draftV2 } from "./service";
-import { bookLine } from "../support";
 
 type Env = Record<string, string | undefined>;
 
@@ -208,7 +207,7 @@ const dateEs = (iso: string) => new Date(iso).toLocaleDateString("es-ES", { day:
 /** Aviso a soporte (`MAIL_FORWARD_TO`). Puro, para probarlo; lo manda el webhook. null: nada que contar. */
 export function chargeNotice(r: ChargeOutcome, event: ChargeEvent): { subject: string; text: string } | null {
   const o = event.data?.object ?? {};
-  const where = (f: Found) => [`Pedido: ${f.orderId} (${f.edition === "hardcover" ? "tapa dura" : "PDF"}, ${money(f.amountCents)})`, f.bookId ? bookLine(f.bookId) : "El libro ya no está."].join("\n");
+  const where = (f: Found) => [`Pedido: ${f.orderId} (${f.edition === "hardcover" ? "tapa dura" : "PDF"}, ${money(f.amountCents)})`, ...(f.bookId ? [] : ["El libro ya no está."])].join("\n");
   const printLine = (p: PrintEffect, held: string) =>
     p === "held" ? held : p === "at_printer" ? "Ojo: la tapa dura ya está en la imprenta o saliendo hacia ella. Compruébalo en Gelato y cancélala si aún se puede." : null;
   const paidWord = (l: Linked) => (l.edition === "hardcover" ? "pagada" : "pagado");

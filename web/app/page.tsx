@@ -92,7 +92,7 @@ const FAQ = [
   },
   {
     q: "¿Qué hacéis con esos datos?",
-    a: "Para escribir el cuento, lo que nos cuentas pasa por nuestro servidor y por la IA que lo escribe. Guardamos el libro 30 días para que puedas volver a él con un enlace; después se borra. Tu email lo usamos para mandarte ese enlace y lo de tu pedido (el recibo y, si es impreso, el envío), para contar los cuentos gratis y, si lo aceptas, para novedades.",
+    a: "Para escribir el cuento, lo que nos cuentas pasa por nuestro servidor y por la IA que lo escribe. Guardamos el libro 30 días para que puedas volver a él con un enlace; después se borra. Tu email lo usamos para mandarte ese enlace y lo de tu pedido: el recibo y, si es impreso, el envío. También para contar los cuentos gratis y, si lo aceptas, para mandarte novedades.",
   },
   {
     q: "¿Se puede devolver?",
