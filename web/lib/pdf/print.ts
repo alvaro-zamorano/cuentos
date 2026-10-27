@@ -2,6 +2,7 @@ import "server-only";
 import { PDFDocument, type PDFPage } from "pdf-lib";
 import type { Page } from "puppeteer-core";
 import { launch } from "./render";
+import { readyToPrint } from "./ready";
 import { printCoverHtml, printInteriorHtml, type PrintBookInput } from "./printHtml";
 import type { CoverGeometry, PrintSize } from "../print/gelato";
 
@@ -15,8 +16,7 @@ const MM = 72 / 25.4;
 async function htmlToPdf(page: Page, html: string, widthMm: number, heightMm: number, deadline: number): Promise<Uint8Array> {
   const left = () => Math.max(5_000, deadline - Date.now());
   await page.setContent(html, { waitUntil: "load", timeout: left() });
-  await page.evaluate(() => (document as Document & { fonts: FontFaceSet }).fonts.ready);
-  await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0), { timeout: left() }).catch(() => undefined);
+  await readyToPrint(page, left());
   return page.pdf({ width: `${widthMm}mm`, height: `${heightMm}mm`, printBackground: true, preferCSSPageSize: true, timeout: left() });
 }
 

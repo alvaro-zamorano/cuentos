@@ -1014,6 +1014,23 @@ export interface BookJobView {
   paid: boolean;
 }
 
+/**
+ * Ilustraciones del libro (portada y 12 páginas) que están pintadas pero llegan sin URL, porque falló la firma de
+ * Storage (auditoría 26 oct, I8): el PDF saldría con ese hueco, y el de la imprenta ya no tiene vuelta atrás. Las del modo
+ * sin coste no cuentan: no tienen imagen.
+ */
+export function unsignedImages(view: Pick<BookView, "jobs" | "chosen">): string[] {
+  const byId = new Map(view.jobs.map((j) => [j.id, j]));
+  const gap = (id: string | null) => {
+    const j = id ? byId.get(id) : undefined;
+    return !!j && j.status === "done" && !j.placeholder && !j.url;
+  };
+  const out: string[] = [];
+  if (gap(view.chosen.cover)) out.push("portada");
+  for (let n = 1; n <= 12; n++) if (gap(view.chosen.pages[n] ?? null)) out.push(`página ${n}`);
+  return out;
+}
+
 export interface BookView {
   ok: true;
   bookId: string;

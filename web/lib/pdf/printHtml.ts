@@ -1,3 +1,4 @@
+import { PDF_FONTS_CSS } from "./fonts";
 import { joinDashes } from "./text";
 import { PRINT_INNER_PAGES, type CoverGeometry, type PrintSize } from "../print/gelato";
 import type { Plan } from "../plan/types";
@@ -43,7 +44,8 @@ const paras = (t: string) =>
     .map((l) => `<p>${joinDashes(esc(l))}</p>`)
     .join("");
 
-const FONTS = `@import url("https://fonts.googleapis.com/css2?family=Lora:wght@400..700&family=Figtree:wght@400;500;600;700&display=block");`;
+// las letras van dentro del HTML: sin depender de Google Fonts en cada PDF (I8)
+const FONTS = PDF_FONTS_CSS;
 const PAPER = "#fbf7ef";
 const INK = "#2b2520";
 const SOFT = "#6f6457";

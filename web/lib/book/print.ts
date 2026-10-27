@@ -15,7 +15,7 @@ import type { GenStore } from "../generation/store";
 import type { Fail } from "../generation/service";
 import type { PrintBookInput } from "../pdf/printHtml";
 import { isLiveSession, orderBelongsToEnv, printableInEnv } from "../stripe";
-import { bookView, draftV2, loadBook } from "./service";
+import { bookView, draftV2, loadBook, unsignedImages } from "./service";
 
 export interface PrintDeps {
   mode: PrintMode;
@@ -98,6 +98,9 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
     if (!book || !d || !book.email || !order.shipping) return await failWith("libro_o_direccion");
     const view = await bookView(store, book.public_id);
     if (!view.ok) return await failWith(`vista: ${view.error}`);
+    // una ilustración sin URL saldría en blanco en el libro impreso: no se manda (I8)
+    const gaps = unsignedImages(view);
+    if (gaps.length) return await failWith(`imagenes_sin_url: ${gaps.join(", ")}`);
     const byId = new Map(view.jobs.map((j) => [j.id, j]));
     const url = (id: string | null) => (id ? byId.get(id)?.url ?? null : null);
     const pageUrls: Record<number, string | null> = {};
