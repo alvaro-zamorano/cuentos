@@ -59,6 +59,9 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
     latest.current = data;
   });
   const stepRef = useRef(0);
+  // auditoría 26 oct, menores: si el navegador suelta la tarjeta gráfica (Safari de iOS con poca memoria), el lienzo se
+  // queda en negro. Se vuelve a la portada en 2D y ya no se intenta otra vez: volvería a pasar
+  const lost = useRef(false);
   const [rebuild, setRebuild] = useState(0);
   const sKey = structureKey(data);
   const cKey = contentKey(data);
@@ -72,8 +75,24 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
     let near: IntersectionObserver | null = null;
     let seen: IntersectionObserver | null = null;
 
+    const onLost = () => {
+      if (cancelled || lost.current) return;
+      lost.current = true;
+      console.warn("[book3d] el navegador ha soltado el contexto WebGL: portada en 2D");
+      seen?.disconnect();
+      const h = handle.current;
+      handle.current = null;
+      setState("fallback");
+      try {
+        h?.dispose();
+      } catch {
+        // con el contexto perdido, soltar lo que queda puede fallar: da igual, ya no se ve
+      }
+    };
+    cv.addEventListener("webglcontextlost", onLost);
+
     const start = async () => {
-      if (!hasWebGL()) {
+      if (lost.current || !hasWebGL()) {
         setState("fallback");
         return;
       }
@@ -96,7 +115,8 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
             setStep(n);
           },
         });
-        if (cancelled) {
+        // perdido mientras se montaba: la pantalla ya enseña la portada en 2D
+        if (cancelled || lost.current) {
           h.dispose();
           return;
         }
@@ -136,6 +156,8 @@ export function Book3D({ data, poster, hint = "Arrastra para girarlo · toca par
 
     return () => {
       cancelled = true;
+      // antes de dispose(): soltar el contexto a propósito (forceContextLoss) también lanza webglcontextlost
+      cv.removeEventListener("webglcontextlost", onLost);
       near?.disconnect();
       seen?.disconnect();
       handle.current?.dispose();
