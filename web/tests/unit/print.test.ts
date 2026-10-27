@@ -498,10 +498,13 @@ test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprent
   await paintPages(store, bookId);
   const notices: string[] = [];
   const notify = async (subject: string, text: string) => (notices.push(`${subject}|${text}`), { sent: true });
+  // a una imprenta de verdad van imágenes con archivo y URL
+  for (const j of await store.listJobs((await store.findBook({ publicId: bookId }))!.id)) if (j.status === "done") await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });
+  const signing = { ...store, signedUrl: async (p: string) => `https://files.example/${p}` };
   const s = await startPrint(store, bookId, "gelato");
   assert.ok(s.ok);
   const broken = fakeDeps({ mode: "gelato", coverGeometry: async () => null, notify });
-  assert.ok(!(await completePrint(store, s.orderId, broken.deps)).ok);
+  assert.ok(!(await completePrint(signing, s.orderId, broken.deps)).ok);
   assert.equal(notices.length, 1);
   assert.match(notices[0], /^Tapa dura que no sale hacia la imprenta: «Vera y la gran idea»\|El pedido .* ha fallado: sin_medidas_de_cubierta/);
   assert.match(notices[0], new RegExp(`crear\\?b=${bookId}`));
@@ -510,7 +513,7 @@ test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprent
   const again = await startPrint(store, bookId, "gelato");
   assert.ok(again.ok);
   const ok = fakeDeps({ mode: "gelato", notify });
-  assert.ok((await completePrint(store, again.orderId, ok.deps)).ok);
+  assert.ok((await completePrint(signing, again.orderId, ok.deps)).ok);
   ok.setGelato({ status: "canceled" });
   assert.equal(await refreshPrint(store, (await store.getOrderById(again.orderId))!, ok.deps), "updated");
   assert.equal(notices.length, 2);
