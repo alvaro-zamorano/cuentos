@@ -17,7 +17,7 @@ import { characterBible } from "./character";
 import { estimatedCostCents, isTimeout, isTransient, type GenerationAdapter, type GenerationResult, type ImageRef, type ImageSize } from "./adapter";
 import { thumbnail, toJpeg } from "./postprocess";
 import { qcImage, type QcResult } from "../plan/qc";
-import { canSpend, freeBookCapCents, recordSpend, type SpendCheck, type SpendKind } from "./budget";
+import { canSpend, dropReservation, freeBookCapCents, leadCapCents, reserveSpend, settleSpend, type SpendCheck, type SpendKind, type SpendRecord } from "./budget";
 import {
   MAX_PAGE_VERSIONS,
   MAX_SHEET_VERSIONS,
@@ -379,8 +379,12 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
   // empezar, lib/book/freeLimit.ts). El flujo antiguo sigue contando por email
   const lead = job.paid || v2 ? book.id : book.email;
   if (!lead) return finish(store, job, "failed", "lead sin email");
-  const gate = await gateSpend(store.db, { leadId: lead, images: 1, provider: adapter.name, paid: job.paid, size: v2?.size, leadCap: v2 && !job.paid ? freeBookCapCents() : undefined });
+  // el gasto se reserva antes de pintar: con varias imágenes a la vez, cada una ya cuenta las de antes (menores de la
+  // auditoría 26 oct: un libro llegó a 312 c con el tope en 300). Pagado, el tope del lead es el del libro
+  const leadCap = job.paid ? perBookCap() : v2 ? freeBookCapCents() : leadCapCents();
+  const gate = await reserveSpend(store.db, { leadId: lead, kind: SPEND_KIND[job.kind], provider: adapter.name, cents: estimatedCostCents(adapter.name, v2?.size), paid: job.paid, leadCap });
   if (!gate.ok) {
+    if (job.paid && gate.cap === "lead") return finish(store, job, "failed", `tope de coste por libro (${perBookCap()} c) alcanzado`);
     if (job.paid) return fail(429, "budget", gate.reason);
     // 26 oct (Álvaro): si ya hay una imagen pintada que el control de calidad mandó repetir y no queda presupuesto para
     // repetirla, se queda esa. No se tira una imagen ya pagada ni se deja el libro sin portada
@@ -391,14 +395,19 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
     }
     return finish(store, job, "failed", `presupuesto: ${gate.reason}`);
   }
-  if (job.paid && gate.cents > 0) {
-    const spent = (await store.listJobs(book.id)).reduce((a, j) => a + (j.cost_cents ?? 0), 0);
-    if (spent + gate.cents > perBookCap()) return finish(store, job, "failed", `tope de coste por libro (${perBookCap()} c) alcanzado`);
-  }
+  const reservation = gate.reservation;
 
   const claimed = await store.claim(job);
-  if (!claimed) return { ok: true, job: (await store.getJob(job.id)) ?? job, ran: false };
+  if (!claimed) {
+    // lo pinta otro: su reserva ya está apuntada
+    await dropReservation(store.db, reservation);
+    return { ok: true, job: (await store.getJob(job.id)) ?? job, ran: false };
+  }
 
+  // lo que ha costado de verdad, en cuanto el proveedor devuelve la imagen: si después falla algo nuestro (subirla,
+  // guardar el job), el gasto se apunta igual en vez de quitar la reserva
+  let painted: SpendRecord | null = null;
+  let settled = false;
   try {
     let result: GenerationResult;
     if (v2) {
@@ -406,11 +415,12 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
       result = await adapter.generateImage(job.prompt, refs, { aspect: v2.aspect, size: v2.size });
     } else if (job.kind === "sheet") result = await adapter.generateSheet(job.prompt, style, { candidates: 1 });
     else result = await adapter.generateScene(sheetRef!.ref, style, job.prompt, { candidates: 1, bible: sheetRef!.bible });
+    painted = { leadId: lead, kind: SPEND_KIND[job.kind], provider: result.provider, model: result.model, cents: result.costCents };
     const img = result.images[0];
     if (!img) throw new Error("el proveedor no devolvió imagen");
     const record = async () => {
-      if (result.costCents <= 0) return;
-      const rec = await recordSpend(store.db, { leadId: lead, kind: SPEND_KIND[job.kind], provider: result.provider, model: result.model, cents: result.costCents });
+      settled = true;
+      const rec = await settleSpend(store.db, reservation, painted!);
       if (!rec.ok) console.error(`[generate] gasto sin registrar (${job.kind} ${job.id}): ${rec.reason}`);
     };
     const prevCandidates = Array.isArray(claimed.candidates) ? (claimed.candidates as unknown as (Candidate | string)[]) : [];
@@ -464,10 +474,11 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
       ...(transient ? { attempts: Math.max(0, claimed.attempts - 1) } : {}),
       ...(charged > 0 ? { cost_cents: (claimed.cost_cents ?? 0) + charged } : {}),
     });
-    if (charged > 0) {
-      const rec = await recordSpend(store.db, { leadId: lead, kind: SPEND_KIND[job.kind], provider: adapter.name, model: "tiempo-agotado", cents: charged }).catch(() => null);
-      if (!rec?.ok) console.error(`[generate] gasto del tiempo agotado sin registrar (${job.kind} ${job.id})`);
-    }
+    const cost: SpendRecord | null = painted ?? (charged > 0 ? { leadId: lead, kind: SPEND_KIND[job.kind], provider: adapter.name, model: "tiempo-agotado", cents: charged } : null);
+    if (!settled && cost) {
+      const rec = await settleSpend(store.db, reservation, cost).catch(() => null);
+      if (!rec?.ok) console.error(`[generate] gasto sin registrar tras el fallo (${job.kind} ${job.id})`);
+    } else if (!settled) await dropReservation(store.db, reservation);
     console.error(`[generate] ${job.kind} ${job.id} falló${transient ? " (pasajero)" : ""}`);
   }
   const after = await store.getJob(job.id);

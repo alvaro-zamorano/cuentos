@@ -36,7 +36,7 @@ Los nombres de los archivos no son las versiones con que constan en la base (all
 - `cuentos_generation_jobs` — book_id → books (cascade), kind (`sheet|scene|sample|page|cover|portrait`), page_n, prompt, status (`pending|running|done|failed`, más `error|skipped` del worker antiguo), attempts, cost_cents, `paid`, `storage_path`, `variant` (1 a 4) y `job_key` (único por libro).
 - `cuentos_assets` — catálogo de piezas. Lectura pública (anon/authenticated).
 - `cuentos_stories` — cuentos escritos por el planificador; el borrado diario quita las filas de más de 30 días.
-- `cuentos_spend` — gasto de generación (topes en `web/lib/generation/budget.ts`).
+- `cuentos_spend` — gasto de generación (topes en `web/lib/generation/budget.ts`). Desde el 27 oct, cada imagen reserva su coste estimado antes de pintarse (`model = 'reserva'`) y la fila se cambia por lo que costó, o se quita si no se pintó. Una reserva que se queda así (una función que muere a medias) cuenta como gastada.
 - `cuentos_feedback` — motivos de «Otra versión» y avisos de «Sigue sin estar bien»; a los 30 días se vacía la nota.
 - `cuentos_locks` (0013) — bloqueos cortos con caducidad: la puerta de los cuentos gratis, por buzón (la clave es un hash del email normalizado), y desde el 27 oct los cobros de Stripe de un mismo libro, de uno en uno (`pago:<id del libro>`). La fila se borra al soltar el bloqueo; si una función muere con él, caduca a los 20 s y se reutiliza.
 
