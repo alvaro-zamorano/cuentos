@@ -24,9 +24,10 @@ import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
 import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
-import { cleanShipping } from "../print/shipping";
+import { cleanShipping, shippingLine, shippingSummary } from "../print/shipping";
+import type { Receipt } from "../mail";
 import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
-import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping } from "../print/types";
+import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping, type ShippingSummary } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
 
 type Env = Record<string, string | undefined>;
@@ -73,6 +74,10 @@ export interface BookDraftV2 {
   readyMailedAt?: number;
   /** Cuándo se avisó a soporte de que el libro pagado no terminaba (rescate, auditoría 26 oct, B4): una vez por libro. */
   stuckAlertedAt?: number;
+  /** Jobs de imágenes pagadas que no salen de los que ya se avisó a soporte (I3): cada uno, una vez. */
+  failAlertedJobs?: string[];
+  /** Sesiones de Stripe de las que ya se mandó el recibo (I28): una vez por cobro, aunque Stripe reintente. */
+  receiptSessions?: string[];
   /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
   edition?: PaidEdition;
   shipping?: Shipping;
@@ -594,8 +599,25 @@ export async function prepareUpgrade(
   return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true };
 }
 
+/**
+ * La dirección entera de la tapa dura, solo cuando el padre la pide con un gesto: «Cambiar» (para no tener que escribirla
+ * otra vez ni perder el piso o el teléfono) y la confirmación antes de imprimir (para ver la calle que va a la imprenta).
+ * La vista, que se carga cada vez que se abre el enlace, lleva solo el resumen (I16; revisión 27 oct). Una vez en la
+ * imprenta ya no se da: no hay nada que cambiar.
+ */
+export async function shippingOf(store: GenStore, input: { bookId?: unknown }): Promise<{ ok: true; shipping: Shipping } | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  const { book, d } = loaded;
+  const order = await store.getOrder(book.id);
+  if (!order || order.edition !== "hardcover") return fail(409, "not_hardcover");
+  if (order.printStatus && LOCKED_PRINT_STATUSES.includes(order.printStatus)) return lockedFail();
+  const shipping = order.shipping ?? d.shipping;
+  return shipping ? { ok: true, shipping } : fail(404, "no_shipping", "Falta la dirección de envío.");
+}
+
 /** Cambiar la dirección de la tapa dura ya pagada, mientras no haya salido hacia la imprenta. */
-export async function updateShipping(store: GenStore, input: { bookId?: unknown; shipping?: unknown }): Promise<{ ok: true; shipping: Shipping } | Fail> {
+export async function updateShipping(store: GenStore, input: { bookId?: unknown; shipping?: unknown }): Promise<{ ok: true; shipping: ShippingSummary } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   const { book } = loaded;
@@ -606,14 +628,26 @@ export async function updateShipping(store: GenStore, input: { bookId?: unknown;
   if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
   await store.updateOrder(order.id, { shipping: s.shipping });
   await mutate(store, book, (cur) => ({ ...cur, shipping: s.shipping }));
-  return { ok: true, shipping: s.shipping };
+  // de vuelta, solo el resumen: lo mismo que enseña la vista (I16)
+  return { ok: true, shipping: shippingSummary(s.shipping) };
 }
 
 /* ------------------------------ pago con Stripe (webhook) ------------------------------ */
 
 export interface PaidEvent {
   type: string;
-  data: { object: { id?: string; payment_status?: string; amount_total?: number | null; currency?: string | null; metadata?: Record<string, string> | null; client_reference_id?: string | null } };
+  data: {
+    object: {
+      id?: string;
+      payment_status?: string;
+      amount_total?: number | null;
+      currency?: string | null;
+      metadata?: Record<string, string> | null;
+      client_reference_id?: string | null;
+      customer_email?: string | null;
+      customer_details?: { email?: string | null } | null;
+    };
+  };
 }
 
 export type PaymentOutcome =
@@ -717,6 +751,71 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
 }
 
 /**
+ * Recibo de compra (I28): una vez por sesión de Stripe, cuando el webhook registra el pago o lo vuelve a ver porque Stripe
+ * reintenta. Va al email con el que se pagó; si no viene, al del libro.
+ *
+ * El webhook lo espera antes de responder (revisión 27 oct: mandado después de responder, si fallaba no se reintentaba
+ * nunca). `retry`: fallo pasajero (red, Resend caído); el webhook responde 500 y Stripe vuelve a mandar el evento.
+ * `rejected`: Resend no lo acepta (dirección mal escrita, por ejemplo); reintentar no lo arregla y se avisa a soporte.
+ * `skipped`: nada que mandar (ya mandado, sin correo configurado, pedido devuelto…).
+ */
+export type ReceiptResult = { status: "sent" | "skipped" | "retry" } | { status: "rejected"; to: string; reason: string };
+
+export async function mailReceipt(
+  store: GenStore,
+  r: PaymentOutcome,
+  event: PaidEvent,
+  deps: {
+    send: (to: string, receipt: Receipt) => Promise<{ sent: boolean; reason?: string }>;
+    link: (publicId: string) => string;
+    conditionsLink: string;
+    seller: string;
+    contact: string | null;
+  },
+): Promise<ReceiptResult> {
+  const skipped = { status: "skipped" } as const;
+  if (r.action !== "paid" && r.action !== "upgraded" && r.action !== "duplicate") return skipped;
+  const s = event.data?.object ?? {};
+  if (!s.id) return skipped;
+  const order = await store.getOrderBySession(s.id);
+  if (!order || (order.status ?? "paid") !== "paid") return skipped;
+  const loaded = await loadBook(store, r.bookId, { includeExpired: true });
+  if (isFail(loaded)) return skipped;
+  const { book, d } = loaded;
+  if (d.receiptSessions?.includes(s.id)) return skipped;
+  const to = s.customer_details?.email ?? s.customer_email ?? book.email;
+  if (!to) return skipped;
+  const res = await deps
+    .send(to, {
+      title: d.plan.title,
+      kind: s.metadata?.upgrade === "1" ? "upgrade" : order.edition,
+      amountCents: order.amountCents,
+      paidAt: order.createdAt,
+      address: order.edition === "hardcover" && order.shipping ? shippingLine(order.shipping) : null,
+      waiverAt: s.metadata?.withdrawal_waiver_at ?? null,
+      link: deps.link(book.public_id),
+      conditionsLink: deps.conditionsLink,
+      seller: deps.seller,
+      contact: deps.contact,
+    })
+    .catch(() => ({ sent: false, reason: "red" }));
+  if (!res.sent) {
+    const reason = res.reason ?? "";
+    if (reason === "sin_configurar" || reason === "sin_destino") return skipped;
+    const code = Number(/^resend_(\d+)$/.exec(reason)?.[1] ?? 0);
+    if (code >= 400 && code < 500 && code !== 429) return { status: "rejected", to, reason };
+    return { status: "retry" };
+  }
+  // mandado: si falla apuntarlo, mejor no reintentar (saldría dos veces)
+  try {
+    await mutate(store, book, (cur) => ({ ...cur, receiptSessions: [...(cur.receiptSessions ?? []), s.id!].slice(-5) }));
+  } catch (e) {
+    console.warn(`[stripe] recibo mandado sin apuntar: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+  }
+  return { status: "sent" };
+}
+
+/**
  * Cuando las 12 páginas están pintadas, manda una vez el email de «tu libro está listo» (el envío se inyecta: Resend en
  * la ruta, un doble en los tests). Devuelve si lo ha mandado.
  */
@@ -735,6 +834,75 @@ export async function notifyBookReady(
   const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated", view.upgrade);
   if (!r.sent) return false;
   await mutate(store, book, (cur) => ({ ...cur, readyMailedAt: Date.now() }));
+  return true;
+}
+
+/** El job falló por el tope de coste del libro: no gasta intentos y otra vuelta solo vuelve a fallar. */
+export const isBookCapError = (error: string | null | undefined): boolean => !!error?.includes("tope de coste por libro");
+
+/**
+ * Una imagen pagada que falló sin remedio (I3): agotó sus intentos con un fallo que no es pasajero, o chocó con el tope
+ * de coste del libro. Los fallos pasajeros (429, 5xx, red) no cuentan: se reintentan solos.
+ */
+export function paidFailure(job: Pick<GenJob, "paid" | "status" | "attempts" | "error">): boolean {
+  if (!job.paid || job.status !== "failed") return false;
+  if (isBookCapError(job.error)) return true;
+  return job.attempts >= MAX_ATTEMPTS && !job.error?.startsWith("pasajero");
+}
+
+/**
+ * Lo que de verdad ya no va a salir solo (revisión 27 oct): una página o la portada del libro pagado sin ninguna versión
+ * hecha ni en marcha, que ya no admite otra versión automática o que chocó con el tope del libro. Una versión 1 fallida
+ * con hueco para otra no cuenta (la pide el siguiente `requestPages`), ni los retratos (si fallan, el libro usa la hoja).
+ */
+function stuckPaidImages(jobs: GenJob[], d: BookDraftV2): GenJob[] {
+  const sheets = sheetJobs(jobs).filter((j) => j.status === "done");
+  const sheet = sheets.find((j) => j.id === d.approvedSheetJobId) ?? sheets[sheets.length - 1];
+  if (!sheet || !d.castArt) return [];
+  const live = (j: GenJob) => j.status === "done" || j.status === "pending" || j.status === "running";
+  const out: GenJob[] = [];
+  for (let n = 1; n <= 12; n++) {
+    const cur = currentPageJobs(jobs, d, n, sheet.id);
+    if (cur.length === 0 || cur.some(live)) continue;
+    const last = cur[cur.length - 1];
+    const all = jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j));
+    if (isBookCapError(last.error) || (paidFailure(last) && all.length >= MAX_PAGE_JOBS)) out.push(last);
+  }
+  const covers = coverJobs(jobs).filter((j) => sheetRefOf(j) === sheet.id);
+  const lastCover = covers[covers.length - 1];
+  if (lastCover?.paid && !covers.some(live) && (isBookCapError(lastCover.error) || (paidFailure(lastCover) && coverJobs(jobs).length >= DB_MAX_VARIANT))) out.push(lastCover);
+  return out;
+}
+
+/**
+ * Aviso a soporte cuando una imagen pagada no va a salir (I3; I12): con las páginas afectadas y el motivo. Cada job, una
+ * vez: si después se atasca otra página, también avisa. Devuelve si lo ha mandado. `bookId`: el id público.
+ */
+export async function alertPaidFailures(
+  store: GenStore,
+  bookId: string,
+  notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
+  link: (publicId: string) => string,
+): Promise<boolean> {
+  const book = await store.findBook({ publicId: bookId });
+  const d = book ? draftV2(book) : null;
+  if (!book || !d) return false;
+  const told = new Set(d.failAlertedJobs ?? []);
+  const stuck = stuckPaidImages(await store.listJobs(book.id), d).filter((j) => !told.has(j.id));
+  if (stuck.length === 0) return false;
+  const what = (j: GenJob) => (j.kind === "page" ? `página ${j.page_n}` : "portada");
+  const r = await notify(
+    `Imagen pagada que no sale: «${d.plan.title}»`,
+    [
+      `En el libro «${d.plan.title}» (${book.public_id}) ya no salen solas: ${stuck.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
+      stuck.some((j) => isBookCapError(j.error))
+        ? "Ha llegado al tope de coste por libro (MAX_COST_CENTS_PER_BOOK): hay que mirarlo a mano."
+        : "Ya no quedan versiones automáticas. El padre puede avisarnos desde la página; hay que pintarla a mano.",
+      `Libro: ${link(book.public_id)}`,
+    ].join("\n\n"),
+  ).catch(() => ({ sent: false }));
+  if (!r.sent) return false;
+  await mutate(store, book, (cur) => ({ ...cur, failAlertedJobs: [...(cur.failAlertedJobs ?? []), ...stuck.map((j) => j.id)].slice(-40) }));
   return true;
 }
 
@@ -878,6 +1046,8 @@ async function ensureCover(store: GenStore, book: BookRecord, d: BookDraftV2, sh
     const resume = mine.find((j) => hung(j) && j.paid && j.attempts < MAX_ATTEMPTS);
     if (resume) return [resume.id];
     for (const j of mine.filter(hung)) await store.updateJob(j.id, { status: "failed", error: "tiempo agotado" });
+    // con el tope del libro alcanzado, otra vuelta solo vuelve a fallar (y no gasta intentos): se queda así y avisa (I3)
+    if (mine.some((j) => j.status === "failed" && isBookCapError(j.error))) return [];
     const retry = mine.find((j) => j.status === "failed" && j.attempts < MAX_ATTEMPTS && j.paid);
     if (retry) return (await store.reopen(retry)) ? [retry.id] : [];
     const variant = coverJobs(jobs).length + 1;
@@ -954,6 +1124,7 @@ async function ensurePortraits(store: GenStore, book: BookRecord, d: BookDraftV2
     for (let i = 0; i < (d.castArt?.cast.length ?? 0); i++) {
       const cur = currentPortraitJobs(jobs, d, i, sheetJobId);
       if (cur.some((j) => j.status !== "failed")) continue;
+      if (cur.some((j) => isBookCapError(j.error))) continue;
       const retry = cur.find((j) => j.attempts < MAX_ATTEMPTS);
       if (retry) {
         if (await store.reopen(retry)) reopened.push(retry.id);
@@ -1050,6 +1221,8 @@ export async function requestPages(
     for (let n = 1; n <= 12; n++) {
       const cur = currentPageJobs(jobs, d, n, sheet.id);
       if (cur.some((j) => j.status !== "failed")) continue;
+      // tope del libro: reabrirla en cada recarga solo vuelve a fallar y esconde «Avísanos» (I3)
+      if (cur.some((j) => isBookCapError(j.error))) continue;
       const retry = cur.find((j) => j.attempts < MAX_ATTEMPTS);
       if (retry) {
         if (await store.reopen(retry)) reopenedIds.push(retry.id);
@@ -1112,7 +1285,9 @@ export async function reportPage(
     `Escena: ${d.plan.pages[n - 1]?.scene ?? ""}`,
     `Libro: ${link(book.public_id)}`,
   ].join("\n\n");
-  const sent = await notify(`Sigue sin estar bien: página ${n} de «${d.plan.title}»`, text);
+  // si no ha salido ninguna versión, el asunto lo dice (I3: «Avísanos» también sin ninguna hecha)
+  const anyDone = (await store.listJobs(book.id)).some((j) => j.kind === "page" && j.page_n === n && j.status === "done");
+  const sent = await notify(`${anyDone ? "Sigue sin estar bien" : "No sale"}: página ${n} de «${d.plan.title}»`, text);
   if (!sent.sent) console.warn(`[report] aviso sin enviar (${book.public_id}, página ${n})`);
   return { ok: true };
 }
@@ -1212,8 +1387,11 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   const { book, d } = loaded;
   const jobs = (await store.listJobs(book.id)).filter((j) => v2Of(j));
   const sheets = sheetJobs(jobs);
+  const paid = await paidHere(store, book.id, env);
   const out: BookJobView[] = [];
   for (const j of jobs) {
+    // sin pago (o devuelto, I5), las ilustraciones de pago no se enseñan: solo la hoja, la portada y lo gratis (revisión 27 oct)
+    const hidden = !!j.paid && !paid;
     const sheetId = sheetRefOf(j);
     const current =
       j.kind === "page" && d.castArt && d.pagesArt && sheetId
@@ -1227,7 +1405,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       page: j.page_n,
       variant: j.variant,
       status: j.status,
-      url: j.status === "done" && j.storage_path ? await store.signedUrl(j.storage_path, 3600) : null,
+      url: j.status === "done" && j.storage_path && !hidden ? await store.signedUrl(j.storage_path, 3600) : null,
       placeholder: j.status === "done" && !j.storage_path,
       error: j.status === "failed" ? failReason(j.error) : null,
       current,
@@ -1270,14 +1448,15 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
     reported: [...new Set(feedback.filter((f) => f.kind === "report").map((f) => f.page_n))],
     ficha: d.ficha,
     plan: d.plan,
-    paid: await paidHere(store, book.id, env),
+    paid,
     edition: order?.edition ?? null,
     upgrade: upgradeOffer(book, order ?? null, Date.now(), env),
     print:
       order?.edition === "hardcover" && order.printStatus
         ? {
             status: order.printStatus,
-            shipping: order.shipping ?? d.shipping ?? null,
+            // ni la calle ni el teléfono: el enlace del libro se reenvía (I16)
+            shipping: order.shipping || d.shipping ? shippingSummary((order.shipping ?? d.shipping)!) : null,
             trackingUrl: order.trackingUrl,
             sentAt: order.sentAt,
             trackPath: order.sentAt ? `/seguimiento/${order.id}` : null,

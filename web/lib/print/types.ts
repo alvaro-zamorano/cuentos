@@ -29,8 +29,19 @@ export type PrintStatus = "awaiting_approval" | "sending" | "sent" | "in_product
 
 export const OPEN_PRINT_STATUSES: PrintStatus[] = ["awaiting_approval", "sending", "sent", "in_production", "shipped"];
 
-/** Ya en la imprenta: el libro no admite cambios. */
-export const LOCKED_PRINT_STATUSES: PrintStatus[] = ["sending", "sent", "in_production", "shipped", "delivered", "returned"];
+/**
+ * Ya en la imprenta, o parada por una devolución o una disputa (`canceled`, revisión 27 oct): el libro no admite cambios.
+ * Durante una disputa no se piden versiones nuevas.
+ */
+export const LOCKED_PRINT_STATUSES: PrintStatus[] = ["sending", "sent", "in_production", "shipped", "delivered", "returned", "canceled"];
+
+/**
+ * Marca (print_error) de la tapa dura parada por una disputa de Stripe (I5): al ganarla se sabe que la paramos nosotros, y
+ * mientras dura el libro se conserva (una disputa tarda de 60 a 75 días).
+ */
+export const DISPUTE_HOLD = "disputa abierta";
+/** Marca de la tapa dura cancelada porque se devolvió el cobro (I5). */
+export const REFUND_HOLD = "devuelto";
 
 /** Los hitos que se fechan en la página de seguimiento. */
 export type PrintStep = "sent" | "in_production" | "shipped" | "delivered";
@@ -49,8 +60,13 @@ export interface PrintInfo {
   checkedAt?: string | null;
 }
 
+/** cuentos_orders.status. Todo lo que lee pedidos pagados filtra `paid`: uno `refunded` ya no abre descargas ni imprenta (I5). */
+export type OrderStatus = "pending" | "paid" | "refunded" | "cancelled";
+
 export interface PaidOrder {
   id: string;
+  /** Sin valor en los pedidos de antes: se leen como pagados. */
+  status?: OrderStatus;
   bookId: string;
   edition: PaidEdition;
   amountCents: number;
@@ -72,9 +88,20 @@ export interface PaidOrder {
 }
 
 /** Lo que ve el padre en el paso 5 tras pagar la tapa dura (sin el resto del pedido). */
+/**
+ * Lo que la pantalla enseña de la dirección (auditoría 26 oct, I16): el enlace del libro se reenvía a la familia, así que
+ * la vista no lleva ni la calle ni el teléfono. La dirección entera va en los emails del pedido, al buzón de quien pagó.
+ */
+export interface ShippingSummary {
+  name: string;
+  postcode: string;
+  city: string;
+  province?: string;
+}
+
 export interface PrintView {
   status: PrintStatus;
-  shipping: Shipping | null;
+  shipping: ShippingSummary | null;
   trackingUrl: string | null;
   sentAt: string | null;
   /** Página propia de seguimiento (/seguimiento/<id del pedido>), desde que está en la imprenta. */

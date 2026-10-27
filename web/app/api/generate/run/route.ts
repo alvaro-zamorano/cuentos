@@ -1,6 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { publicOrigin } from "@/lib/book/background";
+import { alertPaidFailures, paidFailure } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { runJob } from "@/lib/generation/service";
+import { sendSupportNotice } from "@/lib/mail";
 
 /** Una imagen por llamada; con proveedor real tarda 30–70 s (Fase 0), más el control de calidad. */
 export const maxDuration = 300;
@@ -24,6 +27,15 @@ export async function POST(req: Request) {
   try {
     const r = await runJob(ctx.store, body.jobId, ctx.adapter);
     if (!r.ok) return NextResponse.json(r, { status: r.status });
+    // una imagen pagada que ya no va a salir sola: aviso a soporte, una vez por libro (I3)
+    if (paidFailure(r.job)) {
+      const { store } = ctx;
+      const origin = publicOrigin(req);
+      after(async () => {
+        const book = await store.getBookById(r.job.book_id).catch(() => null);
+        if (book) await alertPaidFailures(store, book.public_id, sendSupportNotice, (id) => `${origin}/crear?b=${id}`).catch(() => null);
+      });
+    }
     return NextResponse.json({ ok: true, ran: r.ran, job: { id: r.job.id, status: r.job.status } });
   } catch (e) {
     console.error("[generate/run]", e instanceof Error ? e.message : e);
