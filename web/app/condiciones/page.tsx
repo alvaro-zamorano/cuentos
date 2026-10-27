@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Condiciones" };
 export default function Condiciones() {
   const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="26 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="27 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
         {holderLine(t)}, <ContactEmail value={t.email} />. Datos completos en el{" "}
@@ -52,8 +52,9 @@ export default function Condiciones() {
 
       <h2>5. Declaración de quien compra</h2>
       <p>
-        Antes de pintar la hoja de personajes marcas una casilla obligatoria: «Declaro ser madre, padre o tutor legal del menor, o contar con su
-        autorización». La autorización cubre el uso de su nombre y sus rasgos para crear el cuento.
+        Lo declaras dos veces: al pedir que escribamos el cuento y, antes de pintar la hoja de personajes, en una casilla obligatoria: «Declaro
+        ser madre, padre o tutor legal del menor, o contar con su autorización». La autorización cubre el uso de su nombre y sus rasgos para
+        crear el cuento.
       </p>
 
       <h2>6. Precio e impuestos</h2>
