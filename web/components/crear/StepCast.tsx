@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
-import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
+import { errorMessage, fetchView, loadView, postJson, runJobs, viewErrorMessage, type JobOutcome } from "@/lib/bookClient";
 import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
 import { WaitCard } from "./Waiting";
-import { ErrorNote, Status, Taped } from "./ui";
+import { ErrorNote, LoadError, Status, Taped } from "./ui";
 
 /** La portada más reciente de una hoja: si una falla del todo, se pinta otra para la misma hoja (auditoría 26 oct, B8). */
 function coverOf(jobs: BookJobView[] | undefined, sheetId: string | undefined): BookJobView | undefined {
@@ -48,6 +48,8 @@ export function StepCast({
   // la última tanda no terminó bien (falló o tardó demasiado): se ofrece «Reintentar» (B8)
   const [stalled, setStalled] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // el libro no se ha podido cargar al volver a este paso (I9)
+  const [loadError, setLoadError] = useState<string | null>(null);
   const cancel = useRef({ cancelled: false });
   useEffect(() => {
     const c = cancel.current;
@@ -88,8 +90,13 @@ export function StepCast({
     if (!bookId || resumed.current) return;
     resumed.current = true;
     void (async () => {
-      const v = await refresh(bookId);
-      if (!v) return;
+      const r = await loadView(bookId);
+      if (!r.ok) {
+        setLoadError(viewErrorMessage(r.error));
+        return;
+      }
+      const v = r.view;
+      setView(v);
       const sheets = v.jobs.filter((j) => j.kind === "sheet");
       const last = sheets[sheets.length - 1];
       const cover = coverOf(v.jobs, last?.id);
@@ -173,6 +180,7 @@ export function StepCast({
         ) : (
           <Status testId="painting">{painting}</Status>
         ))}
+      {loadError && !view && <LoadError text={loadError} />}
       {error && <ErrorNote>{error}</ErrorNote>}
       {view && !paid && !painting && (failed || stuck) && <RetryNote failed={failed} busy={retrying} onRetry={retry} />}
 

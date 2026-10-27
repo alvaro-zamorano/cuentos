@@ -50,7 +50,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const limit = rateLimit(`plan:${clientIp(req)}`, envInt("PLAN_RATE_PER_HOUR", 12));
+  // PLAN_MIN_GAP_MS: el respiro mínimo entre dos cuentos de la misma IP (1 s; los tests de Playwright lo ponen a 0)
+  const limit = rateLimit(`plan:${clientIp(req)}`, envInt("PLAN_RATE_PER_HOUR", 12), envInt("PLAN_MIN_GAP_MS", 1000, 0));
   if (!limit.ok) return NextResponse.json({ ok: false, error: "rate_limited", message: "Has pedido muchos cuentos seguidos. Espera un poco y vuelve a intentarlo." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
 
   const room = await textRoom(db, "plan", llm);
