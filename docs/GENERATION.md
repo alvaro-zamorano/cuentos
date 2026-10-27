@@ -34,7 +34,7 @@ Un job `running` sin cambios en 2 minutos (función cortada) se puede reclamar o
 
 ## Datos
 
-SQL a aplicar una vez: `docs/sql/cuentos_generation_jobs_b3.sql` (tipos `sample|page|cover`, estado `failed`, columnas `paid`, `storage_path`, `variant`, `job_key` e índice único). Tipos actualizados a mano en `web/lib/supabase/types.ts`.
+SQL (aplicado el 11 oct): `supabase/migrations/0010_cuentos_10_jobs_b3.sql` (tipos `sample|page|cover`, estado `failed`, columnas `paid`, `storage_path`, `variant`, `job_key` e índice único). Tipos actualizados a mano en `web/lib/supabase/types.ts`.
 
 En el borrador (`Draft.illustration`): `bookId`, `sampleKey`, `sampleJobId`, `sheetJobId` (versión elegida), `sheetVersions`, `pageVersions`, y `pages[n].variant` = versión elegida de cada página.
 

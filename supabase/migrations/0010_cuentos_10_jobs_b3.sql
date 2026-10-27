@@ -1,6 +1,8 @@
+-- Aplicada en Supabase el 11 oct como `cuentos_generation_jobs_b3` (versión 20261011131057). Hasta el 27 oct vivía
+-- en docs/sql/cuentos_generation_jobs_b3.sql (auditoría 26 oct, I14).
 -- B3 (brief 7): generación sin worker externo. Jobs de muestra (antes del pago) y del libro (tras el pago),
 -- idempotentes por huella. Lo usan web/lib/generation/{store,service}.ts y las rutas /api/generate/*.
--- Aplicar una vez (MCP apply_migration o el editor SQL de Supabase). Es aditivo: no toca filas existentes.
+-- Es aditivo: no toca filas existentes.
 
 -- Tipos nuevos: sample (página 9 antes del pago), page (página del libro pagado) y cover (portada).
 -- 'scene' se mantiene para los jobs antiguos de /api/jobs y del worker.

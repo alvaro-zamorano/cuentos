@@ -39,7 +39,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `README.md` — portada del repo; apunta aquí
 - `CLAUDE.md` — instrucciones para hilos de Claude Code en el repo · vigente
 - `docs/supabase.md` — proyecto de Supabase, tablas `cuentos_*`, bucket, convención · vigente
-- `supabase/migrations/*.sql`, `docs/sql/*.sql` — esquema de la base · vigente
+- `supabase/migrations/*.sql` — esquema de la base, de la 0001 a la 0012; reconstruyen la base real (lo comprueba `web/tests/unit/migraciones.test.ts`) · vigente
 - `docs/GENERATION.md`, `docs/STORY-ENGINE.md`, `docs/PDF.md` — imágenes, motor de historia y PDF del flujo antiguo (Clásico) · histórico
 - `docs/AGENT-BRIEF*.md`, `docs/hermes-mision-assets.md` — encargos a agentes del 8–9 oct · histórico
 
@@ -52,7 +52,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 | Costes por lead y por libro | `ILUSTRACION.md` (Coste medido) | PLAN, PAGO |
 | Pago, emails, segundo plano, variables de B5 | `PAGO.md` | — |
 | Todas las variables de entorno | `web/.env.example` | PAGO, PLAN §7 |
-| Esquema de la base | `supabase/migrations/` + `docs/sql/` | `docs/supabase.md` |
+| Esquema de la base | `supabase/migrations/` | `docs/supabase.md` |
 | Texto del libro de muestra | `web/lib/muestra.ts` | `MUESTRA-LUNA.md` |
 | Reglas de trabajo con Álvaro | `PLAN.md` §6 | `CLAUDE.md` |
 | Proveedores y sus contratos | `PROVEEDORES.md` | `/privacidad` §7 |
