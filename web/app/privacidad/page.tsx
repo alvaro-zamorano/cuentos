@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ContactEmail, LegalPage } from "@/components/LegalPage";
 import { holderLine, titular } from "@/lib/legal";
 
-export const metadata: Metadata = { title: "Política de privacidad" };
+export const metadata: Metadata = { title: "Política de privacidad", alternates: { canonical: "/privacidad" } };
 
 /**
  * Lo mínimo que piden los arts. 13 y 14 RGPD y el 22.2 LSSI, sin nombrar proveedores ni contar cómo funciona por dentro

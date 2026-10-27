@@ -1,6 +1,7 @@
 "use client";
 
 import type { BookView } from "./book/service";
+import { VIEW_URL_REUSE_MS } from "./signing";
 
 /**
  * Cliente de /api/libro/* y /api/generate/run. Las imágenes se pintan una por llamada: el navegador va pidiendo cada job
@@ -23,6 +24,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LONG_ROUTES = ["/api/generate/run", "/api/libro/pages", "/api/libro/print", "/api/libro/retry", "/api/libro/sheet", "/api/libro/start", "/api/plan"];
 export function timeoutFor(url: string): number {
   if (url === "/api/plan/page") return 135_000;
+  // el PDF puede esperar su turno y pintarse (maxDuration 120 s, I10)
+  if (url === "/api/libro/pdf") return 130_000;
   return LONG_ROUTES.includes(url) ? 310_000 : 45_000;
 }
 
@@ -88,6 +91,35 @@ export async function runJobs(ids: string[], concurrency: number, onEach: (id: s
 export type ViewResult = { ok: true; view: BookView } | { ok: false; error: "not_found" | "network" | "server" };
 
 /**
+ * La misma imagen, la misma URL (auditoría 26 oct, I20): la vista se pide cada vez que termina una página, y cada URL
+ * firmada nueva hacía que el móvil volviera a descargar todas las imágenes. Se guarda la primera URL de cada archivo (la
+ * URL sin el token) y se reutiliza 45 minutos: el servidor da URLs que valen al menos una hora (lib/signing.ts).
+ */
+const seenUrls = new Map<string, { url: string; at: number }>();
+const REUSE_MS = VIEW_URL_REUSE_MS;
+
+/** Una imagen que no carga con su URL guardada: la siguiente vista trae otra (revisión 27 oct). */
+export function forgetUrl(url: string | null | undefined): void {
+  if (!url) return;
+  const key = url.split("?")[0];
+  if (seenUrls.get(key)?.url === url) seenUrls.delete(key);
+}
+
+export function stableUrl(url: string | null, now = Date.now()): string | null {
+  if (!url) return url;
+  const key = url.split("?")[0];
+  const prev = seenUrls.get(key);
+  if (prev && now - prev.at < REUSE_MS) return prev.url;
+  if (seenUrls.size > 500) for (const [k, v] of seenUrls) if (now - v.at >= REUSE_MS) seenUrls.delete(k);
+  seenUrls.set(key, { url, at: now });
+  return url;
+}
+
+function stableView(view: BookView): BookView {
+  return { ...view, jobs: view.jobs.map((j) => (j.url ? { ...j, url: stableUrl(j.url) } : j)) };
+}
+
+/**
  * La vista del libro, distinguiendo «no existe» (404: caducado o enlace mal copiado) de «ahora no se puede» (sin red o
  * un error del servidor), que se reintenta (I9). Antes un 500 decía «Este enlace ya no es válido» a quien había pagado.
  */
@@ -100,7 +132,7 @@ export async function loadView(bookId: string, { tries = 3, wait = 1500 }: { tri
       // 400: id mal formado; 404: no existe o caducó; 409: un libro del flujo antiguo
       if (res.status === 400 || res.status === 404 || res.status === 409) return { ok: false, error: "not_found" };
       const json = await res.json().catch(() => null);
-      if (res.ok && json?.ok) return { ok: true, view: json as BookView };
+      if (res.ok && json?.ok) return { ok: true, view: stableView(json as BookView) };
       last = "server";
     } catch {
       last = "network";

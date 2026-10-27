@@ -15,6 +15,8 @@ import { ocasionForStarter, ocasionPath } from "@/lib/ocasiones";
 
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
+  // la dirección buena es la del dominio (metadataBase), no la de los alias de vercel.app (auditoría 26 oct, I21)
+  alternates: { canonical: "/" },
   description:
     "Un cuento personalizado con tu hijo, tu nieta o tu sobrino de protagonista y la historia que tú quieras: su cumpleaños, un viaje a la Luna o el primer día de cole. Lo escribimos y lo ilustramos; lo lees gratis y te lo enviamos impreso en tapa dura.",
 };

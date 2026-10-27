@@ -27,6 +27,7 @@
     "three": "0.170.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.9",
     "@playwright/test": "^1.56.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
