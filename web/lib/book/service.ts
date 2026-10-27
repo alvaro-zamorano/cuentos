@@ -36,6 +36,12 @@ function paidHere(store: GenStore, bookUuid: string, env: Env): Promise<boolean>
   return store.hasPaidOrder(bookUuid, (s) => paidInEnv(s, env));
 }
 
+/**
+ * Tras pagar, los personajes y las escenas ya no cambian (auditoría 26 oct, I2): cambiarlos repintaba el libro entero a
+ * nuestra costa y gastaba las «Otra versión» del padre. Los textos sí se pueden seguir corrigiendo.
+ */
+const paidFail = () => fail(409, "already_paid", "El libro ya está pagado: los personajes y las escenas ya no cambian. Para una ilustración, pide otra versión desde esa página.");
+
 /** Un libro pagado se guarda 30 días desde el pago (no desde que se empezó): auditoría 26 oct, B3. */
 const KEEP_AFTER_PAYMENT_MS = 30 * 24 * 3600 * 1000;
 
@@ -241,7 +247,7 @@ function planProblem(v: PlanValidation): string {
 }
 
 /** Guarda ficha + plan con el email, prepara la dirección de arte del reparto y encola hoja + portada (una vez). */
-export async function startBook(store: GenStore, input: StartInput, adapter: Pick<GenerationAdapter, "name">, llm: Llm = selectLlm("art")): Promise<StartResult | Fail> {
+export async function startBook(store: GenStore, input: StartInput, adapter: Pick<GenerationAdapter, "name">, llm: Llm = selectLlm("art"), env: Env = process.env): Promise<StartResult | Fail> {
   const email = cleanEmail(input.email);
   if (!email) return fail(400, "email");
   const ficha = normalizeFicha(input.ficha);
@@ -260,6 +266,7 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
     book = await store.findBook({ publicId: input.bookId });
     prev = book ? draftV2(book) : null;
     if (book && book.email && book.email !== email) book = null; // otro email: libro nuevo
+    else if (book && (await paidHere(store, book.id, env))) return paidFail();
   }
   const d: BookDraftV2 = {
     v: 2,
@@ -393,10 +400,17 @@ function sheetAndCoverCents(provider: string): number {
 
 /* ------------------------------ cambiar la hoja con palabras ------------------------------ */
 
-export async function reviseSheet(store: GenStore, input: { bookId?: unknown; instruction?: unknown }, adapter: Pick<GenerationAdapter, "name">, llm: Llm = selectLlm("art")): Promise<StartResult | Fail> {
+export async function reviseSheet(
+  store: GenStore,
+  input: { bookId?: unknown; instruction?: unknown },
+  adapter: Pick<GenerationAdapter, "name">,
+  llm: Llm = selectLlm("art"),
+  env: Env = process.env,
+): Promise<StartResult | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   let { book, d } = loaded;
+  if (await paidHere(store, book.id, env)) return paidFail();
   const instruction = typeof input.instruction === "string" ? input.instruction.replace(/\s+/g, " ").trim().slice(0, 240) : "";
   if (!instruction) return fail(400, "instruction");
   const bad = blockedWord(instruction) ?? contactData(instruction);
@@ -420,12 +434,14 @@ export async function reviseSheet(store: GenStore, input: { bookId?: unknown; in
 
 /* ------------------------------ aprobar hoja, guardar textos ------------------------------ */
 
-export async function approveSheet(store: GenStore, input: { bookId?: unknown; sheetJobId?: unknown }): Promise<{ ok: true } | Fail> {
+export async function approveSheet(store: GenStore, input: { bookId?: unknown; sheetJobId?: unknown }, env: Env = process.env): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
-  const { book } = loaded;
+  const { book, d } = loaded;
   const sheet = sheetJobs(await store.listJobs(book.id)).find((j) => j.id === input.sheetJobId);
   if (!sheet || sheet.status !== "done") return fail(409, "sheet_not_ready");
+  // tras pagar, la misma hoja otra vez vale (el paso 4 la vuelve a aprobar al seguir); otra, no (I2)
+  if (sheet.id !== d.approvedSheetJobId && (await paidHere(store, book.id, env))) return paidFail();
   await mutate(store, book, (cur) => ({ ...cur, approvedSheetJobId: sheet.id }));
   return { ok: true };
 }
@@ -438,7 +454,7 @@ async function printLocked(store: GenStore, bookUuid: string): Promise<boolean> 
 const lockedFail = () => fail(409, "printed", "El libro ya está en la imprenta y no se puede cambiar.");
 
 /** Guarda el plan editado por el padre (textos, o una página reescrita). Las imágenes no se tocan aquí. */
-export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?: unknown }): Promise<{ ok: true } | Fail> {
+export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?: unknown }, env: Env = process.env): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
@@ -450,10 +466,16 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
     const same = plan.title === d.plan.title && plan.dedication === d.plan.dedication && plan.pages.every((p, i) => p.text === d.plan.pages[i]?.text);
     return same ? { ok: true } : lockedFail();
   }
-  const v = validatePlan(plan, d.ficha, { fromParent: true });
+  // pagado: solo los textos; las escenas siguen como se pintaron (I2). Una escena nueva repintaba la página a nuestra costa
+  const paid = await paidHere(store, book.id, env);
+  const next = (cur: BookDraftV2): Plan =>
+    paid
+      ? { ...cur.plan, title: plan.title, dedication: plan.dedication, pages: cur.plan.pages.map((p, i) => ({ ...p, text: plan.pages[i]?.text ?? p.text })) }
+      : // el reparto inventado y la portada no cambian después del email: la hoja ya está pintada con ellos
+        { ...plan, extraCast: cur.plan.extraCast, cover: cur.plan.cover, places: cur.plan.places, objects: cur.plan.objects };
+  const v = validatePlan(next(d), d.ficha, { fromParent: true });
   if (!v.usable) return fail(422, "plan_invalid", planProblem(v));
-  // el reparto inventado y la portada no cambian después del email: la hoja ya está pintada con ellos
-  await mutate(store, book, (cur) => ({ ...cur, plan: { ...plan, extraCast: cur.plan.extraCast, cover: cur.plan.cover, places: cur.plan.places, objects: cur.plan.objects } }));
+  await mutate(store, book, (cur) => ({ ...cur, plan: next(cur) }));
   return { ok: true };
 }
 
@@ -707,6 +729,11 @@ export async function notifyBookReady(
 export async function markStuckAlerted(store: GenStore, bookId: string, at: number): Promise<void> {
   const book = await store.findBook({ publicId: bookId });
   if (book && draftV2(book)) await mutate(store, book, (cur) => ({ ...cur, stuckAlertedAt: at }));
+}
+
+/** «Otra versión» con motivo que ha pedido el padre en este libro (cuentos_feedback). */
+async function redosUsed(store: GenStore, bookUuid: string): Promise<number> {
+  return (await store.listFeedback(bookUuid)).filter((f) => f.kind === "redo").length;
 }
 
 /** Ids de las páginas que esperan a pintarse (para el segundo plano). */
@@ -976,7 +1003,9 @@ export async function requestPages(
     const all = jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j));
     const current = currentPageJobs(jobs, d, n, sheet.id).filter((j) => j.status !== "failed");
     if (all.length >= MAX_PAGE_JOBS || current.length >= 1 + MAX_PAGE_REDOS) return fail(409, "max_versions", "Esta página ya no admite más versiones.");
-    const redos = jobs.filter((j) => j.kind === "page" && j.variant > 1 && v2Of(j)).length;
+    // las «Otra versión» se cuentan por sus motivos, no por versiones: una página repintada por otra causa no gasta
+    // las del padre (I2)
+    const redos = await redosUsed(store, book.id);
     if (redos >= MAX_BOOK_REDOS) return fail(409, "max_versions", "Ya has usado las versiones extra de este libro. Si alguna página sigue sin estar bien, avísanos desde esa página.");
     // la escena se reescribe con el motivo; si falla el modelo, se usa la corrección fija del motivo
     const ap = d.pagesArt!.pages.find((p) => p.n === n)!;
@@ -1212,7 +1241,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   return {
     ok: true,
     bookId: book.public_id,
-    redosLeft: Math.max(0, MAX_BOOK_REDOS - jobs.filter((j) => j.kind === "page" && j.variant > 1).length),
+    redosLeft: Math.max(0, MAX_BOOK_REDOS - feedback.filter((f) => f.kind === "redo").length),
     reported: [...new Set(feedback.filter((f) => f.kind === "report").map((f) => f.page_n))],
     ficha: d.ficha,
     plan: d.plan,

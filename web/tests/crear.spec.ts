@@ -145,6 +145,23 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await page.getByTestId("report-submit").click();
   await expect(p3.getByText("Nos has avisado")).toBeVisible();
 
+  // pagado, volver atrás no repinta nada (I2): el paso 4 enseña los personajes sin cambios ni otras versiones, el 3
+  // solo deja corregir textos y los pasos 1 y 2 ya no se abren
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("approve")).toHaveText(/Volver al libro/);
+  await expect(page.getByText("¿Cambiamos algo?")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Versiones de los personajes" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("paid-text-only")).toBeVisible();
+  await expect(page.getByTestId("rewrite")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cambiar esta página" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Paso anterior" })).toHaveCount(0);
+  await expect(page.getByTestId("next-3")).toHaveText("Volver al libro");
+  await page.getByTestId("next-3").click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible();
+  const after = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
+  expect(after.jobs.length).toBe(view.jobs.length + 2);
+
   // sin claves de Stripe: ni checkout ni webhook
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
   expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);

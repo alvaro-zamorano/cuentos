@@ -161,7 +161,8 @@ function Crear() {
   };
   const update = (patch: Partial<CrearState>) => setCrear((x) => ({ ...x, ...patch }));
   const maxStep: Step = s.bookId ? 5 : s.record ? 3 : s.ficha.hero.name ? 2 : 1;
-  const reachable = (n: Step) => n <= Math.max(maxStep, s.step) && !(n >= 4 && !s.record);
+  // pagado, los pasos 1 y 2 ya no se abren: cambiar la ficha vuelve a escribir el cuento (I2)
+  const reachable = (n: Step) => n <= Math.max(maxStep, s.step) && !(n >= 4 && !s.record) && !(s.paid && n < 3);
   const dirty = !!(s.ficha.hero.name || s.ficha.idea || s.record);
   const aside = s.step <= 3;
 
@@ -208,12 +209,20 @@ function Crear() {
           <div key={s.step} className="rise">
             {s.step === 1 && <StepIdea ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(2)} />}
             {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
-            {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} drawn={!!s.bookId} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(4)} />}
+            {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} drawn={!!s.bookId} paid={!!s.paid} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(s.paid ? 5 : 4)} />}
             {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => {
                   update({ bookId: id, email });
                   track({ name: "libro_empezado" });
                 }} onNext={() => go(5)} />}
-            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} upgrading={mejora && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
+            {s.step === 5 && s.bookId && (
+              <StepBook
+                bookId={s.bookId}
+                confirming={pagado && s.bookId === b}
+                upgrading={mejora && s.bookId === b}
+                onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })}
+                onPaid={() => !s.paid && update({ paid: true })}
+              />
+            )}
           </div>
         </div>
         {aside && <BookAside s={s} />}
@@ -232,7 +241,7 @@ function CrearHeader({ step, reachable, go, dirty }: { step: Step; reachable: (n
     <header className="no-print">
       <div className="mx-auto max-w-3xl px-4 pt-3 sm:px-6 lg:hidden">
         <div className="grid grid-cols-[72px_1fr_72px] items-center">
-          {step === 1 ? (
+          {step === 1 || !reachable((step - 1) as Step) ? (
             <Link href="/" aria-label="Salir al inicio" className="btn-icon">
               <Icon.close />
             </Link>

@@ -150,12 +150,18 @@ export function StepCast({
   };
 
   const ready = shownSheet?.status === "done";
+  // pagado: los personajes ya no cambian (I2). Ni otra versión, ni elegir otra hoja: repintaba el libro entero
+  const paid = !!view?.paid;
   return (
     <div className="grid gap-8">
       <div className="grid gap-2">
         <p className="hand text-[20px] text-accent">{ready ? "aquí están" : "manos a la obra"}</p>
         <h2 className="display text-[32px] sm:text-[42px]">Así será {name}</h2>
-        <p className="text-ink-soft">Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras.</p>
+        <p className="text-ink-soft">
+          {paid
+            ? "Con este dibujo se pintan las doce páginas. El libro ya está pagado, así que los personajes ya no cambian: si una ilustración no te gusta, pide otra versión desde esa página del libro."
+            : "Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras."}
+        </p>
         {lastFree && <p className="m-0 text-[13px] text-mute" data-testid="last-free">Es tu tercer cuento con dibujos gratis de este mes.</p>}
       </div>
 
@@ -168,15 +174,15 @@ export function StepCast({
           <Status testId="painting">{painting}</Status>
         ))}
       {error && <ErrorNote>{error}</ErrorNote>}
-      {view && !painting && (failed || stuck) && <RetryNote failed={failed} busy={retrying} onRetry={retry} />}
+      {view && !paid && !painting && (failed || stuck) && <RetryNote failed={failed} busy={retrying} onRetry={retry} />}
 
       <figure className="m-0 grid gap-3">
         <Taped>
           <BookImage job={shownSheet} alt={`Así será ${name} en el libro: varias poses y caras`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
         </Taped>
-        <figcaption className="text-sm text-mute">Sus personajes{versions.length > 1 ? ` · versión ${versionOf(shownSheet?.id)}` : ""}</figcaption>
+        <figcaption className="text-sm text-mute">Sus personajes{versions.length > 1 && !paid ? ` · versión ${versionOf(shownSheet?.id)}` : ""}</figcaption>
       </figure>
-      {versions.length > 1 && (
+      {versions.length > 1 && !paid && (
         <div className="-mt-4 flex flex-wrap gap-2" role="group" aria-label="Versiones de los personajes">
           {versions.map((s) => (
             <button
@@ -195,7 +201,7 @@ export function StepCast({
         </div>
       )}
 
-      {view && current?.status === "done" && !painting && (
+      {view && !paid && current?.status === "done" && !painting && (
         <ChangeSheet
           left={view.sheetsLeft}
           onAsk={async (instruction) => {
@@ -242,6 +248,7 @@ export function StepCast({
           disabled={!ready || !!painting}
           data-testid="approve"
           onClick={async () => {
+            if (paid) return onNext();
             const r = await postJson("/api/libro/approve", { bookId, sheetJobId: shownSheet!.id });
             if (r.status === 200) {
               track({ name: "personajes_aprobados" });
@@ -250,11 +257,11 @@ export function StepCast({
             else setError(errorMessage(r.json));
           }}
         >
-          Me gustan, ver el libro
+          {paid ? "Volver al libro" : "Me gustan, ver el libro"}
           <Icon.arrow />
         </button>
         <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">
-          {!ready ? "En cuanto estén, podrás seguir." : painting && cover?.status !== "done" ? "Falta la portada, alrededor de un minuto. Mientras, mira sus personajes." : "Gratis hasta aquí. Después decides si lo quieres ilustrado."}
+          {paid ? "" : !ready ? "En cuanto estén, podrás seguir." : painting && cover?.status !== "done" ? "Falta la portada, alrededor de un minuto. Mientras, mira sus personajes." : "Gratis hasta aquí. Después decides si lo quieres ilustrado."}
         </p>
       </div>
     </div>
