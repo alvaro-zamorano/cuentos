@@ -75,7 +75,7 @@ test("otra sesión pagada para un libro ya pagado es un cobro doble, con aviso; 
   assert.equal(paymentNotice(again, session("cs_a", bookId)), null, "Stripe reintenta: nada que avisar");
   const other = session("cs_b", bookId);
   const r = await recordStripePayment(store, other);
-  assert.deepEqual(r, { action: "double_charge", bookId });
+  assert.deepEqual(r, { action: "double_charge", bookId, already: "illustrated" });
   assert.equal(paymentNotice(r, other)?.subject, "Cobro doble de un libro ya pagado");
 });
 

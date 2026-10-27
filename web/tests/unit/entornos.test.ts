@@ -101,7 +101,7 @@ test("producción: un libro pagado con la tarjeta de prueba en la preview no est
   const paid = await bookView(store, bookId, PROD);
   assert.ok(paid.ok && paid.paid && paid.edition === "illustrated");
   assert.deepEqual(await recordStripePayment(store, session("cs_live_1", bookId, "illustrated", 1490), PROD), { action: "duplicate", bookId }, "la misma sesión: Stripe reintenta");
-  assert.deepEqual(await recordStripePayment(store, session("cs_live_2", bookId, "illustrated", 1490), PROD), { action: "double_charge", bookId }, "otra sesión: cobro doble");
+  assert.deepEqual(await recordStripePayment(store, session("cs_live_2", bookId, "illustrated", 1490), PROD), { action: "double_charge", bookId, already: "illustrated" }, "otra sesión: cobro doble");
   assert.equal((await prepareCheckout(store, { bookId, edition: "illustrated" }, PROD) as { error: string }).error, "already_paid");
 });
 

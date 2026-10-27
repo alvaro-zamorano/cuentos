@@ -28,7 +28,7 @@ import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../pl
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping, shippingLine, shippingSummary } from "../print/shipping";
 import type { Receipt } from "../mail";
-import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
+import { EDITION_LABEL, PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping, type ShippingSummary } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
 
@@ -691,8 +691,9 @@ export type PaymentOutcome =
   | { action: "upgraded"; bookId: string; mismatch?: string }
   /** La misma sesión otra vez (Stripe reintenta): nada que hacer. */
   | { action: "duplicate"; bookId: string }
-  /** Otra sesión pagada para un libro ya pagado: cobro doble que hay que devolver (el webhook avisa). */
-  | { action: "double_charge"; bookId: string }
+  /** Otra sesión pagada para un libro ya pagado: cobro doble que hay que devolver (el webhook avisa). `already`: la
+   * edición que ya estaba pagada. */
+  | { action: "double_charge"; bookId: string; already?: PaidEdition }
   | { action: "ignored"; reason: string };
 
 /** Importe o moneda distintos de lo esperado (no frena el pedido: el cliente ha pagado; el webhook avisa). */
@@ -704,28 +705,77 @@ function paymentMismatch(expectedCents: number | null, s: PaidEvent["data"]["obj
 }
 
 /**
+ * Bloqueo de los cobros de un libro (cuentos_locks): lo que dura como mucho y lo que espera el segundo cobro. Dura de
+ * sobra para unas pocas consultas: si caducara con el primer cobro aún a medias, el segundo podría registrarse también.
+ * Si una función muere con él, el siguiente cobro del libro responde 500 hasta que caduca y Stripe lo reintenta.
+ */
+const PAY_LOCK_MS = 120_000;
+const PAY_LOCK_WAIT_MS = 5_000;
+
+/**
+ * Los cobros de un mismo libro se registran de uno en uno (revisión 27 oct). Dos pagos a la vez (dos pestañas, o dos
+ * mejoras a tapa dura) veían los dos el libro sin pagar y dejaban dos pedidos sin aviso. Así el segundo ya ve el primero
+ * y queda como cobro doble (o mejora sin registrar), con aviso a soporte para devolverlo. Si el bloqueo sigue ocupado,
+ * lanza: el webhook responde 500 y Stripe reintenta.
+ */
+async function oneChargeAtATime<T>(store: GenStore, bookUuid: string, waitMs: number, run: () => Promise<T>): Promise<T> {
+  const key = `pago:${bookUuid}`;
+  const giveUp = Date.now() + waitMs;
+  let holder = await store.lock(key, PAY_LOCK_MS);
+  while (!holder && Date.now() < giveUp) {
+    await new Promise((r) => setTimeout(r, 100 + Math.floor(Math.random() * 100)));
+    holder = await store.lock(key, PAY_LOCK_MS);
+  }
+  if (!holder) throw new Error("pago_ocupado: se está registrando otro cobro del mismo libro");
+  try {
+    return await run();
+  } finally {
+    await store.unlock(key, holder).catch(() => null);
+  }
+}
+
+/**
  * Registra el pedido de un `checkout.session.completed` (o `async_payment_succeeded`) ya verificado.
  * Idempotente: la misma sesión dos veces (Stripe reintenta) no crea otro pedido.
  * Auditoría 26 oct (B7 y B3): un libro caducado pero aún guardado se registra igual y se alarga; si la base falla, lanza
  * (el webhook responde 500 y Stripe reintenta); otra sesión pagada para el mismo libro es un cobro doble, no un
- * duplicado silencioso. El pago alarga el libro 30 días desde ese momento.
+ * duplicado silencioso, también si llegan a la vez. El pago alarga el libro 30 días desde ese momento.
  */
-export async function recordStripePayment(store: GenStore, event: PaidEvent, env: Record<string, string | undefined> = process.env): Promise<PaymentOutcome> {
+export async function recordStripePayment(
+  store: GenStore,
+  event: PaidEvent,
+  env: Record<string, string | undefined> = process.env,
+  opts: { lockWaitMs?: number } = {},
+): Promise<PaymentOutcome> {
   if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return { action: "ignored", reason: event.type };
   const s = event.data?.object ?? {};
   if (s.payment_status !== "paid") return { action: "ignored", reason: `payment_status:${s.payment_status ?? "?"}` };
   const bookId = s.metadata?.bookId ?? s.client_reference_id ?? null;
   const loaded = await loadBook(store, bookId, { includeExpired: true });
   if (isFail(loaded)) return { action: "ignored", reason: `book:${loaded.error}` };
+  return oneChargeAtATime(store, loaded.book.id, opts.lockWaitMs ?? PAY_LOCK_WAIT_MS, () => recordCharge(store, loaded, s, env));
+}
+
+async function recordCharge(
+  store: GenStore,
+  loaded: { book: BookRecord; d: BookDraftV2 },
+  s: PaidEvent["data"]["object"],
+  env: Record<string, string | undefined>,
+): Promise<PaymentOutcome> {
   const publicId = loaded.book.public_id;
-  if (s.id && (await store.hasPaidOrder(loaded.book.id, (x) => x === s.id))) {
+  // la misma sesión, en cualquier estado: si ya se devolvió, no es un cobro doble ni un pago nuevo (revisión 27 oct)
+  const same = s.id ? await store.getOrderBySession(s.id) : null;
+  if (same) {
     // Stripe reintenta si la vez anterior falló después de guardar el pedido (por ejemplo, al alargar el libro): se
     // vuelve a alargar, que nunca acorta (revisión 26 oct)
-    await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
+    if ((same.status ?? "paid") === "paid") await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
     return { action: "duplicate", bookId: publicId };
   }
   if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
-  if (await paidHere(store, loaded.book.id, env)) return { action: "double_charge", bookId: publicId };
+  if (await paidHere(store, loaded.book.id, env)) {
+    const prev = await store.getOrder(loaded.book.id);
+    return { action: "double_charge", bookId: publicId, ...(prev ? { already: prev.edition } : {}) };
+  }
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
   await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
@@ -793,7 +843,16 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
     };
   }
   if (r.action === "double_charge") {
-    return { subject: "Cobro doble de un libro ya pagado", text: `El libro ya estaba pagado y ha llegado otro cobro de otra sesión de Stripe.\n${facts}\n\nDevuelve este segundo cobro desde el panel de Stripe.` };
+    // con las dos ediciones: dos pestañas pueden pagar el PDF y la tapa dura a la vez, y gana el que llega antes
+    const incoming = paidEdition(s.metadata?.edition);
+    const what = (e: PaidEdition | null | undefined) => (e ? ` (${EDITION_LABEL[e]})` : "");
+    const differ = !!r.already && !!incoming && r.already !== incoming;
+    return {
+      subject: "Cobro doble de un libro ya pagado",
+      text: `El libro ya estaba pagado${what(r.already)} y ha llegado otro cobro de otra sesión de Stripe${what(incoming)}.\n${facts}\n\n${
+        differ ? "Son ediciones distintas: pregunta al cliente cuál quiere antes de devolver nada." : "Devuelve este segundo cobro desde el panel de Stripe."
+      }`,
+    };
   }
   if ((r.action === "paid" || r.action === "upgraded") && r.mismatch) {
     return { subject: "Cobro con un importe que no cuadra", text: `El pedido se ha registrado, pero ${r.mismatch}.\n${facts}\n\nRevísalo en el panel de Stripe.` };
