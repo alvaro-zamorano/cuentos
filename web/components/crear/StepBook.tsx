@@ -82,6 +82,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
   const [loadError, setLoadError] = useState<string | null>(null);
   // vuelta de Stripe sin confirmación del pago: no se vuelve a enseñar el pago, que llevaba a pagar dos veces (B7)
   const [payPending, setPayPending] = useState(false);
+  const [payOffline, setPayOffline] = useState(false);
   // lo mismo con la mejora a tapa dura: sin confirmar, no se vuelve a ofrecer
   const [upgradePending, setUpgradePending] = useState(false);
   const cancel = useRef({ cancelled: false });
@@ -149,14 +150,22 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
       if (!v.paid && confirming) {
         // vuelta de Stripe: el webhook registra el pago en unos segundos
         setBusy("Confirmando el pago…");
+        // si la red se va mientras, no es que el pago no haya llegado: es que no lo podemos comprobar (revisión 27 oct)
+        let lost = false;
         for (let i = 0; i < 40 && !v.paid && !c.cancelled; i++) {
           await sleep(3000);
-          v = (await refresh()) ?? v;
+          const r = await loadView(bookId, { tries: 1 });
+          lost = !r.ok;
+          if (r.ok) {
+            v = r.view;
+            setView(v);
+          }
         }
         setBusy(null);
         if (!v.paid) {
           markPending(bookId, "pago");
           setPayPending(true);
+          setPayOffline(lost);
           return;
         }
       }
@@ -331,7 +340,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
       ) : (
         <>
           <LockedPages pages={plan.pages} onText={setText} />
-          {!busy && (payPending ? <PayPending contact={view.contact ?? null} /> : <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />)}
+          {!busy && (payPending ? <PayPending contact={view.contact ?? null} offline={payOffline} /> : <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />)}
         </>
       )}
 
@@ -410,10 +419,16 @@ function LockedPages({ pages, onText }: { pages: PlanPage[]; onText: (n: number,
  * Se vuelve de Stripe (?pagado=1) y en dos minutos no ha llegado la confirmación del pago. En vez del pago otra vez, que
  * llevaba a pagar dos veces (auditoría 26 oct, B7), un aviso y un botón para volver a mirar.
  */
-function PayPending({ contact }: { contact: string | null }) {
+function PayPending({ contact, offline }: { contact: string | null; offline: boolean }) {
   return (
     <div className="card grid gap-3 p-6" role="status" data-testid="pay-pending">
       <h3 className="display text-[22px]">Estamos esperando la confirmación del pago</h3>
+      {/* sin red no sabemos si ha llegado: no es lo mismo que «aún no ha llegado» (revisión 27 oct) */}
+      {offline && (
+        <p className="m-0 font-semibold text-ink" data-testid="pay-offline">
+          No hemos podido comprobarlo: parece que no hay conexión. Cuando vuelva, pulsa «Volver a mirar».
+        </p>
+      )}
       <p className="m-0 text-ink-soft">Si ya te han cobrado, no vuelvas a pagar. El libro aparecerá aquí en cuanto nos llegue, normalmente en unos minutos.</p>
       <p className="m-0 text-ink-soft">
         Si te han cobrado y en un rato no aparece, escríbenos

@@ -15,12 +15,24 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * que no es JSON (un 504 de Vercel en HTML) devuelve `error: "server"`. Antes, sin cobertura, los botones se quedaban en
  * «Abriendo el pago…» para siempre.
  */
+/**
+ * Cuánto se espera a cada ruta (revisión 27 oct): con mala cobertura una petición se podía quedar colgada minutos. Las que
+ * pintan, escriben o maquetan pueden tardar de verdad (hasta su maxDuration de 300 s; «Cambiar esta página», 120 s); el
+ * resto responde en segundos.
+ */
+const LONG_ROUTES = ["/api/generate/run", "/api/libro/pages", "/api/libro/print", "/api/libro/retry", "/api/libro/sheet", "/api/libro/start", "/api/plan"];
+export function timeoutFor(url: string): number {
+  if (url === "/api/plan/page") return 135_000;
+  return LONG_ROUTES.includes(url) ? 310_000 : 45_000;
+}
+
 export async function postJson<T = Record<string, unknown>>(url: string, body: unknown): Promise<{ status: number; json: T & { ok?: boolean; error?: string; reason?: string; message?: string } }> {
   let res: Response;
   try {
-    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  } catch {
-    return { status: 0, json: { ok: false, error: "network" } as T & { ok?: boolean; error?: string } };
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutFor(url)) });
+  } catch (e) {
+    const timeout = e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError");
+    return { status: 0, json: { ok: false, error: timeout ? "timeout" : "network" } as T & { ok?: boolean; error?: string } };
   }
   const json = (await res.json().catch(() => ({ ok: false, error: res.status >= 500 ? "server" : "json" }))) as T & { ok?: boolean; error?: string };
   return { status: res.status, json };
@@ -84,7 +96,7 @@ export async function loadView(bookId: string, { tries = 3, wait = 1500 }: { tri
   for (let i = 0; i < tries; i++) {
     if (i > 0) await sleep(wait * i);
     try {
-      const res = await fetch(`/api/libro/view?b=${encodeURIComponent(bookId)}`, { cache: "no-store" });
+      const res = await fetch(`/api/libro/view?b=${encodeURIComponent(bookId)}`, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
       // 400: id mal formado; 404: no existe o caducó; 409: un libro del flujo antiguo
       if (res.status === 400 || res.status === 404 || res.status === 409) return { ok: false, error: "not_found" };
       const json = await res.json().catch(() => null);
@@ -117,6 +129,8 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
   switch (json.error) {
     case "network":
       return "Sin conexión. Revisa la red e inténtalo de nuevo.";
+    case "timeout":
+      return "La conexión va muy lenta y no ha llegado la respuesta. Inténtalo de nuevo.";
     case "server":
       return "El servidor no responde ahora mismo. Inténtalo de nuevo en un momento.";
     case "budget":

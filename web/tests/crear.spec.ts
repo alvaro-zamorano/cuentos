@@ -467,6 +467,33 @@ test("«Que salga la abuela»: el paso 3 avisa de cómo sacarla en los dibujos, 
   expect(errors).toEqual([]);
 });
 
+test("Vuelta de Stripe sin red: no dice que el pago no ha llegado, dice que no puede comprobarlo (revisión 27 oct)", async ({ page }) => {
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("rita@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await page.getByTestId("approve").click();
+  await expect(page.getByTestId("paywall")).toBeVisible();
+  const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
+  // el libro se abre; la red se va mientras se espera al pago
+  let offline = false;
+  await page.route("**/api/libro/view**", (route) => (offline ? route.abort("internetdisconnected") : route.continue()));
+  await page.clock.install();
+  await page.goto(`/crear?b=${bookId}&pagado=1`);
+  await expect(page.getByText("Confirmando el pago…")).toBeVisible();
+  offline = true;
+  // dos minutos de espera, de 3 s en 3 s, dejando que cada petición fallida vuelva antes de seguir
+  for (let i = 0; i < 42; i++) {
+    await page.clock.runFor(3_000);
+    await page.waitForTimeout(30);
+  }
+  await expect(page.getByTestId("pay-pending")).toBeVisible();
+  await expect(page.getByTestId("pay-offline")).toContainText("parece que no hay conexión");
+  await expect(page.getByTestId("paywall")).toHaveCount(0);
+});
+
 test("Pago que volvió de Stripe sin confirmar: al volver con el enlace no se ofrece pagar otra vez", async ({ page }) => {
   await writeStory(page);
   await page.getByTestId("next-3").click();

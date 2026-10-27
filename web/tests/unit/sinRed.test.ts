@@ -4,7 +4,7 @@
  */
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { errorMessage, fetchView, loadView, postJson, runJob, viewErrorMessage } from "../../lib/bookClient";
+import { errorMessage, fetchView, loadView, postJson, runJob, timeoutFor, viewErrorMessage } from "../../lib/bookClient";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -82,4 +82,23 @@ test("runJob sin red reintenta y acaba en «error», sin lanzar", async () => {
 test("runJob: un corte de red entre medias no rompe nada y sigue hasta «done»", async () => {
   fakeFetch(new TypeError("Failed to fetch"), json(200, { ok: true, job: { id: "j1", status: "done" } }));
   assert.equal(await runJob("j1", undefined, 10_000), "done");
+});
+
+test("una conexión colgada no bloquea para siempre: cada ruta tiene su tiempo y se dice que va lenta", async () => {
+  // las que pintan o escriben esperan a su maxDuration; el resto, segundos
+  assert.equal(timeoutFor("/api/libro/pages"), 310_000);
+  assert.equal(timeoutFor("/api/plan"), 310_000);
+  assert.equal(timeoutFor("/api/plan/page"), 135_000);
+  assert.equal(timeoutFor("/api/libro/pay"), 45_000);
+
+  let signal: AbortSignal | undefined;
+  globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    signal = init?.signal ?? undefined;
+    throw new DOMException("The operation timed out.", "TimeoutError");
+  }) as typeof fetch;
+  const r = await postJson("/api/libro/pay", {});
+  assert.ok(signal, "la petición lleva un AbortSignal");
+  assert.equal(r.status, 0);
+  assert.equal(r.json.error, "timeout");
+  assert.match(errorMessage(r.json), /muy lenta/);
 });

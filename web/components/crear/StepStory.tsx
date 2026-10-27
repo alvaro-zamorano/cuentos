@@ -5,7 +5,7 @@ import { fichaHash, normalizeFicha } from "@/lib/plan/ficha";
 import { familyGiven, familyMentions } from "@/lib/plan/validate";
 import type { Ficha, Plan, PlanPage, PlanRecord } from "@/lib/plan/types";
 import { track } from "@/lib/analytics";
-import { postJson } from "@/lib/bookClient";
+import { errorMessage, postJson } from "@/lib/bookClient";
 import { Icon, Sparkle } from "@/components/brand";
 import { AutoTextarea } from "./AutoTextarea";
 import { ErrorNote } from "./ui";
@@ -59,7 +59,8 @@ export function StepStory({
         track({ name: "cuento_escrito", props: { segundos: Math.round((Date.now() - t0) / 1000) } });
       } else {
         track({ name: "cuento_error", props: { estado: status } });
-        setError(json.message ?? "No hemos podido escribir el cuento. Inténtalo de nuevo.");
+        // sin red, postJson ya no lanza: el mensaje sale de errorMessage (revisión 27 oct)
+        setError(errorMessage(json, "No hemos podido escribir el cuento. Inténtalo de nuevo."));
         setState("error");
       }
     } catch {
@@ -277,7 +278,7 @@ function PageCard({ page, ficha, plan, hint, onText, onReplace }: { page: PlanPa
         onReplace(json.page);
         setOpen(false);
         setAsk("");
-      } else setErr(json.message ?? "No se ha podido cambiar. Prueba a pedirlo de otra manera.");
+      } else setErr(errorMessage(json, "No se ha podido cambiar. Prueba a pedirlo de otra manera."));
     } catch {
       setErr("Sin conexión. Inténtalo de nuevo.");
     } finally {

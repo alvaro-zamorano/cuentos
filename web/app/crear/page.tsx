@@ -131,7 +131,16 @@ function Crear() {
     if (step) track({ name: "crear_paso", props: { paso: step } });
   }, [step]);
 
-  if (!s || recovering) return null;
+  if (!s) return null;
+  // abriendo un libro por enlace: se dice, en vez de dejar la página en blanco mientras responde (revisión 27 oct)
+  if (recovering)
+    return (
+      <main className="grid min-h-dvh place-items-center px-4" aria-busy="true">
+        <p className="hand text-[20px] text-ink-soft" data-testid="recovering">
+          Abriendo tu libro…
+        </p>
+      </main>
+    );
   const go = (step: Step) => {
     setCrear((x) => ({ ...x, step }));
     window.scrollTo({ top: 0 });
