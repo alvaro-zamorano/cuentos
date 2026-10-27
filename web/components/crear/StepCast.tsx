@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, loadView, postJson, runJobs, viewErrorMessage, type JobOutcome } from "@/lib/bookClient";
+import { suggestEmail } from "@/lib/emailTypo";
 import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
@@ -376,6 +377,14 @@ function EmailGate({
   const [err, setErr] = useState<string | null>(null);
   // 26 oct: el buzón ya tiene sus cuentos gratis del periodo; no es un error, se le mandan por email
   const [limit, setLimit] = useState(false);
+  // auditoría 26 oct, menores: con una errata en el dominio, el enlace del libro le llega a otra persona. Sin segundo
+  // campo (Álvaro): al salir del campo se ofrece la corrección. Mientras se escribe no se dice nada, para no molestar
+  const emailId = useId();
+  const typo = suggestEmail(email);
+  const [typoShown, setTypoShown] = useState(false);
+  // el email que el padre deja como está después de ver el aviso: el segundo «Dibujar» ya no se para
+  const [typoKept, setTypoKept] = useState<string | null>(null);
+  const fixRef = useRef<HTMLButtonElement>(null);
   const name = ficha.hero.name.trim();
   const others = ficha.cast.map((c) => c.name.trim()).filter(Boolean);
   const who = others.length ? `a ${name} y a ${others.join(" y a ")}` : `a ${name}`;
@@ -386,6 +395,14 @@ function EmailGate({
       className="grid gap-6"
       onSubmit={async (e) => {
         e.preventDefault();
+        // quien pulsa «Dibujar» justo después de escribir no llega a ver el aviso (sale al salir del campo, en el mismo
+        // toque): se para una vez y el foco va a la corrección
+        if (typo && typoKept !== email) {
+          setTypoShown(true);
+          setTypoKept(email);
+          requestAnimationFrame(() => fixRef.current?.focus());
+          return;
+        }
         setBusy(true);
         setErr(null);
         try {
@@ -431,14 +448,50 @@ function EmailGate({
         </div>
       </div>
 
-      <label className="grid gap-1.5">
-        <span className="field-label text-ink">Tu email</span>
-        <input type="email" required value={email} onChange={(e) => {
+      <div className="grid gap-1.5">
+        <label htmlFor={emailId} className="field-label text-ink">
+          Tu email
+        </label>
+        <input
+          id={emailId}
+          type="email"
+          required
+          value={email}
+          onChange={(e) => {
             setEmail(e.target.value);
             setLimit(false);
-          }} placeholder="tu@email.com" autoComplete="email" className="input" data-testid="email" />
+            setTypoShown(false);
+          }}
+          onBlur={() => setTypoShown(true)}
+          placeholder="tu@email.com"
+          autoComplete="email"
+          className="input"
+          data-testid="email"
+        />
+        <div aria-live="polite">
+          {typo && typoShown && (
+            <div className="rise flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-butter/70 px-4 py-3 text-[15px] leading-snug text-ink" data-testid="email-typo">
+              <p className="m-0 min-w-0 flex-1">
+                ¿Quisiste decir <strong className="break-all">{typo}</strong>?
+              </p>
+              <button
+                ref={fixRef}
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => {
+                  setEmail(typo);
+                  setTypoShown(false);
+                }}
+                data-testid="email-typo-fix"
+              >
+                Sí, cambiarlo
+              </button>
+              {typoKept === email && <p className="m-0 w-full text-[13px] text-ink-soft">Si está bien así, vuelve a pulsar «Dibujar a {name}».</p>}
+            </div>
+          )}
+        </div>
         <span className="text-[13px] text-mute">Lo necesitamos para guardar el libro y mandarte el enlace con el que vuelves a él desde cualquier sitio.</span>
-      </label>
+      </div>
       <div className="grid gap-2.5">
         <label className={check}>
           <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--ink)]" data-testid="consent" />
