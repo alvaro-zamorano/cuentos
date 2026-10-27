@@ -1315,6 +1315,30 @@ export interface BookJobView {
   paid: boolean;
 }
 
+/**
+ * Ilustraciones del libro que están pintadas pero llegan sin URL, porque falló la firma de Storage (auditoría 26 oct, I8):
+ * el PDF saldría con ese hueco, y el de la imprenta ya no tiene vuelta atrás. Cuentan la portada, las 12 páginas y la
+ * página de personajes: un retrato sin URL (la maqueta pasaría a la hoja sin avisar) y la hoja, cuando es la que se usa
+ * (revisión 27 oct). Las del modo sin coste no tienen imagen y no cuentan, salvo con `placeholders` (un pedido real a la
+ * imprenta: saldrían en blanco).
+ */
+export function unsignedImages(view: Pick<BookView, "jobs" | "chosen">, { placeholders = false }: { placeholders?: boolean } = {}): string[] {
+  const byId = new Map(view.jobs.map((j) => [j.id, j]));
+  const gap = (id: string | null) => {
+    const j = id ? byId.get(id) : undefined;
+    return !!j && j.status === "done" && !j.url && (placeholders || !j.placeholder);
+  };
+  const out: string[] = [];
+  if (gap(view.chosen.cover)) out.push("portada");
+  const portraits = view.chosen.portraits;
+  for (const p of portraits) if (gap(p.job)) out.push(`retrato de ${p.name}`);
+  // sin todos los retratos, la página de personajes es la hoja
+  const allPortraits = portraits.length > 0 && portraits.every((p) => !!p.job && !!byId.get(p.job)?.url);
+  if (!allPortraits && gap(view.chosen.sheet)) out.push("hoja de personajes");
+  for (let n = 1; n <= 12; n++) if (gap(view.chosen.pages[n] ?? null)) out.push(`página ${n}`);
+  return out;
+}
+
 export interface BookView {
   ok: true;
   bookId: string;

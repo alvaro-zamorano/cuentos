@@ -1,5 +1,6 @@
 import "server-only";
 import { launch } from "./render";
+import { readyToPrint } from "./ready";
 import { PDF_PAGE, pdfBookHtml, type PrintBookInput } from "./printHtml";
 
 /**
@@ -24,9 +25,8 @@ export async function renderBook2Pdf(input: Book2PdfInput, timeoutMs = 90_000): 
   try {
     const page = await browser.newPage();
     await page.setContent(book2Html(input), { waitUntil: "load", timeout: timeoutMs });
-    await page.evaluate(() => (document as Document & { fonts: FontFaceSet }).fonts.ready);
-    // las ilustraciones (URLs firmadas) tienen que estar cargadas antes de imprimir
-    await page.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0), { timeout: Math.max(5_000, timeoutMs - (Date.now() - t0)) }).catch(() => undefined);
+    // las letras y las ilustraciones (URLs firmadas) tienen que estar antes de imprimir; si falta algo, falla (I8)
+    await readyToPrint(page, timeoutMs - (Date.now() - t0));
     const pdf = await page.pdf({ width: `${PDF_PAGE.widthMm}mm`, height: `${PDF_PAGE.heightMm}mm`, printBackground: true, preferCSSPageSize: true, timeout: Math.max(5_000, timeoutMs - (Date.now() - t0)) });
     console.log(`[pdf2] ${input.kind} ${pdf.length} bytes en ${Date.now() - t0} ms`);
     return pdf;
