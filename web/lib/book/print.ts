@@ -374,11 +374,24 @@ const KEEP_FOR_PRINT_MS = 30 * 24 * HOUR;
  * las ilustraciones terminadas), pedidos atascados en `sending` más de 15 minutos a `failed` (para reintentar), y
  * consulta de los pedidos abiertos por si un aviso de la imprenta se perdió.
  */
+/**
+ * Lo más que puede tardar un pedido del cron una vez empezado: una consulta a la imprenta (25 s, lib/print/gelato.ts) y
+ * dos emails (15 s cada uno, lib/mail.ts), con margen. El plazo interno del cron deja este hueco antes de que Vercel corte
+ * la ruta (revisión del 27 oct: con 12 s, un pedido empezado al final se cortaba a medias).
+ */
+export const PRINT_CRON_SLOWEST_MS = 60_000;
+
+/** Hasta cuándo puede empezar pedidos el cron, para una ruta de `maxDurationS` segundos que empezó en `t0`. */
+export function printCronDeadline(t0: number, maxDurationS: number): number {
+  return t0 + maxDurationS * 1000 - PRINT_CRON_SLOWEST_MS;
+}
+
 export async function printCron(store: GenStore, deps: PrintDeps, opts: { deadline?: number } = {}): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
   const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0, remaining: false };
   // plazo propio por debajo del de la ruta (menores de la auditoría 26 oct): con muchos pedidos abiertos, las consultas a
-  // la imprenta no caben en los 60 s del cron y Vercel lo cortaba a medias. Lo que no da tiempo, en la próxima pasada
+  // la imprenta no cabían y Vercel lo cortaba a medias. Un pedido solo se empieza antes del plazo, que deja el hueco del
+  // más lento (printCronDeadline). Lo que no da tiempo, en la próxima pasada
   const late = () => {
     if (opts.deadline !== undefined && Date.now() > opts.deadline) report.remaining = true;
     return report.remaining;
@@ -399,23 +412,6 @@ export async function printCron(store: GenStore, deps: PrintDeps, opts: { deadli
     if (!book?.expiresAt || Date.parse(book.expiresAt) - now.getTime() > 3 * 24 * HOUR) continue;
     await store.extendBook(book.id, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString());
     report.kept++;
-  }
-  for (const o of await store.listPrintOrders(["awaiting_approval"], 200, live)) {
-    if (late()) return report;
-    if (!mine(o)) continue;
-    const age = now.getTime() - Date.parse(o.createdAt);
-    const sinceReminder = o.remindedAt ? now.getTime() - Date.parse(o.remindedAt) : Infinity;
-    const due = (!o.remindedAt && age >= 48 * HOUR) || (!!o.remindedAt && age >= 7 * 24 * HOUR && sinceReminder >= 4 * 24 * HOUR && Date.parse(o.remindedAt) - Date.parse(o.createdAt) < 7 * 24 * HOUR);
-    if (!due) continue;
-    const book = await store.getBookById(o.bookId);
-    if (!book?.email) continue;
-    const view = await bookView(store, book.public_id);
-    if (!view.ok || !Object.values(view.chosen.pages).every(Boolean)) continue;
-    const r = await deps.mail.reminder(book.email, view.plan.title, deps.link(book.public_id)).catch(() => ({ sent: false }));
-    if (r.sent) {
-      await store.updateOrder(o.id, { remindedAt: now.toISOString() });
-      report.reminded++;
-    }
   }
   for (const o of await store.listPrintOrders(["sending"], 50, live)) {
     if (late()) return report;
@@ -450,6 +446,26 @@ export async function printCron(store: GenStore, deps: PrintDeps, opts: { deadli
       report.unstuck++;
     }
   }
+  // los recordatorios después de los envíos atascados: esperar un día más no le hace daño a nadie
+  for (const o of await store.listPrintOrders(["awaiting_approval"], 200, live)) {
+    if (late()) return report;
+    if (!mine(o)) continue;
+    const age = now.getTime() - Date.parse(o.createdAt);
+    const sinceReminder = o.remindedAt ? now.getTime() - Date.parse(o.remindedAt) : Infinity;
+    const due = (!o.remindedAt && age >= 48 * HOUR) || (!!o.remindedAt && age >= 7 * 24 * HOUR && sinceReminder >= 4 * 24 * HOUR && Date.parse(o.remindedAt) - Date.parse(o.createdAt) < 7 * 24 * HOUR);
+    if (!due) continue;
+    const book = await store.getBookById(o.bookId);
+    if (!book?.email) continue;
+    const view = await bookView(store, book.public_id);
+    if (!view.ok || !Object.values(view.chosen.pages).every(Boolean)) continue;
+    const r = await deps.mail.reminder(book.email, view.plan.title, deps.link(book.public_id)).catch(() => ({ sent: false }));
+    if (r.sent) {
+      await store.updateOrder(o.id, { remindedAt: now.toISOString() });
+      report.reminded++;
+    }
+  }
+  // y lo último, la consulta de los pedidos abiertos: una llamada a la imprenta por pedido; lo que no dé tiempo lo trae el
+  // aviso de Gelato o la próxima pasada
   for (const o of await store.listPrintOrders(["sent", "in_production", "shipped"], 100, live)) {
     if (late()) return report;
     if (!mine(o)) continue;

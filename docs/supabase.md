@@ -48,7 +48,7 @@ Los nombres de los archivos no son las versiones con que constan en la base (all
 
 ## Borrar a quien lo pide
 
-Desde el 27 oct (menores de la auditoría 26 oct), a mano: `node --import tsx scripts/borrar-email.mts <email>` en `web/`, con las claves de `.env.local`. Sin `--de-verdad` solo cuenta. Borra por buzón (mismas variantes que el límite de gratis): los libros sin pagar enteros, los pagados vaciados (el pedido se queda por la normativa fiscal), sus cuentos escritos (por la huella de la ficha de cada libro), sus leads y el email del gasto. Una tapa dura pagada sin imprimir no se toca sin `--aunque-no-se-haya-impreso`. Detalle en `web/lib/forget.ts`.
+Desde el 27 oct (menores de la auditoría 26 oct), a mano: `node --import tsx scripts/borrar-email.mts <email>` en `web/`, con las claves de `.env.local`. Sin `--de-verdad` solo cuenta. Borra por buzón (mismas variantes que el límite de gratis): los libros sin pagar enteros (también los pagados solo con la tarjeta de prueba: cuenta como pagado un cobro real, `cs_live_`), los pagados vaciados (el pedido se queda por la normativa fiscal), sus cuentos escritos (por la huella de la ficha de cada libro), sus leads y el email del gasto. Una tapa dura pagada de verdad sin imprimir no se toca sin `--aunque-no-se-haya-impreso`. Lee por páginas: no se deja filas aunque haya miles del mismo dominio. Detalle en `web/lib/forget.ts`.
 
 ## Borrado a 30 días (PRD §9)
 

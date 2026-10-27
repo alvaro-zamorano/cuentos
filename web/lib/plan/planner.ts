@@ -150,7 +150,7 @@ export function planFromClient(f: Ficha, v: unknown): Plan | null {
 /**
  * `deadline` (ms desde epoch): cuándo tiene que haber terminado todo, intentos incluidos. Menores de la auditoría 26 oct:
  * la ruta tiene 120 s y daba hasta 120 s a cada uno de los dos intentos; ahora cada intento espera lo que queda y, si no
- * da para otro, no se empieza.
+ * da para otro, no se empieza: se devuelve la página que ya hay si solo tiene avisos leves, o un 504 si no hay ninguna.
  */
 export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknown, instructionIn: unknown, llm: Llm = selectLlm("plan"), opts: { deadline?: number } = {}): Promise<PageOk | PlanFail> {
   const f = normalizeFicha(fichaIn);
@@ -178,9 +178,13 @@ export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknow
   let model = llm.model;
   const deadline = opts.deadline ?? Number.POSITIVE_INFINITY;
   for (let attempt = 0; attempt < 2; attempt++) {
-    // un intento con menos de 20 s no suele terminar: mejor responder ya que esperar a que Vercel corte la ruta
+    // un intento con menos de 20 s no suele terminar: mejor responder ya que esperar a que Vercel corte la ruta. Si ya
+    // hay una página con avisos leves, vale esa (abajo); sin ninguna, se pide que lo intente otra vez
     const left = deadline - Date.now() - REWRITE_MARGIN_MS;
-    if (left < MIN_ATTEMPT_MS) return { ok: false, status: 504, error: "provider", message: "No hemos podido cambiar la página ahora mismo. Inténtalo de nuevo.", costCents: llmCostCents(model, usage) };
+    if (left < MIN_ATTEMPT_MS) {
+      if (lastPage) break;
+      return { ok: false, status: 504, error: "provider", message: "No hemos podido cambiar la página ahora mismo. Inténtalo de nuevo.", costCents: llmCostCents(model, usage) };
+    }
     let raw: string;
     try {
       const res = await llm.complete({ system: rewriteSystem(), messages, maxTokens: MAX_TOKENS_PAGE, temperature: 0.8, ...(Number.isFinite(left) ? { timeoutMs: left } : {}) });

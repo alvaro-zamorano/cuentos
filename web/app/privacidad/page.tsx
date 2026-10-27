@@ -40,9 +40,9 @@ export default function Privacidad() {
         </li>
         <li>
           <strong>Si aceptas la medición</strong>: qué páginas ves (su dirección, sin el enlace de tu libro, y su título), desde qué página
-          llegas, qué pasos das, el navegador, el dispositivo, el idioma, el tamaño de la pantalla, la zona horaria, la dirección IP (de ella
-          se deduce el país y la ciudad aproximada) y un identificador al azar guardado en una cookie. Nunca tu nombre, tu email ni lo que
-          escribes.
+          llegas, cuánto tiempo pasas en cada una y hasta dónde bajas, qué pasos das, el navegador, el dispositivo, el idioma, el tamaño de la
+          pantalla, la zona horaria, la dirección IP (de ella se deduce el país y la ciudad aproximada) y un identificador al azar guardado en
+          una cookie. Nunca tu nombre, tu email ni lo que escribes.
         </li>
       </ul>
       <p>
@@ -89,10 +89,16 @@ export default function Privacidad() {
         <li>El pedido (email, importe y fecha), el plazo que exige la normativa fiscal y mercantil.</li>
         <li>Tus mensajes, el tiempo necesario para atenderte.</li>
         <li>
-          Los proveedores que nos ayudan guardan además sus propias copias, durante el plazo que fija cada uno: la entidad de pago, los datos
-          del cobro; el servicio de email, los emails que te mandamos; la imprenta, el libro impreso y la dirección de entrega. Puedes
-          pedirnos los plazos de cada uno.
+          Los proveedores de inteligencia artificial borran lo que les mandamos para escribir e ilustrar el cuento: el que lo escribe, a los
+          30 días; el que lo ilustra, a los 55. Hasta entonces solo lo guardan para detectar abusos y, si detectan uno, pueden guardarlo más
+          tiempo para investigarlo.
         </li>
+        <li>
+          Los demás proveedores que trabajan por encargo nuestro (punto 5) solo guardan los datos para darnos su servicio, como dice su
+          contrato con nosotros. La entidad de pago y el transportista, que los tratan con su propia responsabilidad, los guardan el tiempo
+          que les exige su normativa.
+        </li>
+        <li>Lo que borramos puede seguir unos días en las copias de seguridad de la base de datos, hasta que caducan. No se usan para nada más.</li>
         <li>
           Los datos de medición, un año. Las cookies de medición son propias de este sitio, duran como mucho un año y solo se instalan si
           aceptas.

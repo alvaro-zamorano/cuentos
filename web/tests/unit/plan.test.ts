@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { fichaHash, normalizeFicha, describeLookEn } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -191,4 +191,32 @@ test("rewritePage con plazo: cada intento espera solo lo que queda de la ruta, y
   const free = fakeLlm(["{}"]);
   await rewritePage(f, plan, 5, "que llueva", free);
   assert.equal(free.calls[0].timeoutMs, undefined);
+});
+
+test("rewritePage con plazo: sin tiempo para corregir una página con avisos leves, devuelve esa página y no un 504", async () => {
+  const f = normalizeFicha(ficha);
+  const plan = mockPlan(f);
+  // texto corto: aviso leve (palabras), no grave
+  const short = { ...plan.pages[4], text: "Vera miró la cometa." };
+  let now = 1_000_000;
+  const clock = mock.method(Date, "now", () => now);
+  try {
+    const llm = fakeLlm([JSON.stringify(short)]);
+    const slow: Llm = { ...llm, complete: async (req) => ((now += 15_000), llm.complete(req)) };
+    // 38 s de plazo: da para el primer intento (33 s con el margen); el modelo tarda 15 s y para el segundo quedarían 18
+    const r = await rewritePage(f, plan, 5, "que mire la cometa", slow, { deadline: now + 38_000 });
+    assert.equal(llm.calls.length, 1, "no se empieza un segundo intento sin tiempo");
+    assert.ok(r.ok, r.ok ? "" : r.message);
+    if (r.ok) {
+      assert.equal(r.page.text, "Vera miró la cometa.");
+      assert.ok(r.warnings.length > 0, "con sus avisos");
+    }
+    // con un fallo grave (sin escena) y sin tiempo, no se devuelve
+    const bad = fakeLlm([JSON.stringify({ ...short, scene: "" })]);
+    const slowBad: Llm = { ...bad, complete: async (req) => ((now += 15_000), bad.complete(req)) };
+    const r2 = await rewritePage(f, plan, 5, "que mire la cometa", slowBad, { deadline: now + 38_000 });
+    assert.equal(r2.ok, false);
+  } finally {
+    clock.mock.restore();
+  }
 });

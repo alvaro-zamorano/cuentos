@@ -148,6 +148,14 @@ export function planCacheKey(f: Ficha): string {
   return hashString(JSON.stringify(["plan-cache-v1", f]));
 }
 
+/**
+ * La clave con la que se guarda un cuento escrito en `cuentos_stories.input_hash` (app/api/plan/route.ts). La usa también
+ * el borrado por email (lib/forget.ts) para encontrar los cuentos de un libro: si cambia, cambia para los dos.
+ */
+export function storyCacheKey(f: Ficha): string {
+  return `plan:${planCacheKey(f)}`;
+}
+
 /** Huella de lo que cambia la hoja de reparto: aspecto del protagonista, ropa habitual, reparto y estilo. */
 export function castHash(f: Ficha): string {
   return hashString(JSON.stringify(["cast-v1", f.styleId, f.hero.name, f.hero.age, f.hero.gender, f.hero.look, f.hero.outfit ?? null, f.cast]));

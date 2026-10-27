@@ -5,10 +5,12 @@
  * Por el email (y sus variantes del mismo buzón: mayúsculas, `+algo`, puntos de Gmail, googlemail.com):
  * - Sus libros sin pagar: fuera las imágenes del bucket y la fila (trabajos en cascada; las notas de «Otra versión», sin
  *   nota ni libro).
- * - Sus libros pagados: se vacían como en el borrado a 30 días (sin ficha, plan, trabajos, imágenes ni dirección). El
- *   pedido se queda, con el email, el importe y la fecha: lo pide la normativa fiscal y lo dice /privacidad §4.
- *   Una tapa dura pagada que aún no ha salido hacia la imprenta no se toca sin `--aunque-no-se-haya-impreso`: sin sus
- *   imágenes ya no se puede imprimir (hay que hablarlo con el cliente y devolverla).
+ * - Sus libros pagados de verdad (un cobro real, `cs_live_`): se vacían como en el borrado a 30 días (sin ficha, plan,
+ *   trabajos, imágenes ni dirección). El pedido se queda, con el email, el importe y la fecha: lo pide la normativa fiscal
+ *   y lo dice /privacidad §4. Un libro pagado solo con la tarjeta de prueba (la preview comparte base) se borra entero,
+ *   con sus pedidos de prueba: no hay cobro que guardar.
+ *   Una tapa dura pagada de verdad que aún no ha salido hacia la imprenta no se toca sin `--aunque-no-se-haya-impreso`:
+ *   sin sus imágenes ya no se puede imprimir (hay que hablarlo con el cliente y devolverla).
  * - Sus cuentos escritos (`cuentos_stories`): no guardan el email ni el libro; se encuentran por la huella de la ficha de
  *   cada libro (la misma clave de la caché de /api/plan). Las versiones anteriores de un cuento que se cambió después ya
  *   no se pueden encontrar así; se borran solas a los 30 días.
@@ -19,8 +21,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/types";
 import { normalizeEmail } from "./emailNorm";
-import { planCacheKey, normalizeFicha } from "./plan/ficha";
+import { normalizeFicha, storyCacheKey } from "./plan/ficha";
 import { ANON_LEAD, supabasePurgeDb, type PurgeDb } from "./purge";
+import { isLiveSession } from "./stripe";
 
 export interface ForgetBook {
   id: string;
@@ -29,6 +32,10 @@ export interface ForgetBook {
   ficha: unknown | null;
 }
 
+/**
+ * `hasPaidOrder` y `printPending` aquí solo cuentan cobros reales (`cs_live_`), estés donde estés: el script se lanza en
+ * local, donde el borrado a 30 días cuenta también los de prueba.
+ */
 export interface ForgetDb extends Pick<PurgeDb, "bookFiles" | "removeFiles" | "hasPaidOrder" | "printPending" | "deleteBook" | "scrubPaidBook"> {
   /** Los libros cuyo email es de ese buzón (`email_norm`). */
   booksOf(emailNorm: string): Promise<ForgetBook[]>;
@@ -54,10 +61,10 @@ export interface ForgetReport {
   spend: number;
 }
 
-/** La clave de caché de /api/plan para la ficha de un libro (app/api/plan/route.ts). */
+/** La clave de caché de /api/plan para la ficha de un libro (la misma función que usa app/api/plan/route.ts). */
 export function storyKey(ficha: unknown): string | null {
   if (!ficha || typeof ficha !== "object") return null;
-  return `plan:${planCacheKey(normalizeFicha(ficha))}`;
+  return storyCacheKey(normalizeFicha(ficha));
 }
 
 export async function forgetEmail(db: ForgetDb, email: string, { dryRun = true, evenIfNotPrinted = false }: { dryRun?: boolean; evenIfNotPrinted?: boolean } = {}): Promise<ForgetReport> {
@@ -97,8 +104,25 @@ function domainsOf(norm: string): string[] {
   return domain === "gmail.com" ? ["gmail.com", "googlemail.com"] : [domain];
 }
 
-export function supabaseForgetDb(db: SupabaseClient<Database>, env: Record<string, string | undefined> = process.env): ForgetDb {
-  const purge = supabasePurgeDb(db, env);
+/** Filas por consulta al leer por páginas (PostgREST corta en 1000 por defecto). */
+export const FORGET_PAGE = 1000;
+
+type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
+
+/** Lee todas las filas, página a página (`fetch(desde, hasta)`, ambos incluidos), hasta una que venga incompleta. */
+async function allPages<T>(what: string, fetch: (from: number, to: number) => Page<T>): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += FORGET_PAGE) {
+    const { data, error } = await fetch(from, from + FORGET_PAGE - 1);
+    if (error) throw new Error(`${what}: ${error.message}`);
+    out.push(...(data ?? []));
+    if ((data ?? []).length < FORGET_PAGE) return out;
+  }
+}
+
+export function supabaseForgetDb(db: SupabaseClient<Database>): ForgetDb {
+  // como en producción: printPending solo cuenta cobros reales
+  const purge = supabasePurgeDb(db, { VERCEL_ENV: "production" });
   const must = (error: { message: string } | null, what: string) => {
     if (error) throw new Error(`${what}: ${error.message}`);
   };
@@ -106,23 +130,25 @@ export function supabaseForgetDb(db: SupabaseClient<Database>, env: Record<strin
   const sameMailbox = async (table: "cuentos_leads" | "cuentos_spend", column: "email" | "lead_id", norm: string): Promise<string[]> => {
     const out: string[] = [];
     for (const d of domainsOf(norm)) {
-      const { data, error } = await db.from(table).select(column).ilike(column, `%@${d}`).limit(5000);
-      must(error, table);
-      for (const r of (data ?? []) as unknown as Record<string, string>[]) if (normalizeEmail(r[column]) === norm) out.push(r[column]);
+      const rows = await allPages(table, (from, to) => db.from(table).select(column).ilike(column, `%@${d}`).order("id").range(from, to));
+      for (const r of rows as unknown as Record<string, string>[]) if (normalizeEmail(r[column]) === norm) out.push(r[column]);
     }
     return [...new Set(out)];
   };
   return {
     bookFiles: purge.bookFiles,
     removeFiles: purge.removeFiles,
-    hasPaidOrder: purge.hasPaidOrder,
     printPending: purge.printPending,
     deleteBook: purge.deleteBook,
     scrubPaidBook: purge.scrubPaidBook,
+    async hasPaidOrder(bookId) {
+      const { data, error } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
+      must(error, "orders");
+      return (data ?? []).some((o) => isLiveSession(o.stripe_session_id));
+    },
     async booksOf(norm) {
-      const { data, error } = await db.from("cuentos_books").select("id, public_id, ficha:draft->ficha").eq("email_norm", norm).limit(500);
-      must(error, "books");
-      return ((data ?? []) as unknown as { id: string; public_id: string; ficha: unknown }[]).map((b) => ({ id: b.id, publicId: b.public_id, ficha: b.ficha ?? null }));
+      const rows = await allPages("books", (from, to) => db.from("cuentos_books").select("id, public_id, ficha:draft->ficha").eq("email_norm", norm).order("id").range(from, to));
+      return (rows as unknown as { id: string; public_id: string; ficha: unknown }[]).map((b) => ({ id: b.id, publicId: b.public_id, ficha: b.ficha ?? null }));
     },
     async deleteStories(keys, dryRun) {
       if (keys.length === 0) return 0;
@@ -137,7 +163,12 @@ export function supabaseForgetDb(db: SupabaseClient<Database>, env: Record<strin
     },
     async deleteLeads(norm, dryRun) {
       const emails = await sameMailbox("cuentos_leads", "email", norm);
-      if (dryRun || emails.length === 0) return emails.length;
+      if (emails.length === 0) return 0;
+      if (dryRun) {
+        const { count, error } = await db.from("cuentos_leads").select("id", { count: "exact", head: true }).in("email", emails);
+        must(error, "leads.count");
+        return count ?? 0;
+      }
       const { data, error } = await db.from("cuentos_leads").delete().in("email", emails).select("id");
       must(error, "leads.delete");
       return data?.length ?? 0;
