@@ -139,6 +139,15 @@ export function fichaHash(f: Ficha): string {
   return hashString(JSON.stringify(["plan-v1", rest, who, cast.map(({ look: _l, ...c }) => (void _l, c))]));
 }
 
+/**
+ * Llave de la caché de cuentos escritos (auditoría 26 oct, I25): todo lo que va al prompt, aspecto incluido. Con
+ * `fichaHash`, que deja fuera el aspecto, dos familias con el mismo nombre, edad e idea compartían cuento, y el de una
+ * podía nombrar el audífono o el peto del cole de la otra. `fichaHash` sigue igual: dice cuándo hay que reescribir.
+ */
+export function planCacheKey(f: Ficha): string {
+  return hashString(JSON.stringify(["plan-cache-v1", f]));
+}
+
 /** Huella de lo que cambia la hoja de reparto: aspecto del protagonista, ropa habitual, reparto y estilo. */
 export function castHash(f: Ficha): string {
   return hashString(JSON.stringify(["cast-v1", f.styleId, f.hero.name, f.hero.age, f.hero.gender, f.hero.look, f.hero.outfit ?? null, f.cast]));

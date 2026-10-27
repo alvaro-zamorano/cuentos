@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // flujo antiguo (16 oct, Álvaro): todo a /crear con 307, reversible; el código se queda. Su API (/api/pdf, /api/lead,
   // /api/books, /api/generate/sample…) responde 404 en el proxy también con la app abierta (lib/appOpen.ts, 26 oct)
+  // desde el libro y el seguimiento, a otras páginas y webs solo va el dominio: la URL lleva la llave del libro o del
+  // pedido (auditoría 26 oct, I22)
+  headers() {
+    const strict = [{ key: "Referrer-Policy", value: "strict-origin" }];
+    return Promise.resolve([
+      { source: "/crear", headers: strict },
+      { source: "/seguimiento/:path*", headers: strict },
+    ]);
+  },
   redirects() {
     return ["/clasico", "/ilustrado", "/libro", "/gratis"].map((source) => ({ source, destination: "/crear", permanent: false }));
   },
