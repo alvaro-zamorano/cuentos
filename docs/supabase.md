@@ -4,7 +4,7 @@ Proyecto compartido con otros productos de Álvaro (`https://bcicjjkgjgajxbrwmey
 
 ## Migraciones
 
-Todas aplicadas en la base real (vía MCP `apply_migration`, con el visto bueno de Álvaro). Aplicadas en orden sobre una base vacía, la reconstruyen igual: `web/tests/unit/migraciones.test.ts` las pasa por un Postgres en memoria (PGlite) y compara columnas, restricciones, índices, triggers y RLS con `web/tests/unit/fixtures/esquema-cuentos.json`, leído de la base real el 27 oct. Una migración nueva se añade aquí con el número siguiente, se aplica en Supabase y se actualizan ese archivo y `web/lib/supabase/types.ts`. Hasta el 27 oct, cuatro vivían sueltas en `docs/sql/` y `cuentos_stories` no estaba en el repo (auditoría 26 oct, I14).
+Aplicadas en la base real (vía MCP `apply_migration`, con el visto bueno de Álvaro) todas menos la 0013, que está por aplicar. Aplicadas en orden sobre una base vacía, la reconstruyen igual: `web/tests/unit/migraciones.test.ts` las pasa por un Postgres en memoria (PGlite) y compara columnas, restricciones, índices, triggers y RLS con `web/tests/unit/fixtures/esquema-cuentos.json`, leído de la base real el 27 oct. Una migración nueva se añade aquí con el número siguiente, se aplica en Supabase y se actualizan ese archivo y `web/lib/supabase/types.ts`. Hasta el 27 oct, cuatro vivían sueltas en `docs/sql/` y `cuentos_stories` no estaba en el repo (auditoría 26 oct, I14).
 
 | Archivo | Nombre en Supabase | Aplicada | Qué hace |
 |---|---|---|---|
@@ -20,24 +20,28 @@ Todas aplicadas en la base real (vía MCP `apply_migration`, con el visto bueno 
 | `0010_cuentos_10_jobs_b3.sql` | `cuentos_generation_jobs_b3` | 11 oct | Trabajos `sample`, `page` y `cover`; estado `failed`; `paid`, `storage_path`, `variant` y `job_key` único por libro |
 | `0011_cuentos_11_jobs_portrait.sql` | `cuentos_generation_jobs_portrait` | 25 oct | Trabajos `portrait` |
 | `0012_cuentos_12_variant_hasta_4.sql` | `cuentos_8_variant_hasta_4` | 25 oct | Hasta 4 versiones por página |
+| `0013_cuentos_13_email_norm.sql` | — | **Pendiente (Álvaro)** | Límite de cuentos gratis (I7): `cuentos_books.email_norm` (generada, con índice), `free_claimed_at`, la tabla `cuentos_locks` y la función `cuentos_email_norm` |
+
+**La 0013 se aplica antes de desplegar el código que la usa** (también la preview: la base es la misma). Solo añade, así que el código de antes no la nota. Al aplicarla, volver a leer el esquema de la base real y comprobar que coincide con `esquema-cuentos.json`, que ya la incluye.
 
 Las 0008 a 0010 se aplicaron antes que la 0005 (el orden de los números es el del repo, no el de la base). No dependen de ella, así que en una base nueva el resultado es el mismo.
 
 ## Tablas
 
 - `cuentos_leads` — email, marketing (consentimiento LSSI separado), edition, source. Único por `(email, edition)`.
-- `cuentos_books` — `public_id` corto para `/crear?b=<public_id>`, `draft` jsonb, edition, status, email, `expires_at` (30 días; se alarga al pagar). `updated_at` lo pone un trigger: el guardado condicional del borrador se apoya en él.
+- `cuentos_books` — `public_id` corto para `/crear?b=<public_id>`, `draft` jsonb, edition, status, email, `expires_at` (30 días; se alarga al pagar). `updated_at` lo pone un trigger: el guardado condicional del borrador se apoya en él. Desde la 0013: `email_norm` (el email como lo cuenta el límite de cuentos gratis; columna generada con `cuentos_email_norm(email)`, que tiene que dar lo mismo que `web/lib/emailNorm.ts`) y `free_claimed_at` (cuándo pasó la puerta de los gratis).
 - `cuentos_orders` — book_id → books (cascade), edition, amount_cents, `stripe_session_id` único, status (`pending|paid|refunded|cancelled`), y lo de la imprenta: shipping, `print_*` y `print_info`.
 - `cuentos_generation_jobs` — book_id → books (cascade), kind (`sheet|scene|sample|page|cover|portrait`), page_n, prompt, status (`pending|running|done|failed`, más `error|skipped` del worker antiguo), attempts, cost_cents, `paid`, `storage_path`, `variant` (1 a 4) y `job_key` (único por libro).
 - `cuentos_assets` — catálogo de piezas. Lectura pública (anon/authenticated).
 - `cuentos_stories` — cuentos escritos por el planificador; el borrado diario quita las filas de más de 30 días.
 - `cuentos_spend` — gasto de generación (topes en `web/lib/generation/budget.ts`).
 - `cuentos_feedback` — motivos de «Otra versión» y avisos de «Sigue sin estar bien»; a los 30 días se vacía la nota.
+- `cuentos_locks` (0013) — bloqueos cortos con caducidad: la puerta de los cuentos gratis, por buzón. La clave es un hash del email normalizado. La fila se borra al soltar el bloqueo; si una función muere con él, caduca a los 20 s y se reutiliza.
 
 ## Acceso
 
 - La app accede solo desde rutas API con `SUPABASE_SERVICE_ROLE_KEY` (`web/lib/supabase/server.ts`, marcado `server-only`). El worker usa `web/lib/supabase/admin.ts`.
-- Sin políticas para anon/authenticated salvo `cuentos_assets` (select). El advisor de seguridad lo marca como INFO "RLS enabled no policy" en 4 tablas: es intencionado.
+- Sin políticas para anon/authenticated salvo `cuentos_assets` (select). El advisor de seguridad lo marca como INFO "RLS enabled no policy" en las tablas sin políticas: es intencionado. La función `cuentos_email_norm` solo la puede ejecutar el service role.
 - Tipos: `web/lib/supabase/types.ts` (generados con `generate_typescript_types` y filtrados a `cuentos_*`). Regenerar al cambiar el esquema.
 
 ## Borrado a 30 días (PRD §9)

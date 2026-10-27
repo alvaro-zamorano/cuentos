@@ -3,9 +3,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
-import { memoryStore, newMemoryState } from "../../lib/generation/store";
+import { createClient } from "@supabase/supabase-js";
+import { memoryStore, newMemoryState, supabaseStore } from "../../lib/generation/store";
+import type { Database } from "../../lib/supabase/types";
 import { payDryRun, reviseSheet, startBook } from "../../lib/book/service";
-import { FREE_BOOKS, freeUse, normalizeEmail } from "../../lib/book/freeLimit";
+import { CLAIM_TTL_MS, FREE_BOOKS, freeLockKey, freeUse, normalizeEmail, passFreeGate } from "../../lib/book/freeLimit";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
@@ -30,7 +32,7 @@ test("3 cuentos con dibujos por buzón; el cuarto no dibuja y devuelve los que t
     lefts.push(r.freeLeft);
   }
   assert.deepEqual(lefts, [2, 1, 0], "el último se avisa");
-  const allJobs = async () => (await Promise.all((await store.listBooksByEmailDomain("gmail.com", "2000-01-01")).map((b) => store.listJobs(b.id)))).flat().length;
+  const allJobs = async () => (await Promise.all((await store.listFreeBooks("vera@gmail.com", "2000-01-01")).map((b) => store.listJobs(b.id)))).flat().length;
   const before = await allJobs();
   const r = await start(store, "VERA@gmail.com");
   assert.ok(!r.ok && r.error === "free_limit", JSON.stringify(r));
@@ -73,4 +75,129 @@ test("pasados 30 días, los cuentos viejos ya no cuentan", async () => {
   const now = Date.now();
   assert.equal((await freeUse(store, "ana@example.com", { now })).used, 3);
   assert.equal((await freeUse(store, "ana@example.com", { now: now + 31 * 24 * 3600 * 1000 })).used, 0);
+});
+
+test("I7: seis peticiones a la vez con el mismo buzón no pasan las seis", async () => {
+  const store = memoryStore(newMemoryState());
+  const emails = ["vera@gmail.com", "v.era@gmail.com", "vera+1@gmail.com", "VERA@gmail.com", "vera+2@googlemail.com", "ve.ra@gmail.com"];
+  const rs = await Promise.all(emails.map((e) => start(store, e)));
+  const ok = rs.filter((r) => r.ok);
+  assert.equal(ok.length, FREE_BOOKS, JSON.stringify(rs.map((r) => (r.ok ? "ok" : r.error))));
+  assert.deepEqual(rs.filter((r) => !r.ok).map((r) => (r as { error: string }).error), ["free_limit", "free_limit", "free_limit"]);
+  assert.deepEqual(ok.map((r) => (r.ok ? r.freeLeft : -1)).sort(), [0, 1, 2], "cada uno ve los anteriores");
+  // y el bloqueo queda suelto
+  assert.ok(await store.lock(freeLockKey("vera@gmail.com"), 1000));
+});
+
+test("I7: un libro que acaba de pasar la puerta cuenta aunque aún no tenga hoja; si no llega a tenerla, deja de contar", async () => {
+  const store = memoryStore(newMemoryState());
+  const books = [];
+  for (let i = 0; i < 3; i++) books.push(await store.saveBook({ email: "ana@example.com", draft: { v: 2, plan: { title: `Cuento ${i}` } }, edition: "illustrated" }));
+  const now = Date.now();
+  for (const b of books) assert.ok((await passFreeGate(store, "ana@example.com", b.id, { now: () => now })).ok);
+  const use = await freeUse(store, "ana@example.com", { now });
+  assert.equal(use.used, 3, "los tres están empezando");
+  assert.deepEqual(use.books.map((b) => b.title).sort(), ["Cuento 0", "Cuento 1", "Cuento 2"], "con el título, sin leer el borrador entero");
+  const fourth = await store.saveBook({ email: "ana@example.com", draft: { v: 2 }, edition: "illustrated" });
+  assert.equal(((await passFreeGate(store, "ana@example.com", fourth.id, { now: () => now })) as { ok: boolean }).ok, false);
+  // pasado el plazo sin personajes (falló antes de pintar), ya no cuentan
+  const later = now + CLAIM_TTL_MS + 1000;
+  assert.equal((await freeUse(store, "ana@example.com", { now: later })).used, 0);
+  assert.ok((await passFreeGate(store, "ana@example.com", fourth.id, { now: () => later })).ok);
+});
+
+test("I7: «Reintentar» de un cuento con la hoja fallida cuenta mientras vuelve a pintar; si falla otra vez, no", async () => {
+  const store = memoryStore(newMemoryState());
+  const r = await start(store, "ana@example.com");
+  assert.ok(r.ok);
+  const sheet = (await store.listJobs(r.bookId)).find((j) => j.kind === "sheet")!;
+  await store.updateJob(sheet.id, { status: "failed", error: "gemini 503" });
+  assert.equal((await freeUse(store, "ana@example.com")).used, 0, "con la hoja fallida no cuenta (B8)");
+  // el reintento pasa la puerta: mientras se reabre la hoja, otro cuento a la vez ya lo ve
+  assert.ok((await passFreeGate(store, "ana@example.com", r.bookId)).ok);
+  assert.equal((await freeUse(store, "ana@example.com")).used, 1);
+  // vuelve a fallar después de pasar la puerta: deja de contar
+  await store.updateJob(sheet.id, { status: "failed", error: "gemini 503" });
+  assert.equal((await freeUse(store, "ana@example.com")).used, 0);
+});
+
+test("I7: con el bloqueo del buzón cogido, la puerta espera y, si no se suelta, pide esperar sin dibujar", async () => {
+  const store = memoryStore(newMemoryState());
+  const book = await store.saveBook({ email: "ana@example.com", draft: { v: 2 }, edition: "illustrated" });
+  const holder = await store.lock(freeLockKey("Ana@Example.com"), 60_000);
+  assert.ok(holder, "la clave es la del buzón normalizado");
+  assert.deepEqual(await passFreeGate(store, "ana@example.com", book.id, { waitMs: 300 }), { ok: false, busy: true });
+  // si lo suelta mientras espera, entra
+  setTimeout(() => void store.unlock(freeLockKey("ana@example.com"), holder!), 150);
+  assert.ok((await passFreeGate(store, "ana@example.com", book.id, { waitMs: 2000 })).ok);
+  // desde la ruta: 409 con un mensaje para el padre, y sin ninguna imagen encolada
+  await store.lock(freeLockKey("ana@example.com"), 60_000);
+  const t0 = Date.now();
+  const r = await start(store, "ana@example.com");
+  assert.ok(!r.ok && r.status === 409 && r.error === "busy" && /unos segundos/.test(r.reason ?? ""), JSON.stringify(r));
+  assert.ok(Date.now() - t0 < 12_000);
+  assert.equal((await store.listFreeBooks("ana@example.com", "2000-01-01")).flatMap((b) => b.sheets).length, 0);
+});
+
+test("I7: un bloqueo que nadie suelta caduca y lo coge otro; soltar solo vale con la marca propia", async () => {
+  const store = memoryStore(newMemoryState());
+  const a = await store.lock("k", 50);
+  assert.ok(a);
+  assert.equal(await store.lock("k", 50), null);
+  await store.unlock("k", "otra-marca");
+  assert.equal(await store.lock("k", 50), null, "una marca ajena no lo suelta");
+  await new Promise((r) => setTimeout(r, 70));
+  const b = await store.lock("k", 50);
+  assert.ok(b && b !== a, "caducado, lo coge otro");
+});
+
+test("I7: en Supabase, el límite se cuenta con tres consultas pequeñas por email_norm y el bloqueo usa cuentos_locks", async () => {
+  const calls: { method: string; url: URL; prefer: string; body: unknown }[] = [];
+  const reply = (url: URL, method: string): unknown => {
+    const table = url.pathname.split("/").pop();
+    if (table === "cuentos_books") return [{ id: "b1", public_id: "abcd2345ef", created_at: "2026-10-27T10:00:00Z", free_claimed_at: null, title: "El dragón" }];
+    if (table === "cuentos_orders") return [];
+    if (table === "cuentos_generation_jobs") return [{ book_id: "b1", status: "error", updated_at: "2026-10-27T10:01:00Z" }];
+    if (table === "cuentos_locks" && method === "POST") return [];
+    if (table === "cuentos_locks" && method === "PATCH") return [{ holder: JSON.parse(String(calls[calls.length - 1].body)).holder }];
+    return [];
+  };
+  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    const headers = new Headers(init?.headers);
+    calls.push({ method, url, prefer: headers.get("Prefer") ?? "", body: init?.body ?? null });
+    return new Response(JSON.stringify(reply(url, method)), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const db = createClient<Database>("https://x.supabase.co", "k", { global: { fetch }, auth: { persistSession: false } });
+  const store = supabaseStore(db);
+
+  const books = await store.listFreeBooks("vera@gmail.com", "2026-09-27T00:00:00Z");
+  assert.deepEqual(books, [{ id: "b1", publicId: "abcd2345ef", createdAt: "2026-10-27T10:00:00Z", freeClaimedAt: null, title: "El dragón", paid: [], sheets: [{ status: "failed", updatedAt: "2026-10-27T10:01:00Z" }] }]);
+  assert.equal(calls.length, 3);
+  const [q] = calls;
+  assert.equal(q.url.searchParams.get("select"), "id,public_id,created_at,free_claimed_at,title:draft->plan->>title", "del borrador, solo el título");
+  assert.equal(q.url.searchParams.get("email_norm"), "eq.vera@gmail.com");
+  assert.equal(q.url.searchParams.get("created_at"), "gte.2026-09-27T00:00:00Z");
+  assert.equal(q.url.searchParams.get("limit"), "100");
+  assert.equal(calls[1].url.searchParams.get("book_id"), "in.(b1)");
+  assert.equal(calls[1].url.searchParams.get("status"), "eq.paid");
+  assert.equal(calls[2].url.searchParams.get("kind"), "eq.sheet");
+
+  calls.length = 0;
+  // la fila ya existe (el insert no devuelve nada) y estaba caducada: se la queda con un update condicionado
+  const holder = await store.lock("free:abc", 20_000);
+  assert.ok(holder);
+  const [ins, upd] = calls;
+  assert.equal(ins.method, "POST");
+  assert.equal(ins.url.searchParams.get("on_conflict"), "key");
+  assert.match(ins.prefer, /resolution=ignore-duplicates/);
+  assert.match(ins.prefer, /return=representation/);
+  assert.equal(upd.method, "PATCH");
+  assert.equal(upd.url.searchParams.get("key"), "eq.free:abc");
+  assert.match(upd.url.searchParams.get("expires_at") ?? "", /^lt\./);
+  calls.length = 0;
+  await store.unlock("free:abc", holder!);
+  assert.equal(calls[0].method, "DELETE");
+  assert.equal(calls[0].url.searchParams.get("holder"), `eq.${holder}`);
 });

@@ -1,5 +1,5 @@
 {
- "_nota": "Esquema de las tablas cuentos_* en la base real (Supabase, PostgreSQL 17.6), leído con consultas de solo lectura el 27 oct 2026. tests/unit/migraciones.test.ts comprueba que las migraciones del repo lo reconstruyen igual. Al cambiar el esquema, actualizar las dos cosas.",
+ "_nota": "Esquema de las tablas cuentos_* en la base real (Supabase, PostgreSQL 17.6), leído con consultas de solo lectura el 27 oct 2026, más lo que añade la migración 0013 (I7: email_norm, free_claimed_at, cuentos_locks y cuentos_email_norm), que aún no está aplicada: al aplicarla, volver a leer la base real y comprobar que sale igual. tests/unit/migraciones.test.ts comprueba que las migraciones del repo lo reconstruyen igual. Al cambiar el esquema, actualizar las dos cosas.",
  "columns": [
   "cuentos_assets.category text",
   "cuentos_assets.created_at timestamp with time zone default now() not null",
@@ -12,7 +12,9 @@
   "cuentos_books.draft jsonb not null",
   "cuentos_books.edition text default 'classic'::text not null",
   "cuentos_books.email text",
+  "cuentos_books.email_norm text generated cuentos_email_norm(email)",
   "cuentos_books.expires_at timestamp with time zone default (now() + '30 days'::interval) not null",
+  "cuentos_books.free_claimed_at timestamp with time zone",
   "cuentos_books.id uuid default gen_random_uuid() not null",
   "cuentos_books.public_id text not null",
   "cuentos_books.status text default 'draft'::text not null",
@@ -52,6 +54,9 @@
   "cuentos_leads.id bigint not null",
   "cuentos_leads.marketing boolean default false not null",
   "cuentos_leads.source text default 'cuentos-web'::text not null",
+  "cuentos_locks.expires_at timestamp with time zone not null",
+  "cuentos_locks.holder text not null",
+  "cuentos_locks.key text not null",
   "cuentos_orders.amount_cents integer not null",
   "cuentos_orders.book_id uuid not null",
   "cuentos_orders.created_at timestamp with time zone default now() not null",
@@ -114,6 +119,7 @@
   "cuentos_leads cuentos_leads_email_check CHECK ((email ~* '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'::text))",
   "cuentos_leads cuentos_leads_email_edition_key UNIQUE (email, edition)",
   "cuentos_leads cuentos_leads_pkey PRIMARY KEY (id)",
+  "cuentos_locks cuentos_locks_pkey PRIMARY KEY (key)",
   "cuentos_orders cuentos_orders_amount_cents_check CHECK ((amount_cents >= 0))",
   "cuentos_orders cuentos_orders_book_id_fkey FOREIGN KEY (book_id) REFERENCES cuentos_books(id) ON DELETE CASCADE",
   "cuentos_orders cuentos_orders_edition_check CHECK ((edition = ANY (ARRAY['classic'::text, 'illustrated'::text, 'hardcover'::text])))",
@@ -128,6 +134,7 @@
  ],
  "indexes": [
   "CREATE INDEX cuentos_assets_lookup_idx ON public.cuentos_assets USING btree (style_id, category, trait_id)",
+  "CREATE INDEX cuentos_books_email_norm_idx ON public.cuentos_books USING btree (email_norm, created_at DESC) WHERE (email_norm IS NOT NULL)",
   "CREATE INDEX cuentos_books_expires_at_idx ON public.cuentos_books USING btree (expires_at)",
   "CREATE INDEX cuentos_feedback_book_idx ON public.cuentos_feedback USING btree (book_id)",
   "CREATE INDEX cuentos_feedback_created_idx ON public.cuentos_feedback USING btree (created_at)",
@@ -147,6 +154,7 @@
   "CREATE UNIQUE INDEX cuentos_generation_jobs_pkey ON public.cuentos_generation_jobs USING btree (id)",
   "CREATE UNIQUE INDEX cuentos_leads_email_edition_key ON public.cuentos_leads USING btree (email, edition)",
   "CREATE UNIQUE INDEX cuentos_leads_pkey ON public.cuentos_leads USING btree (id)",
+  "CREATE UNIQUE INDEX cuentos_locks_pkey ON public.cuentos_locks USING btree (key)",
   "CREATE UNIQUE INDEX cuentos_orders_pkey ON public.cuentos_orders USING btree (id)",
   "CREATE UNIQUE INDEX cuentos_orders_stripe_session_id_key ON public.cuentos_orders USING btree (stripe_session_id)",
   "CREATE UNIQUE INDEX cuentos_spend_pkey ON public.cuentos_spend USING btree (id)",
@@ -162,9 +170,14 @@
   "cuentos_feedback true",
   "cuentos_generation_jobs true",
   "cuentos_leads true",
+  "cuentos_locks true",
   "cuentos_orders true",
   "cuentos_spend true",
   "cuentos_stories true"
+ ],
+ "functions": [
+  "cuentos_email_norm(email text) i search_path=\"\"",
+  "cuentos_set_updated_at() v search_path=\"\""
  ],
  "policies": [
   "cuentos_assets cuentos_assets_public_read SELECT anon,authenticated"

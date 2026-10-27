@@ -1,5 +1,6 @@
 // Tipos de Supabase limitados a las tablas cuentos_* (la base es compartida con otros productos).
-// Generado con generate_typescript_types (MCP Supabase) el 8 oct 2026 y filtrado; puesto al día el 27 oct (I14). Regenerar
+// Generado con generate_typescript_types (MCP Supabase) el 8 oct 2026 y filtrado; puesto al día el 27 oct (I14, y la
+// migración 0013 de I7: email_norm, free_claimed_at, cuentos_locks y cuentos_email_norm). Regenerar
 // al cambiar el esquema; tests/unit/migraciones.test.ts comprueba que las migraciones reconstruyen la base.
 export type Json =
   | string
@@ -51,7 +52,9 @@ export type Database = {
           draft: Json
           edition: string
           email: string | null
+          email_norm: string | null
           expires_at: string
+          free_claimed_at: string | null
           id: string
           public_id: string
           status: string
@@ -62,7 +65,9 @@ export type Database = {
           draft: Json
           edition?: string
           email?: string | null
+          email_norm?: never
           expires_at?: string
+          free_claimed_at?: string | null
           id?: string
           public_id: string
           status?: string
@@ -73,11 +78,31 @@ export type Database = {
           draft?: Json
           edition?: string
           email?: string | null
+          email_norm?: never
           expires_at?: string
+          free_claimed_at?: string | null
           id?: string
           public_id?: string
           status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      cuentos_locks: {
+        Row: {
+          expires_at: string
+          holder: string
+          key: string
+        }
+        Insert: {
+          expires_at: string
+          holder: string
+          key: string
+        }
+        Update: {
+          expires_at?: string
+          holder?: string
+          key?: string
         }
         Relationships: []
       }
@@ -385,7 +410,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      cuentos_email_norm: { Args: { email: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

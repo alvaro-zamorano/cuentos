@@ -16,7 +16,7 @@ import { jobKey } from "../generation/keys";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
 import { canSpend, freeBookCapCents } from "../generation/budget";
-import { FREE_BOOKS, freeUse } from "./freeLimit";
+import { passFreeGate } from "./freeLimit";
 import { castArt, castArtKey, coverPrompt, pageArtKey, pagePrompt, pagesArt, pagesArtKey, portraitPrompt, redoScene, reviseCast, sheetPrompt, type CastArt, type PageFix, type PagesArt } from "../plan/art";
 import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_FIX_EN, REDO_REASONS, cleanNote, isRedoReason, type RedoReason } from "./feedback";
 import { fichaHash, normalizeFicha } from "../plan/ficha";
@@ -324,11 +324,13 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
 }
 
 /** La puerta de los cuentos gratis, solo para un libro que aún no tiene personajes (sin hoja o con todas fallidas). */
-async function freeGate(store: GenStore, email: string, book: BookRecord, sheets: GenJob[]): Promise<{ freeLeft?: number } | FreeLimitFail> {
+async function freeGate(store: GenStore, email: string, book: BookRecord, sheets: GenJob[]): Promise<{ freeLeft?: number } | FreeLimitFail | Fail> {
   if (hasArt(sheets)) return {};
-  const use = await freeUse(store, email, { exceptBookId: book.id });
-  if (use.used >= FREE_BOOKS) return { ok: false, status: 429, error: "free_limit", books: use.books.map((b) => ({ publicId: b.public_id, title: draftV2(b)?.plan.title ?? "Tu cuento" })) };
-  return { freeLeft: use.left };
+  // con el bloqueo del buzón: varias peticiones a la vez con el mismo email no pasan todas (auditoría 26 oct, I7)
+  const gate = await passFreeGate(store, email, book.id);
+  if (gate.ok) return { freeLeft: gate.left };
+  if ("busy" in gate) return fail(409, "busy", "Estamos empezando otro cuento con este email. Espera unos segundos y vuelve a intentarlo.");
+  return { ok: false, status: 429, error: "free_limit", books: gate.books.map((b) => ({ publicId: b.publicId, title: b.title ?? "Tu cuento" })) };
 }
 
 async function newSheetAndCover(store: GenStore, book: BookRecord, d: BookDraftV2, variant: number): Promise<{ sheet: GenJob; cover: GenJob } | Fail> {
