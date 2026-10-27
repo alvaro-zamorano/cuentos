@@ -242,11 +242,11 @@ function asJob(row: Record<string, unknown>): GenJob {
 /* ------------------------------ Supabase ------------------------------ */
 
 /**
- * URLs firmadas por cliente (el de service role se crea una vez por instancia) y ruta (I20). Se firman por 2 horas y se
- * reutilizan mientras les quede lo que se pide: la misma imagen tiene la misma URL entre consultas y el navegador la
- * tiene en caché.
+ * URLs firmadas por cliente (el de service role se crea una vez por instancia) y ruta (I20). Se firman por hora y media y
+ * se reutilizan mientras les quede lo que se pide (la vista, una hora): la misma imagen tiene la misma URL entre
+ * consultas y el navegador la tiene en caché. Ninguna URL de imagen vale más de hora y media (antes, una hora).
  */
-const SIGN_S = 2 * 3600;
+const SIGN_S = 5400;
 const signCaches = new WeakMap<object, Map<string, { url: string; exp: number }>>();
 
 function signCache(db: object): Map<string, { url: string; exp: number }> {

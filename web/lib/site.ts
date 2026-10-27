@@ -21,13 +21,27 @@ export function sitemapPaths(open: boolean): string[] {
 
 /**
  * Los alias de producción en vercel.app (`cuentos-pi.vercel.app` y los de cada despliegue) llevan al dominio de la marca
- * (auditoría 26 oct, I21): si no, Google reparte la portada entre varios dominios. Solo en producción y con SITE_URL; la
- * API se queda donde está (los webhooks y el cron no siguen redirecciones). Devuelve adónde, o null.
+ * (auditoría 26 oct, I21): si no, Google reparte la portada entre varios dominios. Son redirecciones de next.config
+ * (las resuelve Vercel antes de llegar a ninguna función, también para las imágenes de public/). Solo al compilar
+ * producción con SITE_URL. La API se queda donde está (los webhooks y el cron no siguen redirecciones), y la URL propia
+ * del despliegue (VERCEL_URL) tampoco redirige, para poder revisar uno que aún no está en el dominio (revisión 27 oct).
  */
-export function brandRedirect(host: string | null, path: string, search: string, env: Record<string, string | undefined> = process.env): string | null {
+export interface BrandRedirect {
+  source: string;
+  destination: string;
+  permanent: true;
+  has: { type: "host"; value: string }[];
+  missing?: { type: "host"; value: string }[];
+}
+
+export function brandRedirects(env: Record<string, string | undefined> = process.env): BrandRedirect[] {
   const base = siteUrl(env);
-  if (env.VERCEL_ENV !== "production" || !base || !host) return null;
-  if (!host.toLowerCase().split(":")[0].endsWith(".vercel.app")) return null;
-  if (path === "/api" || path.startsWith("/api/")) return null;
-  return `${base}${path}${search}`;
+  if (env.VERCEL_ENV !== "production" || !base) return [];
+  const has = [{ type: "host" as const, value: "(?<alias>.+)\\.vercel\\.app" }];
+  const own = env.VERCEL_URL?.trim();
+  const missing = own ? [{ type: "host" as const, value: own.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }] : undefined;
+  return [
+    { source: "/", destination: `${base}/`, permanent: true, has, ...(missing ? { missing } : {}) },
+    { source: "/:path((?!api/|api$).+)", destination: `${base}/:path`, permanent: true, has, ...(missing ? { missing } : {}) },
+  ];
 }

@@ -9,8 +9,8 @@ import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState, supabaseStore, type GenStore } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
 import { bookView, startBook } from "../../lib/book/service";
-import { stableUrl } from "../../lib/bookClient";
-import { brandRedirect } from "../../lib/site";
+import { forgetUrl, stableUrl } from "../../lib/bookClient";
+import { brandRedirects } from "../../lib/site";
 import type { Database } from "../../lib/supabase/types";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -94,12 +94,32 @@ test("I20: en el navegador, la misma imagen conserva su primera URL 45 minutos",
   assert.equal(stableUrl(null), null);
 });
 
-test("I21: en producción, los alias de vercel.app llevan al dominio; la API y las previews, no", () => {
-  const prod = { VERCEL_ENV: "production", SITE_URL: "https://www.erasesuvez.com" };
-  assert.equal(brandRedirect("cuentos-pi.vercel.app", "/privacidad", "", prod), "https://www.erasesuvez.com/privacidad");
-  assert.equal(brandRedirect("cuentos-abc123-wcoach24s-projects.vercel.app", "/crear", "?b=abcd2345", prod), "https://www.erasesuvez.com/crear?b=abcd2345");
-  assert.equal(brandRedirect("cuentos-pi.vercel.app", "/api/stripe/webhook", "", prod), null, "los webhooks no siguen redirecciones");
-  assert.equal(brandRedirect("www.erasesuvez.com", "/", "", prod), null);
-  assert.equal(brandRedirect("cuentos-git-feat-wcoach24s-projects.vercel.app", "/", "", { VERCEL_ENV: "preview", SITE_URL: "https://www.erasesuvez.com" }), null);
-  assert.equal(brandRedirect("cuentos-pi.vercel.app", "/", "", { VERCEL_ENV: "production" }), null, "sin dominio puesto, nada");
+test("I20: una URL guardada que no carga se olvida y la siguiente vista trae otra", () => {
+  const t0 = 5_000_000;
+  const a = "https://x.supabase.co/storage/v1/object/sign/cuentos/books/b/p9.jpg?token=uno";
+  assert.equal(stableUrl(a, t0), a);
+  forgetUrl(a);
+  const b = "https://x.supabase.co/storage/v1/object/sign/cuentos/books/b/p9.jpg?token=dos";
+  assert.equal(stableUrl(b, t0 + 1000), b);
+});
+
+test("I21: en producción, los alias de vercel.app llevan al dominio; la API, la URL propia del despliegue y las previews, no", () => {
+  const prod = { VERCEL_ENV: "production", SITE_URL: "https://www.erasesuvez.com", VERCEL_URL: "cuentos-abc123-wcoach24s-projects.vercel.app" };
+  const rules = brandRedirects(prod);
+  assert.equal(rules.length, 2);
+  for (const r of rules) {
+    assert.equal(r.permanent, true);
+    assert.deepEqual(r.has, [{ type: "host", value: "(?<alias>.+)\\.vercel\\.app" }]);
+    assert.deepEqual(r.missing, [{ type: "host", value: "cuentos-abc123-wcoach24s-projects\\.vercel\\.app" }]);
+  }
+  assert.deepEqual(rules.map((r) => [r.source, r.destination]), [
+    ["/", "https://www.erasesuvez.com/"],
+    ["/:path((?!api/|api$).+)", "https://www.erasesuvez.com/:path"],
+  ]);
+  // el patrón deja fuera la API (los webhooks y el cron no siguen redirecciones)
+  const path = /^(?!api\/|api$).+$/;
+  assert.ok(path.test("privacidad") && path.test("crear") && path.test("apiario"));
+  assert.ok(!path.test("api/stripe/webhook") && !path.test("api"));
+  assert.deepEqual(brandRedirects({ VERCEL_ENV: "preview", SITE_URL: "https://www.erasesuvez.com" }), []);
+  assert.deepEqual(brandRedirects({ VERCEL_ENV: "production" }), [], "sin dominio puesto, nada");
 });

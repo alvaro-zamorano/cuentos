@@ -13,6 +13,7 @@ import { hashString } from "../story/hash";
 import { getStyle } from "../generation/styles";
 import { MAX_ATTEMPTS, STALE_RUNNING_MS, gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
 import { jobKey } from "../generation/keys";
+import { VIEW_URL_SECONDS } from "../signing";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
 import { canSpend, freeBookCapCents } from "../generation/budget";
@@ -1416,7 +1417,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   // sin pago (o devuelto, I5), las ilustraciones de pago no se enseñan: solo la hoja, la portada y lo gratis (revisión 27 oct)
   const shown = (j: GenJob) => j.status === "done" && !!j.storage_path && !(j.paid && !paid);
   // todas en una llamada, y la misma URL que la consulta anterior mientras siga valiendo (I20)
-  const urls = await store.signedUrls(jobs.filter(shown).map((j) => j.storage_path!), 3600);
+  const urls = await store.signedUrls(jobs.filter(shown).map((j) => j.storage_path!), VIEW_URL_SECONDS);
   const out: BookJobView[] = [];
   for (const j of jobs) {
     const sheetId = sheetRefOf(j);

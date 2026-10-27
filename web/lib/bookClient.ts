@@ -1,6 +1,7 @@
 "use client";
 
 import type { BookView } from "./book/service";
+import { VIEW_URL_REUSE_MS } from "./signing";
 
 /**
  * Cliente de /api/libro/* y /api/generate/run. Las imágenes se pintan una por llamada: el navegador va pidiendo cada job
@@ -90,10 +91,17 @@ export type ViewResult = { ok: true; view: BookView } | { ok: false; error: "not
 /**
  * La misma imagen, la misma URL (auditoría 26 oct, I20): la vista se pide cada vez que termina una página, y cada URL
  * firmada nueva hacía que el móvil volviera a descargar todas las imágenes. Se guarda la primera URL de cada archivo (la
- * URL sin el token) y se reutiliza 45 minutos: el servidor da URLs que valen al menos una hora.
+ * URL sin el token) y se reutiliza 45 minutos: el servidor da URLs que valen al menos una hora (lib/signing.ts).
  */
 const seenUrls = new Map<string, { url: string; at: number }>();
-const REUSE_MS = 45 * 60_000;
+const REUSE_MS = VIEW_URL_REUSE_MS;
+
+/** Una imagen que no carga con su URL guardada: la siguiente vista trae otra (revisión 27 oct). */
+export function forgetUrl(url: string | null | undefined): void {
+  if (!url) return;
+  const key = url.split("?")[0];
+  if (seenUrls.get(key)?.url === url) seenUrls.delete(key);
+}
 
 export function stableUrl(url: string | null, now = Date.now()): string | null {
   if (!url) return url;

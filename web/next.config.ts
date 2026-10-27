@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { brandRedirects } from "./lib/site";
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -25,7 +26,8 @@ const nextConfig: NextConfig = {
     ]);
   },
   redirects() {
-    return ["/clasico", "/ilustrado", "/libro", "/gratis"].map((source) => ({ source, destination: "/crear", permanent: false }));
+    // los alias de vercel.app de producción, al dominio (lib/site.ts, I21); van primero
+    return [...brandRedirects(), ...["/clasico", "/ilustrado", "/libro", "/gratis"].map((source) => ({ source, destination: "/crear", permanent: false }))];
   },
   turbopack: {
     rules: {
