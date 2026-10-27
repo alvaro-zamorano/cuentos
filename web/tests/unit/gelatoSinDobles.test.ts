@@ -257,3 +257,14 @@ test("revisión: dos pedidos vivos en Gelato para el mismo libro se avisan", asy
   assert.ok((await completePrint(store, s.orderId, g.deps)).ok);
   assert.match(g.notices.join("\n"), /^Dos pedidos en la imprenta/m);
 });
+
+test("revisión: al mandarlo a imprimir, el libro se guarda 30 días más (para reimprimirlo si llega dañado)", async () => {
+  const { store, bookId } = await readyBook();
+  const now = new Date(Date.now() + 25 * 24 * 3600 * 1000);
+  const g = gelato(() => now);
+  const s = await startPrint(store, bookId, "gelato", {});
+  assert.ok(s.ok);
+  assert.ok((await completePrint(store, s.orderId, g.deps)).ok);
+  const book = (await store.findBook({ publicId: bookId }))!;
+  assert.ok(Date.parse(book.expiresAt!) >= now.getTime() + 29 * 24 * 3600 * 1000, book.expiresAt!);
+});

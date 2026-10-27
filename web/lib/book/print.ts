@@ -272,6 +272,9 @@ async function markSent(store: GenStore, deps: PrintDeps, order: PaidOrder, emai
   // un reintento tras «failed» es un pedido nuevo en la imprenta: nada del anterior (hitos, seguimiento, entrega)
   const info: PrintInfo = { steps: { sent: now.toISOString() } };
   await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null, trackingUrl: null, info });
+  // el libro sigue abriéndose hasta 30 días después de mandarlo (lo que dicen /privacidad §4 y /condiciones §10): si
+  // llega dañado, se reimprime con lo guardado (I29). Antes caducaba a los 30 días del pago, saliera cuando saliera
+  await store.extendBook(order.bookId, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString()).catch(() => null);
   if (order.shipping && email) await deps.mail.sentToPrint(email, title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false }));
 }
 
