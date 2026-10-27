@@ -38,7 +38,7 @@ Los nombres de los archivos no son las versiones con que constan en la base (all
 - `cuentos_stories` — cuentos escritos por el planificador; el borrado diario quita las filas de más de 30 días.
 - `cuentos_spend` — gasto de generación (topes en `web/lib/generation/budget.ts`).
 - `cuentos_feedback` — motivos de «Otra versión» y avisos de «Sigue sin estar bien»; a los 30 días se vacía la nota.
-- `cuentos_locks` (0013) — bloqueos cortos con caducidad: la puerta de los cuentos gratis, por buzón. La clave es un hash del email normalizado. La fila se borra al soltar el bloqueo; si una función muere con él, caduca a los 20 s y se reutiliza.
+- `cuentos_locks` (0013) — bloqueos cortos con caducidad: la puerta de los cuentos gratis, por buzón (la clave es un hash del email normalizado), y desde el 27 oct los cobros de Stripe de un mismo libro, de uno en uno (`pago:<id del libro>`). La fila se borra al soltar el bloqueo; si una función muere con él, caduca a los 20 s y se reutiliza.
 
 ## Acceso
 
