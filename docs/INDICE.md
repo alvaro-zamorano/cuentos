@@ -91,6 +91,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (tres crons diarios: borrado, imprenta y rescate) |
 | Rescate de libros pagados | `lib/book/rescue.ts` (termina lo pendiente, lo fallido y lo colgado, manda el «listo» y avisa a soporte si un libro pagado lleva horas atascado), `app/api/cron/rescue`. Diario en Hobby; con Pro, cada 10 minutos |
 | Límite de cuentos gratis (PR #78) | `lib/book/freeLimit.ts` (la puerta con bloqueo por buzón), `lib/emailNorm.ts` (el email como lo cuenta el límite; la base hace lo mismo en `cuentos_books.email_norm`), tabla `cuentos_locks`, migración 0013 |
+| Una compra, un libro (PR #84) | `lib/book/service.ts` (`recordStripePayment`: los cobros de un libro, de uno en uno con `cuentos_locks`; el segundo es cobro doble con aviso), `tests/unit/unPagoUnLibro.test.ts` |
 | Avisos a soporte (PR #82) | `lib/support.ts` (el libro como «ref.» del id interno, sin enlace), `lib/mail.ts` (`sendSupportNotice`) |
 | URLs firmadas de las imágenes (PR #81) | `lib/generation/store.ts` (`signedUrls`, en lote y con caché), `lib/signing.ts` (cuánto valen), `lib/bookClient.ts` (`stableUrl`) |
 | Legales | `app/{privacidad,condiciones,aviso-legal}`, `components/LegalPage.tsx`, `lib/legal.ts` (titular desde `LEGAL_*`; sin ellos, el nombre comercial); proveedores en `docs/PROVEEDORES.md` |
