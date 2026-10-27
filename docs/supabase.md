@@ -26,6 +26,8 @@ Aplicadas en la base real (vía MCP `apply_migration`, con el visto bueno de Ál
 
 Las 0008 a 0010 se aplicaron antes que la 0005 (el orden de los números es el del repo, no el de la base). No dependen de ella, así que en una base nueva el resultado es el mismo.
 
+Los nombres de los archivos no son las versiones con que constan en la base (allí son marcas de tiempo, como `20261011123108`). Se aplican con el MCP `apply_migration`. Antes de usar la CLI de Supabase contra este proyecto (`supabase db push`, Branching), hay que alinearlas con `supabase migration repair`: si no, la CLI las daría todas por pendientes y la 0001 y la 0003 fallarían.
+
 ## Tablas
 
 - `cuentos_leads` — email, marketing (consentimiento LSSI separado), edition, source. Único por `(email, edition)`.

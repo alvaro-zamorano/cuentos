@@ -234,7 +234,7 @@ export type Database = {
           },
         ]
       }
-      // Añadida a mano (brief 5) con las columnas acordadas; regenerar los tipos cuando la tabla exista.
+      // Migración 0008 (cuentos_stories): al día con la base del 27 oct.
       cuentos_stories: {
         Row: {
           cost_cents: number
