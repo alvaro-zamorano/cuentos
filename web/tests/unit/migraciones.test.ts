@@ -157,3 +157,16 @@ test("0013 (I7): email_norm es normalizeEmail, también en las filas que ya hab�
   assert.equal(again.rows.length, 0);
   await db.close();
 });
+
+test("0015: las filas de leads que ya había reciben su llave de baja, una distinta cada una", async () => {
+  const db = await rebuilt({ before: "0015" });
+  await db.query(`insert into cuentos_leads (email, marketing, edition) values ('ana@example.com', true, 'illustrated'), ('luis@example.com', false, 'illustrated')`);
+  for (const f of migrations().filter((f) => f >= "0015")) await apply(db, f);
+  const rows = (await db.query<{ unsubscribe_token: string; marketing_at: Date | null }>(`select unsubscribe_token, marketing_at from cuentos_leads order by email`)).rows;
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((r) => /^[0-9a-f-]{36}$/.test(r.unsubscribe_token)));
+  assert.notEqual(rows[0].unsubscribe_token, rows[1].unsubscribe_token);
+  assert.equal(rows[0].marketing_at, null, "los de antes no tienen fecha: no se guardaba");
+  await assert.rejects(db.query(`update cuentos_leads set unsubscribe_token = $1`, [rows[0].unsubscribe_token]), /unique|duplicate/);
+  await db.close();
+});

@@ -1,6 +1,6 @@
 // Tipos de Supabase limitados a las tablas cuentos_* (la base es compartida con otros productos).
 // Generado con generate_typescript_types (MCP Supabase) el 8 oct 2026 y filtrado; puesto al día el 27 oct (I14, y la
-// migración 0013 de I7: email_norm, free_claimed_at, cuentos_locks y cuentos_email_norm). Regenerar
+// migración 0013 de I7: email_norm, free_claimed_at, cuentos_locks y cuentos_email_norm; y la 0015: el registro y la baja de novedades). Regenerar
 // al cambiar el esquema; tests/unit/migraciones.test.ts comprueba que las migraciones reconstruyen la base.
 export type Json =
   | string
@@ -314,7 +314,11 @@ export type Database = {
           email: string
           id: number
           marketing: boolean
+          marketing_at: string | null
+          marketing_text: string | null
           source: string
+          unsubscribe_token: string
+          unsubscribed_at: string | null
         }
         Insert: {
           created_at?: string
@@ -322,7 +326,11 @@ export type Database = {
           email: string
           id?: never
           marketing?: boolean
+          marketing_at?: string | null
+          marketing_text?: string | null
           source?: string
+          unsubscribe_token?: string
+          unsubscribed_at?: string | null
         }
         Update: {
           created_at?: string
@@ -330,7 +338,11 @@ export type Database = {
           email?: string
           id?: never
           marketing?: boolean
+          marketing_at?: string | null
+          marketing_text?: string | null
           source?: string
+          unsubscribe_token?: string
+          unsubscribed_at?: string | null
         }
         Relationships: []
       }

@@ -1,5 +1,5 @@
 {
- "_nota": "Esquema de las tablas cuentos_* en la base real (Supabase, PostgreSQL 17.6), leído con consultas de solo lectura el 27 oct 2026, más lo que añade la migración 0013 (I7: email_norm, free_claimed_at, cuentos_locks y cuentos_email_norm), que aún no está aplicada: al aplicarla, volver a leer la base real y comprobar que sale igual. tests/unit/migraciones.test.ts comprueba que las migraciones del repo lo reconstruyen igual. Al cambiar el esquema, actualizar las dos cosas.",
+ "_nota": "Esquema de las tablas cuentos_* en la base real (Supabase, PostgreSQL 17.6), leído con consultas de solo lectura el 27 oct 2026 (con la 0013 aplicada), más lo que añade la migración 0015 (novedades: marketing_at, marketing_text, unsubscribe_token y unsubscribed_at), que aún no está aplicada: al aplicarla, volver a leer la base real y comprobar que sale igual. tests/unit/migraciones.test.ts comprueba que las migraciones del repo lo reconstruyen igual. Al cambiar el esquema, actualizar las dos cosas.",
  "columns": [
   "cuentos_assets.category text",
   "cuentos_assets.created_at timestamp with time zone default now() not null",
@@ -53,7 +53,11 @@
   "cuentos_leads.email text not null",
   "cuentos_leads.id bigint not null",
   "cuentos_leads.marketing boolean default false not null",
+  "cuentos_leads.marketing_at timestamp with time zone",
+  "cuentos_leads.marketing_text text",
   "cuentos_leads.source text default 'cuentos-web'::text not null",
+  "cuentos_leads.unsubscribe_token uuid default gen_random_uuid() not null",
+  "cuentos_leads.unsubscribed_at timestamp with time zone",
   "cuentos_locks.expires_at timestamp with time zone not null",
   "cuentos_locks.holder text not null",
   "cuentos_locks.key text not null",
@@ -154,6 +158,7 @@
   "CREATE UNIQUE INDEX cuentos_generation_jobs_pkey ON public.cuentos_generation_jobs USING btree (id)",
   "CREATE UNIQUE INDEX cuentos_leads_email_edition_key ON public.cuentos_leads USING btree (email, edition)",
   "CREATE UNIQUE INDEX cuentos_leads_pkey ON public.cuentos_leads USING btree (id)",
+  "CREATE UNIQUE INDEX cuentos_leads_unsubscribe_token_key ON public.cuentos_leads USING btree (unsubscribe_token)",
   "CREATE UNIQUE INDEX cuentos_locks_pkey ON public.cuentos_locks USING btree (key)",
   "CREATE UNIQUE INDEX cuentos_orders_pkey ON public.cuentos_orders USING btree (id)",
   "CREATE UNIQUE INDEX cuentos_orders_stripe_session_id_key ON public.cuentos_orders USING btree (stripe_session_id)",
