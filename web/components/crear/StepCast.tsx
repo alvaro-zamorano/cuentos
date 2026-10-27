@@ -378,6 +378,8 @@ function EmailGate({
   // 26 oct: el buzón ya tiene sus cuentos gratis del periodo; no es un error, se le mandan por email. «unsent»: el correo
   // no ha salido y la pantalla no puede decir que se han mandado (auditoría 26 oct, menores)
   const [limit, setLimit] = useState<false | "sent" | "unsent">(false);
+  // sin enviar: el email al que escribirnos (LEGAL_EMAIL, lo manda la ruta)
+  const [contact, setContact] = useState<string | null>(null);
   // auditoría 26 oct, menores: con una errata en el dominio, el enlace del libro le llega a otra persona. Sin segundo
   // campo (Álvaro): al salir del campo se ofrece la corrección. Mientras se escribe no se dice nada, para no molestar
   const emailId = useId();
@@ -386,6 +388,8 @@ function EmailGate({
   // el email que el padre deja como está después de ver el aviso: el segundo «Dibujar» ya no se para
   const [typoKept, setTypoKept] = useState<string | null>(null);
   const fixRef = useRef<HTMLButtonElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const showTypo = !!typo && typoShown;
   const name = ficha.hero.name.trim();
   const others = ficha.cast.map((c) => c.name.trim()).filter(Boolean);
   const who = others.length ? `a ${name} y a ${others.join(" y a ")}` : `a ${name}`;
@@ -408,7 +412,7 @@ function EmailGate({
         setErr(null);
         setLimit(false);
         try {
-          const r = await postJson<{ bookId?: string; sheetJobId?: string; coverJobId?: string; freeLeft?: number; error?: string; mailed?: boolean }>("/api/libro/start", {
+          const r = await postJson<{ bookId?: string; sheetJobId?: string; coverJobId?: string; freeLeft?: number; error?: string; mailed?: boolean; contact?: string | null }>("/api/libro/start", {
             email,
             consent,
             marketing,
@@ -418,6 +422,7 @@ function EmailGate({
           });
           if (r.json.error === "free_limit") {
             setLimit(r.json.mailed === false ? "unsent" : "sent");
+            setContact(r.json.contact ?? null);
             setBusy(false);
             return;
           }
@@ -455,7 +460,9 @@ function EmailGate({
           Tu email
         </label>
         <input
+          ref={emailRef}
           id={emailId}
+          aria-describedby={showTypo ? `${emailId}-errata ${emailId}-ayuda` : `${emailId}-ayuda`}
           type="email"
           required
           value={email}
@@ -471,18 +478,21 @@ function EmailGate({
           data-testid="email"
         />
         <div aria-live="polite">
-          {typo && typoShown && (
+          {showTypo && (
             <div className="rise flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-butter/70 px-4 py-3 text-[15px] leading-snug text-ink" data-testid="email-typo">
-              <p className="m-0 w-full min-w-0 [overflow-wrap:anywhere]">
+              <p id={`${emailId}-errata`} className="m-0 w-full min-w-0 [overflow-wrap:anywhere]">
                 ¿Quisiste decir <strong>{typo}</strong>?
               </p>
               <button
                 ref={fixRef}
                 type="button"
                 className="btn-ghost btn-sm"
+                aria-label={`Cambiar a ${typo}`}
                 onClick={() => {
                   setEmail(typo);
                   setTypoShown(false);
+                  // de vuelta al campo, con el email ya cambiado
+                  requestAnimationFrame(() => emailRef.current?.focus());
                 }}
                 data-testid="email-typo-fix"
               >
@@ -492,7 +502,7 @@ function EmailGate({
             </div>
           )}
         </div>
-        <span className="text-[13px] text-mute">Lo necesitamos para guardar el libro y mandarte el enlace con el que vuelves a él desde cualquier sitio.</span>
+        <span id={`${emailId}-ayuda`} className="text-[13px] text-mute">Lo necesitamos para guardar el libro y mandarte el enlace con el que vuelves a él desde cualquier sitio.</span>
       </div>
       <div className="grid gap-2.5">
         <label className={check}>
@@ -520,23 +530,36 @@ function EmailGate({
         No pedimos fotos, apellidos ni fecha de nacimiento. A los 30 días, el libro se borra.
       </p>
       {err && <ErrorNote>{err}</ErrorNote>}
-      {limit && (
+      {limit === "sent" && (
         <div className="rise grid gap-2 rounded-[22px] bg-sage px-5 py-4 text-sage-ink" role="status" data-testid="free-limit">
           <p className="m-0 flex items-center gap-2 font-display text-[20px]">
             <Sparkle size={14} color="currentColor" /> Tus cuentos te esperan
           </p>
-          {limit === "unsent" ? (
-            <p className="m-0 text-[15px] leading-relaxed">
-              Con este email ya tienes tres cuentos con sus personajes dibujados. No hemos podido mandártelos ahora. Vuelve a intentarlo en un rato o
-              escríbenos a hola@erasesuvez.com.
-            </p>
-          ) : (
-            <p className="m-0 text-[15px] leading-relaxed">
-              Con este email ya tienes tres cuentos con sus personajes dibujados. Te los acabamos de mandar para que elijas el que más te guste y lo termines.
-              En cuanto tengas uno, puedes empezar otro.
-            </p>
-          )}
+          <p className="m-0 text-[15px] leading-relaxed">
+            Con este email ya tienes tres cuentos con sus personajes dibujados. Te los acabamos de mandar para que elijas el que más te guste y lo termines.
+            En cuanto tengas uno, puedes empezar otro.
+          </p>
           <p className="m-0 text-[13px]">Este cuento escrito no se pierde: se queda guardado en este navegador.</p>
+        </div>
+      )}
+      {/* no han salido: no es un éxito, y la pantalla no dice que se hayan mandado */}
+      {limit === "unsent" && (
+        <div className="rise grid gap-2 rounded-[22px] bg-butter/70 px-5 py-4 text-ink" role="status" data-testid="free-limit-unsent">
+          <p className="m-0 font-display text-[20px]">Ya tienes tres cuentos con este email</p>
+          <p className="m-0 text-[15px] leading-relaxed">
+            Te los queríamos mandar para que elijas cuál terminar, pero ahora no hemos podido. Vuelve a pulsar «Dibujar a {name}» en un rato
+            {contact ? (
+              <>
+                {" "}
+                o escríbenos a{" "}
+                <a className="link [overflow-wrap:anywhere]" href={`mailto:${contact}`}>
+                  {contact}
+                </a>
+              </>
+            ) : null}
+            .
+          </p>
+          <p className="m-0 text-[13px] text-ink-soft">Este cuento escrito no se pierde: se queda guardado en este navegador.</p>
         </div>
       )}
       <div className="actionbar">

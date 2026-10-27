@@ -75,3 +75,21 @@ test("dominio correcto o desconocido: no se dice nada", () => {
 test("mientras se escribe, sin arroba o sin dominio, no hay nada que proponer", () => {
   for (const e of ["", "ana", "ana@", "@gmail.com", "a".repeat(200) + "@gmial.com"]) assert.equal(suggestEmail(e), null, e);
 });
+
+test("erratas del final en cualquier dominio, también en los que no conocemos (revisión 27 oct)", () => {
+  const cases: [string, string][] = [
+    ["ana@miempresa.con", "ana@miempresa.com"],
+    ["ana@miempresa.cmo", "ana@miempresa.com"],
+    ["ana@miempresa.ocm", "ana@miempresa.com"],
+    ["ana@miempresa.comm", "ana@miempresa.com"],
+    ["ana@miempresa.som", "ana@miempresa.com"],
+    ["ana@miempresa.xom", "ana@miempresa.com"],
+    ["ana@colegio.ess", "ana@colegio.es"],
+    ["ana@educa.madrid.ess", "ana@educa.madrid.es"],
+    // un proveedor conocido sigue yendo a su dominio, no solo al final bueno
+    ["ana@hotmial.con", "ana@hotmail.com"],
+  ];
+  for (const [typed, want] of cases) assert.equal(suggestEmail(typed), want, typed);
+  // finales que existen: con un dominio desconocido no se tocan
+  for (const e of ["ana@empresa.co", "ana@empresa.cm", "ana@empresa.om", "ana@empresa.com.co", "ana@empresa.so", "ana@empresa.es", "ana@empresa.rs"]) assert.equal(suggestEmail(e), null, e);
+});

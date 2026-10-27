@@ -37,6 +37,32 @@ const REAL = new Set(["email.com", "mail.com", "ymail.com", "cloud.com"]);
  */
 const REAL_TLDS = new Set(["se", "us"]);
 
+/**
+ * Erratas del final en cualquier dominio, también en los que no conocemos («miempresa.con»). Ninguna existe como final
+ * de verdad. «.co», «.cm» y «.om» sí existen (Colombia, Camerún, Omán): con un dominio desconocido no se tocan.
+ */
+const TLD_TYPOS: Record<string, string> = {
+  con: "com",
+  cmo: "com",
+  ocm: "com",
+  comm: "com",
+  coom: "com",
+  som: "com",
+  vom: "com",
+  xom: "com",
+  cpm: "com",
+  ess: "es",
+  ees: "es",
+};
+
+/** El dominio con el final corregido si el final es una errata conocida; null si no. */
+function fixTld(domain: string): string | null {
+  const dot = domain.lastIndexOf(".");
+  if (dot < 1) return null;
+  const fix = TLD_TYPOS[domain.slice(dot + 1)];
+  return fix ? `${domain.slice(0, dot)}.${fix}` : null;
+}
+
 const split = (d: string): [string, string] => {
   const dot = d.indexOf(".");
   return dot < 0 ? [d, ""] : [d.slice(0, dot), d.slice(dot + 1)];
@@ -87,6 +113,6 @@ export function suggestEmail(email: string): string | null {
   if (at < 1 || at === e.length - 1 || e.length > 120) return null;
   const domain = e.slice(at + 1).toLowerCase();
   if (COMMON.includes(domain) || REAL.has(domain)) return null;
-  const fix = fixDomain(domain);
+  const fix = fixDomain(domain) ?? fixTld(domain);
   return fix && fix !== domain ? `${e.slice(0, at)}@${fix}` : null;
 }
