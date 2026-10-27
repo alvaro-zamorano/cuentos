@@ -14,10 +14,10 @@ import { paintLater } from "../../libro/_shared";
  * `checkout.session.completed` (idempotente) y, después de responder a Stripe, encola y pinta las 12 páginas y manda el
  * email de «tu libro está listo». Si el padre sigue en la página, su navegador también pinta los mismos jobs.
  * Si la base falla al leer o al escribir, 500: Stripe reintenta. Un cobro que no se puede registrar, doble o con un importe
- * que no cuadra manda un aviso a soporte (`paymentNotice`); si el aviso no sale por un fallo pasajero y el reintento lo
- * repite, 500 para que Stripe reintente (`retryUnsentNotice`). Al registrar el pago manda el recibo (I28) antes de
- * responder: si no sale por un fallo pasajero, 500 para que Stripe reintente.
- * Devoluciones y disputas (`charge.refunded`, `charge.dispute.*`, I5): marcan el pedido, paran la tapa dura y avisan.
+ * que no cuadra manda un aviso a soporte (`paymentNotice`). Al registrar el pago manda el recibo (I28) antes de
+ * responder. Devoluciones y disputas (`charge.refunded`, `charge.dispute.*`, I5): marcan el pedido, paran la tapa dura y
+ * avisan. Si un aviso o el recibo no salen por un fallo pasajero, 500 para que Stripe reintente (`retryUnsentNotice`): el
+ * reintento ve el evento repetido y vuelve a dar el mismo aviso.
  */
 export const maxDuration = 300;
 
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       const notice = chargeNotice(c, event as unknown as ChargeEvent);
       if (notice) {
         const mail = await sendSupportNotice(notice.subject, notice.text).catch((): MailResult => ({ sent: false, reason: "error" }));
-        if (retryUnsentNotice(c.action, mail)) {
+        if (retryUnsentNotice(mail)) {
           console.warn(`[stripe] aviso a soporte sin enviar (${mail.reason}): Stripe reintentará`);
           return NextResponse.json({ ok: false, error: "notice" }, { status: 500 });
         }
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     if (notice) {
       console.error(`[stripe] ${notice.subject}: ${notice.text.split("\n")[0]} · sesión ${event.data.object.id ?? "?"}`);
       const mail = await sendSupportNotice(notice.subject, notice.text).catch((): MailResult => ({ sent: false, reason: "error" }));
-      if (retryUnsentNotice(r.action, mail)) {
+      if (retryUnsentNotice(mail)) {
         console.warn(`[stripe] aviso a soporte sin enviar (${mail.reason}): Stripe reintentará`);
         return NextResponse.json({ ok: false, error: "notice" }, { status: 500 });
       }
@@ -103,7 +103,12 @@ export async function POST(req: Request) {
         console.error(`[stripe] recibo rechazado (${receipt.reason})`);
         const book = await store.findBook({ publicId: r.bookId, includeExpired: true }).catch(() => null);
         const n = receiptNotice(receipt.to, receipt.reason, book?.id ?? null, event.data.object.id ?? null);
-        await sendSupportNotice(n.subject, n.text).catch(() => null);
+        const mail = await sendSupportNotice(n.subject, n.text).catch((): MailResult => ({ sent: false, reason: "error" }));
+        // el reintento vuelve a probar el recibo, que se vuelve a rechazar, y vuelve a avisar
+        if (retryUnsentNotice(mail)) {
+          console.warn(`[stripe] aviso del recibo rechazado sin enviar (${mail.reason}): Stripe reintentará`);
+          return NextResponse.json({ ok: false, error: "notice" }, { status: 500 });
+        }
       }
     }
     return NextResponse.json({ received: true });
