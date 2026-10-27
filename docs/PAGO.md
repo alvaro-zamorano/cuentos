@@ -59,6 +59,8 @@ En producción Gelato imprime de verdad. Con claves de prueba, un pago con la ta
 
 **Resend**
 
+Cada email lleva una clave de idempotencia (`mailKey`: destinatario, asunto y texto). El mismo email dos veces en 24 horas sale una vez: así no se repiten «listo» ni «va de camino» cuando dos procesos lo mandan a la vez (auditoría 26 oct, menores).
+
 1. Crear la cuenta y verificar el dominio de envío (registros DNS que indica Resend).
 2. API Keys → crear una con permiso de envío → `RESEND_API_KEY`.
 3. `MAIL_FROM` con ese dominio, por ejemplo `Cuentos <hola@tudominio.es>`.

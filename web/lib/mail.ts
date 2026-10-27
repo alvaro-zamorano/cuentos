@@ -2,6 +2,7 @@
  * Emails transaccionales con Resend (B5). Sin RESEND_API_KEY o sin MAIL_FROM no se envía nada y se devuelve
  * `{ sent: false }`: la app funciona igual (el enlace para volver se enseña en pantalla). Solo servidor.
  */
+import { createHash } from "node:crypto";
 import { dayMonth, eur } from "./print/prices";
 
 export interface MailResult {
@@ -15,19 +16,39 @@ export function mailEnabled(env: Record<string, string | undefined> = process.en
   return !!env.RESEND_API_KEY?.trim() && !!env.MAIL_FROM?.trim();
 }
 
+/**
+ * La clave de idempotencia de Resend: el mismo email (destinatario, asunto y texto) dos veces en 24 horas sale una vez.
+ * Auditoría 26 oct, menores: dos segundos planos que acababan a la vez mandaban «listo» dos veces, y los dos avisos de
+ * Gelato al salir el paquete, dos «va de camino». Así no hace falta pasar una clave desde cada sitio que manda.
+ */
+export function mailKey(to: string, subject: string, text: string): string {
+  return createHash("sha256").update(`${to.trim().toLowerCase()}\n${subject}\n${text}`).digest("hex");
+}
+
 async function send(to: string, subject: string, html: string, text: string): Promise<MailResult> {
   if (!mailEnabled()) return { sent: false, reason: "sin_configurar" };
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}`, "idempotency-key": mailKey(to, subject, text) },
       body: JSON.stringify({ from: process.env.MAIL_FROM!.trim(), to: [to], subject, html, text }),
       signal: AbortSignal.timeout(15_000),
     });
-    return res.ok ? { sent: true } : { sent: false, reason: `resend_${res.status}` };
+    if (res.ok) return { sent: true };
+    if (res.status === 409) {
+      // el mismo email, ya mandado o mandándose: el que lo manda lo apunta; este no (si fallara, el siguiente reintento sale)
+      const name = ((await res.json().catch(() => null)) as { name?: string } | null)?.name ?? "";
+      return name === "concurrent_idempotent_requests" ? { sent: false, reason: "en_curso" } : { sent: true };
+    }
+    return { sent: false, reason: `resend_${res.status}` };
   } catch {
     return { sent: false, reason: "red" };
   }
+}
+
+/** Un fallo de envío que se arregla reintentando: red, Resend caído o saturado (no una dirección que rechaza). */
+export function transientMailFailure(r: MailResult): boolean {
+  return !r.sent && /^(red|error|resend_429|resend_5\d\d)$/.test(r.reason ?? "error");
 }
 
 function layout(title: string, body: string, link: string, cta: string): string {

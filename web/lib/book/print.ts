@@ -17,6 +17,7 @@ import type { PrintBookInput } from "../pdf/printHtml";
 import { isLiveSession, orderBelongsToEnv, printableInEnv } from "../stripe";
 import { bookView, draftV2, loadBook, unsignedImages } from "./service";
 import { bookLine } from "../support";
+import { transientMailFailure, type MailResult } from "../mail";
 
 export interface PrintDeps {
   mode: PrintMode;
@@ -39,7 +40,7 @@ export interface PrintDeps {
   findOrders?(reference: string): Promise<GelatoOrder[] | { error: string }>;
   mail: {
     /** `link`: nuestra página de seguimiento. */
-    sentToPrint(to: string, title: string, link: string, address: string): Promise<{ sent: boolean }>;
+    sentToPrint(to: string, title: string, link: string, address: string): Promise<MailResult>;
     /** `link`: nuestra página de seguimiento, que lleva al transportista. */
     shipped(to: string, title: string, link: string): Promise<{ sent: boolean }>;
     reminder(to: string, title: string, link: string): Promise<{ sent: boolean }>;
@@ -276,7 +277,10 @@ async function markSent(store: GenStore, deps: PrintDeps, order: PaidOrder, emai
   // el libro sigue abriéndose hasta 30 días después de mandarlo (lo que dicen /privacidad §4 y /condiciones §10): si
   // llega dañado, se reimprime con lo guardado (I29). Antes caducaba a los 30 días del pago, saliera cuando saliera
   await store.extendBook(order.bookId, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString()).catch(() => null);
-  if (order.shipping && email) await deps.mail.sentToPrint(email, title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false }));
+  if (!order.shipping || !email) return;
+  const r: MailResult = await deps.mail.sentToPrint(email, title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false, reason: "error" }));
+  // si Resend falla, el cron lo reintenta (auditoría 26 oct, menores: antes no se reintentaba y la pantalla decía que sí)
+  if (transientMailFailure(r)) await store.updateOrder(order.id, { info: { ...info, sentMailPending: true } }).catch(() => null);
 }
 
 export type RefreshOutcome = "updated" | "unchanged" | "not_found" | "skipped";
@@ -361,6 +365,8 @@ export interface PrintCronReport {
   kept: number;
   /** Envíos cortados a medias que sí llegaron a la imprenta: se dan por enviados en vez de liberarlos (I4). */
   reconciled: number;
+  /** Emails de «ya está en la imprenta» que no salieron y se han vuelto a mandar. */
+  remailed: number;
 }
 
 const HOUR = 3_600_000;
@@ -374,7 +380,7 @@ const KEEP_FOR_PRINT_MS = 30 * 24 * HOUR;
  */
 export async function printCron(store: GenStore, deps: PrintDeps): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
-  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0 };
+  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0, remailed: 0 };
   // cada entorno, solo sus pedidos: la preview no escribe a clientes reales ni toca sus pedidos; producción no recuerda
   // los de prueba (auditoría 26 oct, B1)
   const env = deps.env ?? process.env;
@@ -406,6 +412,19 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
       await store.updateOrder(o.id, { remindedAt: now.toISOString() });
       report.reminded++;
     }
+  }
+  // «ya está en la imprenta» que no salió por un fallo pasajero: se vuelve a mandar, hasta una semana después de mandarlo.
+  // Si sí había salido, Resend no lo repite (la misma clave de idempotencia en 24 horas)
+  for (const o of await store.listPrintOrders(["sent", "in_production"], 200, live)) {
+    if (!mine(o) || !o.info?.sentMailPending || !o.shipping) continue;
+    if (o.sentAt && now.getTime() - Date.parse(o.sentAt) > 7 * 24 * HOUR) continue;
+    const book = await store.getBookById(o.bookId);
+    if (!book?.email) continue;
+    const title = draftV2(book)?.plan.title ?? "Tu libro";
+    const r = await deps.mail.sentToPrint(book.email, title, deps.trackLink(o.id), shippingLine(o.shipping)).catch(() => ({ sent: false }));
+    if (!r.sent) continue;
+    await store.updateOrder(o.id, { info: { ...o.info, sentMailPending: null } });
+    report.remailed++;
   }
   for (const o of await store.listPrintOrders(["sending"], 50, live)) {
     if (!mine(o)) continue;

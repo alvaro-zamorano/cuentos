@@ -58,6 +58,8 @@ export interface PrintInfo {
   steps?: Partial<Record<PrintStep, string>>;
   /** Última vez que se preguntó a la imprenta desde la página de seguimiento (aunque no cambiara nada). */
   checkedAt?: string | null;
+  /** El email de «ya está en la imprenta» no salió por un fallo pasajero: el cron diario lo reintenta. */
+  sentMailPending?: boolean | null;
 }
 
 /** cuentos_orders.status. Todo lo que lee pedidos pagados filtra `paid`: uno `refunded` ya no abre descargas ni imprenta (I5). */
