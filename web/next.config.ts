@@ -19,7 +19,15 @@ const nextConfig: NextConfig = {
   // pedido (auditoría 26 oct, I22)
   headers() {
     const strict = [{ key: "Referrer-Policy", value: "strict-origin" }];
+    // ninguna web puede meter estas páginas en un marco (la del pago tampoco), ni el navegador adivinar tipos (menores de
+    // la auditoría 26 oct). Una CSP mínima: lo que no rompe nada de lo que carga la app.
+    const security = [
+      { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+    ];
     return Promise.resolve([
+      { source: "/:path*", headers: security },
       { source: "/crear", headers: strict },
       { source: "/seguimiento/:path*", headers: strict },
     ]);

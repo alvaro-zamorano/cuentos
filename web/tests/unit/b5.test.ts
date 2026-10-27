@@ -48,7 +48,7 @@ test("verifyWebhook: acepta la firma buena y rechaza secreto, payload o fecha di
 });
 
 test("checkoutBody: pago único en euros con el libro en metadata y la vuelta a /crear", () => {
-  const p = checkoutBody({ bookId: "abc12345", email: "a@b.es", title: "Vera y Toby viajan a la Luna", amountCents: 1490, origin: "https://cuentos.example" });
+  const p = checkoutBody({ bookId: "abc12345", email: "a@b.es", amountCents: 1490, origin: "https://cuentos.example" });
   assert.equal(p.get("mode"), "payment");
   assert.equal(p.get("line_items[0][price_data][currency]"), "eur");
   assert.equal(p.get("line_items[0][price_data][unit_amount]"), "1490");
@@ -57,19 +57,20 @@ test("checkoutBody: pago único en euros con el libro en metadata y la vuelta a 
   assert.equal(p.get("customer_email"), "a@b.es");
   assert.equal(p.get("success_url"), "https://cuentos.example/crear?b=abc12345&pagado=1");
   assert.equal(p.get("cancel_url"), "https://cuentos.example/crear?b=abc12345");
-  assert.match(p.get("line_items[0][price_data][product_data][name]")!, /Vera y Toby/);
-  assert.equal(checkoutBody({ bookId: "abc12345", email: null, title: "x", amountCents: 1, origin: "o" }).has("customer_email"), false);
+  // sin el título del cuento (lleva el nombre del niño y Stripe lo guarda años)
+  assert.equal(p.get("line_items[0][price_data][product_data][name]"), "Libro ilustrado personalizado");
+  assert.equal(checkoutBody({ bookId: "abc12345", email: null, amountCents: 1, origin: "o" }).has("customer_email"), false);
 });
 
 test("renuncia al desistimiento: solo con waiver === true, y queda en los metadatos de la sesión y del cobro", () => {
   assert.equal(waiverAccepted({ bookId: "x", waiver: true }), true);
   for (const b of [null, undefined, {}, { waiver: "true" }, { waiver: 1 }, { waiver: false }]) assert.equal(waiverAccepted(b as Record<string, unknown> | null), false);
   const at = "2026-10-16T10:00:00.000Z";
-  const p = checkoutBody({ bookId: "abc12345", email: null, title: "x", amountCents: 1490, origin: "o", waiverAt: at });
+  const p = checkoutBody({ bookId: "abc12345", email: null, amountCents: 1490, origin: "o", waiverAt: at });
   assert.equal(p.get("metadata[withdrawal_waiver_at]"), at);
   assert.equal(p.get("payment_intent_data[metadata][withdrawal_waiver_at]"), at);
   assert.equal(p.get("metadata[withdrawal_waiver_version]"), WAIVER_VERSION);
-  assert.equal(checkoutBody({ bookId: "abc12345", email: null, title: "x", amountCents: 1490, origin: "o" }).has("metadata[withdrawal_waiver_at]"), false);
+  assert.equal(checkoutBody({ bookId: "abc12345", email: null, amountCents: 1490, origin: "o" }).has("metadata[withdrawal_waiver_at]"), false);
 });
 
 test("paymentMode: Stripe con sus dos claves; el pago de prueba nunca en producción", () => {

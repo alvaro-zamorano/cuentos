@@ -15,6 +15,7 @@ import type { PaidOrder } from "../print/types";
 import type { Llm } from "../llm";
 import { orderBelongsToEnv } from "../stripe";
 import { paintAll } from "./background";
+import { bookLine } from "../support";
 import { alertPaidFailures, bookView, draftV2, markStuckAlerted, notifyBookReady, pendingPageJobs, requestPages } from "./service";
 
 type Env = Record<string, string | undefined>;
@@ -97,7 +98,7 @@ export async function rescueBooks(store: GenStore, deps: RescueDeps): Promise<Re
         continue;
       }
       // una imagen que ya no va a salir sola: aviso a soporte, una vez por libro (I3)
-      await alertPaidFailures(store, pid, deps.notify, deps.link);
+      await alertPaidFailures(store, pid, deps.notify);
     } catch (e) {
       report.errors++;
       failure = e instanceof Error ? e.message.slice(0, 200) : "error";
@@ -133,7 +134,7 @@ async function alertIfStuck(
       [
         `«${title}» se pagó el ${new Date(order.createdAt).toISOString().slice(0, 16).replace("T", " ")} (UTC) y ${missing ? `le faltan ${missing.length} de 12 páginas${missing.length ? ` (${missing.join(", ")})` : ""}` : "no se ha podido mirar cómo va"}.`,
         failure ? `El rescate ha fallado: ${failure}` : "",
-        `Edición: ${order.edition}. Libro: ${deps.link(pid)}`,
+        `Edición: ${order.edition}. ${bookLine(pid)}`,
         "El rescate lo seguirá intentando. Si no avanza, mira el proveedor de imágenes (saldo, caídas), el de textos y el tope por libro (MAX_COST_CENTS_PER_BOOK).",
       ]
         .filter(Boolean)

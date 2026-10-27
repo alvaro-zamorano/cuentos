@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     if (isChargeEvent(event.type)) {
       const c = await recordChargeEvent(store, event as unknown as ChargeEvent, { sessionOf: (pi) => sessionForPaymentIntent(pi) });
       console.log(`[stripe] ${event.type} → ${c.action}${c.action === "unmatched" || c.action === "ignored" ? ` (${c.reason})` : ""}`);
-      const notice = chargeNotice(c, event as unknown as ChargeEvent, link);
+      const notice = chargeNotice(c, event as unknown as ChargeEvent);
       if (notice) await sendSupportNotice(notice.subject, notice.text).catch(() => null);
       return NextResponse.json({ received: true });
     }
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
           maxDurationS: maxDuration,
           then: async () => {
             await notifyBookReady(store, r.bookId, link, readyMail);
-            await alertPaidFailures(store, r.bookId, sendSupportNotice, link);
+            await alertPaidFailures(store, r.bookId, sendSupportNotice);
           },
         },
       );

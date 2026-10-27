@@ -73,10 +73,10 @@ test("devolución entera: el libro deja de estar pagado (sin descarga) y soporte
   assert.ok(r.action === "refunded" && r.print === "none" && r.via === "refund");
   const v = await bookView(store, bookId);
   assert.ok(v.ok && !v.paid, "la descarga del PDF mira `paid`");
-  const n = chargeNotice(r, refund(), link)!;
+  const n = chargeNotice(r, refund())!;
   assert.match(n.subject, /^Devolución: «Vera y la gran idea»/);
   assert.match(n.text, /ya no se descarga ni se manda a imprimir/);
-  assert.match(n.text, new RegExp(`crear\\?b=${bookId}`));
+  assert.ok(n.text.includes(`ref. ${bookId.slice(0, 6)}`) && !n.text.includes(bookId), "sin el enlace ni el id entero (I30)");
   assert.equal((await recordChargeEvent(store, refund(), stripe)).action, "duplicate");
 });
 
@@ -86,7 +86,7 @@ test("devolución parcial: el pedido sigue pagado y solo se avisa", async () => 
   const r = await recordChargeEvent(store, ev, stripe);
   assert.equal(r.action, "partial_refund");
   assert.ok(((await bookView(store, bookId)) as { paid: boolean }).paid);
-  assert.match(chargeNotice(r, ev, link)!.text, /Se han devuelto 5,00 € de 14,90 €/);
+  assert.match(chargeNotice(r, ev)!.text, /Se han devuelto 5,00 € de 14,90 €/);
 });
 
 test("devolución de una tapa dura que no ha salido: se cancela y ya no se puede mandar a imprimir", async () => {
@@ -104,7 +104,7 @@ test("devolución de una tapa dura que ya está en la imprenta: el aviso pide pa
   const ev = refund({ amount: 3990, amount_refunded: 3990 });
   const r = await recordChargeEvent(store, ev, stripe);
   assert.ok(r.action === "refunded" && r.print === "at_printer");
-  assert.match(chargeNotice(r, ev, link)!.text, /Compruébalo en Gelato y cancélala/);
+  assert.match(chargeNotice(r, ev)!.text, /Compruébalo en Gelato y cancélala/);
 });
 
 test("disputa: la tapa dura que no ha salido se para con plazo para responder; ganada, vuelve a esperar al padre", async () => {
@@ -116,7 +116,7 @@ test("disputa: la tapa dura que no ha salido se para con plazo para responder; g
   assert.equal(order.printStatus, "canceled");
   assert.equal(order.printError, DISPUTE_HOLD);
   assert.ok(((await bookView(store, bookId)) as { paid: boolean }).paid, "la descarga sigue mientras se resuelve");
-  const n = chargeNotice(r, opened, link)!;
+  const n = chargeNotice(r, opened)!;
   assert.match(n.subject, /^Disputa abierta/);
   assert.match(n.text, /\(fraudulent\).*antes del \d+ de [a-z]+ de 20\d\d/);
   assert.equal((await recordChargeEvent(store, opened, stripe)).action, "duplicate");
@@ -134,7 +134,7 @@ test("disputa perdida: como una devolución entera", async () => {
   const lost = await recordChargeEvent(store, dispute("charge.dispute.closed", { status: "lost" }), stripe);
   assert.ok(lost.action === "refunded" && lost.via === "dispute_lost");
   assert.ok(!((await bookView(store, bookId)) as { paid: boolean }).paid);
-  assert.match(chargeNotice(lost, dispute("charge.dispute.closed", { status: "lost" }), link)!.subject, /^Disputa perdida/);
+  assert.match(chargeNotice(lost, dispute("charge.dispute.closed", { status: "lost" }))!.subject, /^Disputa perdida/);
 });
 
 test("devolución que no sabemos de qué pedido es: aviso con lo que trae; si Stripe falla, lanza para que reintente", async () => {
@@ -142,7 +142,7 @@ test("devolución que no sabemos de qué pedido es: aviso con lo que trae; si St
   const ev = refund({ payment_intent: "pi_otro", metadata: { bookId: "abc" } });
   const r = await recordChargeEvent(store, ev, stripe);
   assert.equal(r.action, "unmatched");
-  assert.match(chargeNotice(r, ev, link)!.text, /pi_otro[^]*abc/);
+  assert.match(chargeNotice(r, ev)!.text, /pi_otro[^]*abc/);
   const noKey = await recordChargeEvent(store, refund(), { sessionOf: async () => ({ error: "stripe_401" }) });
   assert.ok(noKey.action === "unmatched" && /stripe_401/.test(noKey.reason));
   await assert.rejects(recordChargeEvent(store, refund(), { sessionOf: async () => Promise.reject(new Error("stripe_503")) }), /stripe_503/);
@@ -178,7 +178,7 @@ test("mejora a tapa dura: devuelto el PDF, la tapa dura de la mejora también se
   assert.ok(r.action === "refunded" && r.linked?.print === "held" && r.stillPaid, JSON.stringify(r));
   assert.equal((await store.getOrderById(hardcover.id))!.printStatus, "canceled");
   assert.ok(!(await startPrint(store, bookId, "dry-run")).ok, "la tapa dura no sale habiendo cobrado solo la diferencia");
-  const text = chargeNotice(r, ev, link)!.text;
+  const text = chargeNotice(r, ev)!.text;
   assert.doesNotMatch(text, /ya no se descarga/);
   assert.match(text, /la mejora a tapa dura \(pedido .*25,00 €\), que sigue pagada\. Su tapa dura no había salido y queda parada/);
 });
@@ -191,7 +191,7 @@ test("mejora a tapa dura: devuelta la diferencia, la tapa dura se cancela y el P
   assert.equal((await store.getOrderById(hardcover.id))!.status, "refunded");
   const v = await bookView(store, bookId);
   assert.ok(v.ok && v.paid && v.edition === "illustrated");
-  assert.match(chargeNotice(r, ev, link)!.text, /El libro se sigue descargando: el PDF está pagado/);
+  assert.match(chargeNotice(r, ev)!.text, /El libro se sigue descargando: el PDF está pagado/);
 });
 
 test("mejora a tapa dura: una disputa del cobro del PDF para la tapa dura; ganada, vuelve a esperar al padre", async () => {
@@ -203,7 +203,7 @@ test("mejora a tapa dura: una disputa del cobro del PDF para la tapa dura; ganad
   const won = await recordChargeEvent(store, dispute("charge.dispute.closed", { status: "won" }), both);
   assert.ok(won.action === "dispute_won" && won.linked?.print === "reopened", JSON.stringify(won));
   assert.equal((await store.getOrderById(hardcover.id))!.printStatus, "awaiting_approval");
-  assert.match(chargeNotice(won, opened, link)!.text, /La tapa dura de la mejora \(pedido .*\) vuelve a esperar/);
+  assert.match(chargeNotice(won, opened)!.text, /La tapa dura de la mejora \(pedido .*\) vuelve a esperar/);
 });
 
 test("consulta cerrada después de devolver el cobro: no reabre la tapa dura ni dice «a favor» sin más", async () => {
@@ -216,7 +216,7 @@ test("consulta cerrada después de devolver el cobro: no reabre la tapa dura ni 
   const order = (await store.getOrderBySession("cs_test_1"))!;
   assert.equal(order.status, "refunded");
   assert.equal(order.printStatus, "canceled");
-  assert.match(chargeNotice(r, ev, link)!.text, /ya se había devuelto/);
+  assert.match(chargeNotice(r, ev)!.text, /ya se había devuelto/);
   // un estado que Stripe no manda al cerrar no se toma como ganada
   assert.equal((await recordChargeEvent(store, dispute("charge.dispute.closed", { status: "under_review" }), stripe)).action, "ignored");
 });
@@ -225,7 +225,7 @@ test("devolver un cobro sin pedido (el cobro doble que devuelve soporte) no mand
   const { store } = await paidBook();
   const r = await recordChargeEvent(store, refund({ payment_intent: "pi_doble" }), { sessionOf: async () => ({ id: "cs_doble" }) });
   assert.equal(r.action, "ignored");
-  assert.equal(chargeNotice(r, refund(), link), null);
+  assert.equal(chargeNotice(r, refund()), null);
   // una disputa sin pedido sí: hay que responderla
   const d = await recordChargeEvent(store, dispute("charge.dispute.created", { payment_intent: "pi_doble" }), { sessionOf: async () => ({ id: "cs_doble" }) });
   assert.equal(d.action, "unmatched");
