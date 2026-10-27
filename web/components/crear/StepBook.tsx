@@ -516,7 +516,13 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
     }
   };
   const perks: Record<PaidEdition, string[]> = {
-    hardcover: [`Libro apaisado de tapa dura, con ${name || "tus personajes"} en las doce ilustraciones`, "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya"],
+    hardcover: [
+      `Libro apaisado de tapa dura, con ${name || "tus personajes"} en las doce ilustraciones`,
+      "Revisas cada página y no lo imprimimos hasta que nos lo digas",
+      // cuándo llega: la primera duda de quien regala (auditoría 26 oct)
+      "Suele llegar en una o dos semanas desde que lo mandas a imprimir",
+      "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya",
+    ],
     illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4 apaisado: imprímelo en casa o en una copistería"],
   };
   return (

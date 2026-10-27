@@ -75,6 +75,17 @@ test("Páginas legales enlazadas desde el footer", async ({ page }) => {
   await expect(page.getByText("art. 103.c)")).toBeVisible();
 });
 
+test("Un enlace roto da una página en castellano con salida, no la 404 en inglés", async ({ page }) => {
+  for (const path of ["/esto-no-existe", "/cuento-personalizado/no-existe"]) {
+    const res = await page.goto(path);
+    expect(res?.status()).toBe(404);
+    await expect(page.getByRole("heading", { name: "Esta página no existe" })).toBeVisible();
+    await expect(page.getByText("This page could not be found")).toHaveCount(0);
+    await expect(page.getByTestId("not-found").getByRole("link", { name: "Ir al inicio" })).toHaveAttribute("href", "/");
+  }
+  await page.getByTestId("not-found").screenshot({ path: test.info().outputPath("404.png") });
+});
+
 test("Cookies: PostHog solo tras aceptar (si el build lleva NEXT_PUBLIC_POSTHOG_KEY)", async ({ page }) => {
   // nada sale de verdad hacia PostHog: se cuenta y se responde aquí
   const posthogCalls: string[] = [];
