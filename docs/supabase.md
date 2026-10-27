@@ -34,6 +34,13 @@ Desde el 13 oct lo hace el cron diario de Vercel `/api/cron/purge` (`web/lib/pur
 
 `?dry=1` cuenta sin borrar. (Antes lo hacía `scripts/worker.ts`, que no está corriendo.)
 
+Desde el 27 oct (auditoría 26 oct, I11 e I29):
+- Un libro que falla (un archivo que Storage no deja borrar) no para la pasada: se apunta, se sigue con los demás y la ruta avisa a soporte con el id corto y el fallo. Se reintenta al día siguiente.
+- La consulta avanza por caducidad: los libros que se conservan (tapa dura sin mandar a imprimir) ya no llenan la tanda y tapan a los demás. Los leads también avanzan por id.
+- Tapa dura ya mandada a imprimir: se guarda hasta 14 días después de la entrega (plazo para pedir que se reimprima, `/condiciones` §9), como mucho 30 días desde que salió (`/privacidad` §4). Se le alarga `expires_at` hasta entonces.
+- Al borrar o vaciar un libro, sus filas de `cuentos_feedback` pierden la nota y la relación con él en ese momento.
+- Los archivos del libro se listan con sus subcarpetas.
+
 ## Filas de prueba
 
 Durante la verificación quedó una fila de prueba: `cuentos_books.public_id = 'zzagenttest1'` (caducada, status `expired`, con 1 job `skipped`) y un lead `agent-test@example.com`. El MCP canceló el `delete` (requiere confirmación). Se borran con:
