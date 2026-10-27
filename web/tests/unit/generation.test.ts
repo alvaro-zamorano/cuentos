@@ -538,3 +538,69 @@ test("una imagen que falla por algo pasajero (429) no deja su reserva: no cuenta
     assert.deepEqual(inserted, [], "sin reserva colgando");
   });
 });
+
+test("el mismo job pedido dos veces a la vez (navegador y segundo plano) a 4 c del tope: lo pinta uno y el otro no lo toca", async () => {
+  const { memoryStore, newMemoryState } = await import("../../lib/generation/store");
+  const { runJob } = await import("../../lib/generation/service");
+  const { startBook } = await import("../../lib/book/service");
+  const { normalizeFicha } = await import("../../lib/plan/ficha");
+  const { mockPlan } = await import("../../lib/plan/mock");
+  const { EVAL_CASES } = await import("../../lib/plan/evalCases");
+  const { dryRunAdapter } = await import("../../lib/generation/adapter");
+  await withEnv({ DAILY_CAP_CENTS: undefined, FREE_BOOK_CAP_CENTS: "60" }, async () => {
+    const rows: Row[] = [];
+    const { db, inserted } = fakeDb(rows);
+    const store = { ...memoryStore(newMemoryState()), db };
+    const ficha = normalizeFicha(EVAL_CASES[0]);
+    const start = await startBook(store, { email: "vera@example.com", ficha, plan: mockPlan(ficha), planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
+    assert.ok(start.ok, JSON.stringify(start));
+    const bookUuid = (await store.getJob(start.sheetJobId))!.book_id;
+    rows.push({ lead_id: bookUuid, cost_cents: 56, created_at: new Date().toISOString() });
+    // lo que ve quien mira el job (el navegador lo consulta) mientras se pinta
+    const seen: string[] = [];
+    const slow = {
+      ...dryRunAdapter,
+      name: "gemini-images",
+      generateImage: async (...a: Parameters<typeof dryRunAdapter.generateImage>) => {
+        await new Promise((r) => setTimeout(r, 30));
+        seen.push((await store.getJob(start.sheetJobId))!.status);
+        return { ...(await dryRunAdapter.generateImage(...a)), provider: "gemini-images", costCents: 4 };
+      },
+    };
+    const [a, b] = await Promise.all([runJob(store, start.sheetJobId, slow), runJob(store, start.sheetJobId, slow)]);
+    assert.ok(a.ok && b.ok);
+    assert.deepEqual([a.ran, b.ran].sort(), [false, true]);
+    assert.deepEqual(seen, ["running"], "antes, mientras uno pintaba, el otro ya lo había dado por fallido");
+    const job = (await store.getJob(start.sheetJobId))!;
+    assert.equal(job.status, "done");
+    assert.equal(job.error, null);
+    assert.deepEqual(inserted.map((r) => [r.model === "reserva", r.cost_cents]), [[false, 4]], "una sola reserva, cambiada por lo que costó");
+  });
+});
+
+test("un job pagado sin presupuesto del día vuelve a esperar sin gastar el intento", async () => {
+  const { memoryStore, newMemoryState } = await import("../../lib/generation/store");
+  const { runJob } = await import("../../lib/generation/service");
+  const { startBook } = await import("../../lib/book/service");
+  const { normalizeFicha } = await import("../../lib/plan/ficha");
+  const { mockPlan } = await import("../../lib/plan/mock");
+  const { EVAL_CASES } = await import("../../lib/plan/evalCases");
+  const { dryRunAdapter } = await import("../../lib/generation/adapter");
+  await withEnv({ DAILY_CAP_CENTS: "20" }, async () => {
+    const { db, inserted } = fakeDb([{ lead_id: "otro", cost_cents: 18, created_at: new Date().toISOString() }]);
+    const state = newMemoryState();
+    const store = { ...memoryStore(state), db };
+    const ficha = normalizeFicha(EVAL_CASES[0]);
+    const start = await startBook(store, { email: "vera@example.com", ficha, plan: mockPlan(ficha), planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
+    assert.ok(start.ok, JSON.stringify(start));
+    state.jobs.get(start.sheetJobId)!.paid = true;
+    const paid = { ...dryRunAdapter, name: "gemini-images" };
+    const r = await runJob(store, start.sheetJobId, paid);
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.status, 429);
+    const job = (await store.getJob(start.sheetJobId))!;
+    assert.equal(job.status, "pending");
+    assert.equal(job.attempts, 0);
+    assert.deepEqual(inserted, [], "sin reserva colgando");
+  });
+});

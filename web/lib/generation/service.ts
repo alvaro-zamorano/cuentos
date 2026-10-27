@@ -373,7 +373,12 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
     sheetRef = { ref: ref ? { url: ref } : { path: sheet.chosen ?? "dry-run/sheet.png" }, bible: sheet.prompt };
   }
 
-  // presupuesto antes de reclamar: si no hay, el job pagado espera (429) y el de muestra falla con el motivo
+  // primero se reclama: si lo pinta otro (el navegador y la tarea de fondo a la vez), este no toca nada, ni el
+  // presupuesto ni el estado del job (revisión 27 oct)
+  const claimed = await store.claim(job);
+  if (!claimed) return { ok: true, job: (await store.getJob(job.id)) ?? job, ran: false };
+
+  // después, el presupuesto: si no hay, el job pagado vuelve a esperar (429) y el de muestra falla con el motivo
   const v2 = v2Of(job);
   // flujo nuevo (26 oct): antes del pago, el presupuesto es del libro (el número de libros por persona se mira al
   // empezar, lib/book/freeLimit.ts). El flujo antiguo sigue contando por email
@@ -385,10 +390,14 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
   const gate = await reserveSpend(store.db, { leadId: lead, kind: SPEND_KIND[job.kind], provider: adapter.name, cents: estimatedCostCents(adapter.name, v2?.size), paid: job.paid, leadCap });
   if (!gate.ok) {
     if (job.paid && gate.cap === "lead") return finish(store, job, "failed", `tope de coste por libro (${perBookCap()} c) alcanzado`);
-    if (job.paid) return fail(429, "budget", gate.reason);
+    if (job.paid) {
+      // se suelta como estaba, sin gastar el intento: se pintará cuando haya presupuesto
+      await store.updateJob(job.id, { status: "pending", attempts: Math.max(0, claimed.attempts - 1), error: job.error });
+      return fail(429, "budget", gate.reason);
+    }
     // 26 oct (Álvaro): si ya hay una imagen pintada que el control de calidad mandó repetir y no queda presupuesto para
     // repetirla, se queda esa. No se tira una imagen ya pagada ni se deja el libro sin portada
-    const kept = qcFallback(job);
+    const kept = qcFallback(claimed);
     if (kept) {
       await store.updateJob(job.id, { status: "done", chosen: kept, storage_path: kept, error: `qc sin repetir: ${gate.reason}`.slice(0, 300) });
       return { ok: true, job: (await store.getJob(job.id)) ?? job, ran: false };
@@ -397,17 +406,17 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
   }
   const reservation = gate.reservation;
 
-  const claimed = await store.claim(job);
-  if (!claimed) {
-    // lo pinta otro: su reserva ya está apuntada
-    await dropReservation(store.db, reservation);
-    return { ok: true, job: (await store.getJob(job.id)) ?? job, ran: false };
-  }
-
   // lo que ha costado de verdad, en cuanto el proveedor devuelve la imagen: si después falla algo nuestro (subirla,
-  // guardar el job), el gasto se apunta igual en vez de quitar la reserva
+  // guardar el job), el gasto se apunta igual en vez de quitar la reserva. La reserva se cierra siempre (finally): con
+  // lo pintado, con el gasto estimado de un tiempo agotado o quitándola
   let painted: SpendRecord | null = null;
+  let timedOut: SpendRecord | null = null;
   let settled = false;
+  const record = async (cost: SpendRecord) => {
+    settled = true;
+    const rec = await settleSpend(store.db, reservation, cost).catch((e: unknown) => ({ ok: false as const, reason: e instanceof Error ? e.message : "error" }));
+    if (!rec.ok) console.error(`[generate] gasto sin registrar (${job.kind} ${job.id}): ${rec.reason}`);
+  };
   try {
     let result: GenerationResult;
     if (v2) {
@@ -418,11 +427,6 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
     painted = { leadId: lead, kind: SPEND_KIND[job.kind], provider: result.provider, model: result.model, cents: result.costCents };
     const img = result.images[0];
     if (!img) throw new Error("el proveedor no devolvió imagen");
-    const record = async () => {
-      settled = true;
-      const rec = await settleSpend(store.db, reservation, painted!);
-      if (!rec.ok) console.error(`[generate] gasto sin registrar (${job.kind} ${job.id}): ${rec.reason}`);
-    };
     const prevCandidates = Array.isArray(claimed.candidates) ? (claimed.candidates as unknown as (Candidate | string)[]) : [];
     const cost = (claimed.cost_cents ?? 0) + result.costCents;
     let chosen: string;
@@ -438,7 +442,7 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
       if (qc && !qc.pass && claimed.attempts < MAX_ATTEMPTS) {
         // un intento más antes de enseñarla: vuelve a pendiente con el motivo (el cliente la vuelve a pedir)
         await store.updateJob(job.id, { status: "pending", candidates: [...prevCandidates, candidate] as unknown as GenJob["candidates"], cost_cents: cost, error: `qc: ${qc.problems.join("; ")}`.slice(0, 300) });
-        await record();
+        await record(painted);
         const again = await store.getJob(job.id);
         return { ok: true, job: again ?? job, ran: true };
       }
@@ -459,7 +463,7 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
       cost_cents: cost,
       error: null,
     });
-    await record();
+    await record(painted);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     // un fallo pasajero del proveedor (429, 5xx, red, tiempo agotado) no gasta el intento: el job queda fallido y se
@@ -468,18 +472,20 @@ export async function runJob(store: GenStore, jobId: unknown, adapter: Generatio
     // un tiempo agotado sí se apunta como gasto (estimado): el proveedor pudo cobrarlo, y así el tope por libro y el del
     // día frenan los reintentos sin fin cuando va lento (revisión 26 oct). 429, 5xx y red no se cobran
     const charged = isTimeout(e) ? estimatedCostCents(adapter.name, v2?.size) : 0;
+    if (charged > 0) timedOut = { leadId: lead, kind: SPEND_KIND[job.kind], provider: adapter.name, model: "tiempo-agotado", cents: charged };
+    console.error(`[generate] ${job.kind} ${job.id} falló${transient ? " (pasajero)" : ""}`);
     await store.updateJob(job.id, {
       status: "failed",
       error: `${transient ? "pasajero: " : ""}${msg}`.slice(0, 300),
       ...(transient ? { attempts: Math.max(0, claimed.attempts - 1) } : {}),
       ...(charged > 0 ? { cost_cents: (claimed.cost_cents ?? 0) + charged } : {}),
     });
-    const cost: SpendRecord | null = painted ?? (charged > 0 ? { leadId: lead, kind: SPEND_KIND[job.kind], provider: adapter.name, model: "tiempo-agotado", cents: charged } : null);
-    if (!settled && cost) {
-      const rec = await settleSpend(store.db, reservation, cost).catch(() => null);
-      if (!rec?.ok) console.error(`[generate] gasto sin registrar tras el fallo (${job.kind} ${job.id})`);
-    } else if (!settled) await dropReservation(store.db, reservation);
-    console.error(`[generate] ${job.kind} ${job.id} falló${transient ? " (pasajero)" : ""}`);
+  } finally {
+    if (!settled) {
+      const cost = painted ?? timedOut;
+      if (cost) await record(cost);
+      else await dropReservation(store.db, reservation);
+    }
   }
   const after = await store.getJob(job.id);
   return { ok: true, job: after ?? job, ran: true };
