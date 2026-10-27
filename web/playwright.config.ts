@@ -30,7 +30,8 @@ export default defineConfig({
     // los tests nunca llaman a proveedores de pago aunque haya claves en .env.local
     // ni Stripe ni Resend ni Gelato: el pago y la imprenta son de prueba y no se manda ningún email
     // la suite escribe más de 12 cuentos y empieza casi 10 libros desde la misma IP, y algún cuento dos veces en menos de
-    // un segundo: con los topes de producción, los últimos tests y «Ficha pobre» fallaban con 429
-    env: { ...(process.env as Record<string, string>), STORY_PROVIDER: "mock", GENERATION_PROVIDER: "dry-run", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "", RESEND_API_KEY: "", GELATO_API_KEY: "", PLAN_RATE_PER_HOUR: "100", PLAN_MIN_GAP_MS: "0", START_RATE_PER_HOUR: "100" },
+    // un segundo: con los topes de producción, los últimos tests y «Ficha pobre» fallaban con 429. Lo mismo con dos avisos
+    // de página seguidos en la CI, que va más rápida que en local (27 oct)
+    env: { ...(process.env as Record<string, string>), STORY_PROVIDER: "mock", GENERATION_PROVIDER: "dry-run", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "", RESEND_API_KEY: "", GELATO_API_KEY: "", PLAN_RATE_PER_HOUR: "100", PLAN_MIN_GAP_MS: "0", START_RATE_PER_HOUR: "100", REPORT_MIN_GAP_MS: "0" },
   },
 });
