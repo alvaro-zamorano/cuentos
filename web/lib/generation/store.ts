@@ -148,8 +148,14 @@ export interface GenStore {
   /** Vuelve a `pending` un job `failed` (reintento), con el mismo bloqueo optimista. */
   reopen(job: GenJob): Promise<boolean>;
   upload(path: string, data: Uint8Array, contentType: string): Promise<void>;
-  /** `download`: el nombre con el que se descarga (Content-Disposition). */
+  /** `download`: el nombre con el que se descarga (Content-Disposition). Sin él, sale de `signedUrls` (con su caché). */
   signedUrl(path: string, seconds: number, opts?: { download?: string }): Promise<string | null>;
+  /**
+   * Varias de una vez (auditoría 26 oct, I20): una sola llamada a Storage, y la misma URL mientras le quede al menos
+   * `seconds` de vida, para que el móvil no vuelva a descargar la imagen en cada consulta. Las que no se puedan firmar
+   * no vienen.
+   */
+  signedUrls(paths: string[], seconds: number): Promise<Map<string, string>>;
   /** ¿Está ese archivo en el bucket? En memoria no hay bucket: siempre false. */
   exists(path: string): Promise<boolean>;
   /** ¿Hay un pedido pagado? Con `accept`, solo cuenta si su sesión de Stripe pasa el filtro (ver `paidInEnv`). */
@@ -272,8 +278,45 @@ function asJob(row: Record<string, unknown>): GenJob {
 
 /* ------------------------------ Supabase ------------------------------ */
 
+/**
+ * URLs firmadas por cliente (el de service role se crea una vez por instancia) y ruta (I20). Se firman por hora y media y
+ * se reutilizan mientras les quede lo que se pide (la vista, una hora): la misma imagen tiene la misma URL entre
+ * consultas y el navegador la tiene en caché. Ninguna URL de imagen vale más de hora y media (antes, una hora).
+ */
+const SIGN_S = 5400;
+const signCaches = new WeakMap<object, Map<string, { url: string; exp: number }>>();
+
+function signCache(db: object): Map<string, { url: string; exp: number }> {
+  let c = signCaches.get(db);
+  if (!c) signCaches.set(db, (c = new Map()));
+  return c;
+}
+
 export function supabaseStore(db: SupabaseClient<Database>): GenStore {
   const jobs = () => db.from("cuentos_generation_jobs");
+  const signMany = async (paths: string[], seconds: number): Promise<Map<string, string>> => {
+    const cache = signCache(db);
+    const now = Date.now();
+    const out = new Map<string, string>();
+    const missing: string[] = [];
+    for (const p of new Set(paths)) {
+      const c = cache.get(p);
+      if (c && c.exp - now >= seconds * 1000) out.set(p, c.url);
+      else missing.push(p);
+    }
+    if (missing.length === 0) return out;
+    const { data, error } = await db.storage.from(BUCKET).createSignedUrls(missing, Math.max(SIGN_S, seconds));
+    if (error) return out;
+    if (cache.size > 5000) for (const [k, v] of cache) if (v.exp < now) cache.delete(k);
+    if (cache.size > 5000) cache.clear();
+    for (const r of data ?? []) {
+      if (!r.signedUrl || r.error || !r.path) continue;
+      // con margen: la vida cuenta desde que Storage firma
+      cache.set(r.path, { url: r.signedUrl, exp: now + Math.max(SIGN_S, seconds) * 1000 - 10_000 });
+      out.set(r.path, r.signedUrl);
+    }
+    return out;
+  };
   const toBook = (row: { id: string; public_id: string; email: string | null; draft: Json; expires_at?: string | null; updated_at?: string | null }): BookRecord => ({
     id: row.id,
     public_id: row.public_id,
@@ -388,9 +431,13 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       if (error) throw new Error(`storage: ${error.message}`);
     },
     async signedUrl(path, seconds, opts) {
-      const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds, opts?.download ? { download: opts.download } : undefined);
-      return data?.signedUrl ?? null;
+      if (opts?.download) {
+        const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds, { download: opts.download });
+        return data?.signedUrl ?? null;
+      }
+      return (await signMany([path], seconds)).get(path) ?? null;
     },
+    signedUrls: signMany,
     async exists(path) {
       // false solo si Storage dice que no está (400/404); cualquier otro fallo lanza
       const { data } = await db.storage.from(BUCKET).exists(path);
@@ -742,6 +789,15 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async exists() {
       return false;
+    },
+    // sin Storage no hay nada que firmar; de una en una con `signedUrl`, por si un test la sustituye
+    async signedUrls(paths, seconds) {
+      const out = new Map<string, string>();
+      for (const p of paths) {
+        const url = await this.signedUrl(p, seconds);
+        if (url) out.set(p, url);
+      }
+      return out;
     },
     async hasPaidOrder(bookId, accept) {
       const mine = [...(state.orders?.values() ?? [])].filter((o) => o.bookId === bookId);

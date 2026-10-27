@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ContactEmail, LegalPage } from "@/components/LegalPage";
 import { BRAND, titular } from "@/lib/legal";
 
-export const metadata: Metadata = { title: "Aviso legal" };
+export const metadata: Metadata = { title: "Aviso legal", alternates: { canonical: "/aviso-legal" } };
 
 export default function AvisoLegal() {
   const t = titular();

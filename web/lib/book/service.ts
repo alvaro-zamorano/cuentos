@@ -13,6 +13,7 @@ import { hashString } from "../story/hash";
 import { getStyle } from "../generation/styles";
 import { MAX_ATTEMPTS, STALE_RUNNING_MS, gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
 import { jobKey } from "../generation/keys";
+import { VIEW_URL_SECONDS } from "../signing";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
 import { canSpend, freeBookCapCents } from "../generation/budget";
@@ -1447,10 +1448,12 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   const jobs = (await store.listJobs(book.id)).filter((j) => v2Of(j));
   const sheets = sheetJobs(jobs);
   const paid = await paidHere(store, book.id, env);
+  // sin pago (o devuelto, I5), las ilustraciones de pago no se enseñan: solo la hoja, la portada y lo gratis (revisión 27 oct)
+  const shown = (j: GenJob) => j.status === "done" && !!j.storage_path && !(j.paid && !paid);
+  // todas en una llamada, y la misma URL que la consulta anterior mientras siga valiendo (I20)
+  const urls = sign ? await store.signedUrls(jobs.filter(shown).map((j) => j.storage_path!), VIEW_URL_SECONDS) : new Map<string, string>();
   const out: BookJobView[] = [];
   for (const j of jobs) {
-    // sin pago (o devuelto, I5), las ilustraciones de pago no se enseñan: solo la hoja, la portada y lo gratis (revisión 27 oct)
-    const hidden = !!j.paid && !paid;
     const sheetId = sheetRefOf(j);
     const current =
       j.kind === "page" && d.castArt && d.pagesArt && sheetId
@@ -1464,7 +1467,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       page: j.page_n,
       variant: j.variant,
       status: j.status,
-      url: sign && j.status === "done" && j.storage_path && !hidden ? await store.signedUrl(j.storage_path, 3600) : null,
+      url: shown(j) ? urls.get(j.storage_path!) ?? null : null,
       placeholder: j.status === "done" && !j.storage_path,
       error: j.status === "failed" ? failReason(j.error) : null,
       current,
