@@ -21,11 +21,17 @@ export async function GET(req: Request) {
   try {
     const report = await purgeExpired(supabasePurgeDb(db), { dryRun, deadline: Date.now() + 45_000 });
     console.log(`[cron/purge] ${JSON.stringify(report)}`);
+    // la pasada no ha llegado a todo (más caducados de los que caben): si se repite, el retraso crece (revisión 27 oct)
+    if (report.remaining && !dryRun)
+      await sendSupportNotice(
+        "El borrado de 30 días no ha llegado a todo",
+        "La pasada del cron de borrado se ha quedado sin tiempo y deja libros caducados para mañana. Si pasa varios días seguidos, hay que pasarla más a menudo (con Vercel Pro, cada hora).",
+      ).catch(() => null);
     // libros que no se han podido borrar: la pasada sigue con los demás, pero alguien tiene que mirarlo (I11)
     if (report.failed > 0)
       await sendSupportNotice(
         "El borrado de 30 días no ha podido con algunos libros",
-        `La pasada del cron de borrado ha terminado, pero ${report.failed} libro(s) han fallado y siguen sin borrar:\n\n${report.errors.join("\n")}\n\nSe reintentan mañana. Si siguen fallando, míralo en Supabase (bucket y tablas cuentos_*) y en los logs de Vercel.`,
+        `La pasada del cron de borrado ha terminado, pero ${report.failed} libro(s) o pasos han fallado y siguen sin borrar:\n\n${report.errors.join("\n")}\n\nSe reintentan mañana. Si siguen fallando, míralo en Supabase (bucket y tablas cuentos_*) y en los logs de Vercel.`,
       ).catch(() => null);
     return NextResponse.json({ ok: true, ...report }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {

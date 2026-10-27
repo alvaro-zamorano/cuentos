@@ -110,7 +110,10 @@ export const RETENTION_DAYS = 30;
 /** Lo que queda en cuentos_spend.lead_id cuando se quita el email. */
 export const ANON_LEAD = "borrado";
 
-export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date(), batch = 100, deadline = Date.now() + 50_000 }: { dryRun?: boolean; now?: Date; batch?: number; deadline?: number } = {}): Promise<PurgeReport> {
+export async function purgeExpired(
+  db: PurgeDb,
+  { dryRun = false, now = new Date(), batch = 100, deadline = Date.now() + 50_000, bookTimeoutMs = 20_000 }: { dryRun?: boolean; now?: Date; batch?: number; deadline?: number; bookTimeoutMs?: number } = {},
+): Promise<PurgeReport> {
   const report: PurgeReport = { dryRun, deleted: 0, scrubbedPaid: 0, keptForPrint: 0, keptForReprint: 0, failed: 0, errors: [], files: 0, stories: 0, leads: 0, spend: 0, feedback: 0, shipping: 0, remaining: false };
   const seen = new Set<string>();
   let after: { expiresAt: string; id: string } | undefined;
@@ -128,11 +131,12 @@ export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date
       }
       seen.add(b.id);
       try {
-        await purgeBook(db, b, report, dryRun, now);
+        // con plazo propio: una llamada a Storage colgada no se come la pasada entera (revisión 27 oct)
+        await withTimeout(purgeBook(db, b, report, dryRun, now), bookTimeoutMs);
       } catch (e) {
-        // un libro que falla (un archivo que Storage no deja borrar) no para la pasada: se reintenta mañana
-        report.failed++;
-        if (report.errors.length < 5) report.errors.push(`${b.publicId}: ${e instanceof Error ? e.message.slice(0, 160) : "error"}`);
+        // un libro que falla (un archivo que Storage no deja borrar) no para la pasada: se reintenta mañana. En el aviso,
+        // la referencia corta: el id entero abre el libro (I30)
+        failed(report, `ref. ${b.publicId.slice(0, 6)}`, e);
       }
     }
     if (dryRun) {
@@ -143,14 +147,36 @@ export async function purgeExpired(db: PurgeDb, { dryRun = false, now = new Date
   }
   if (Date.now() >= deadline) report.remaining = true;
   const before = new Date(now.getTime() - RETENTION_DAYS * 86_400_000);
-  report.stories = await db.scrubStories(before, dryRun);
+  // cada paso por su cuenta: si uno falla, los demás se hacen igual (revisión 27 oct)
+  const step = async (name: string, run: () => Promise<number>): Promise<number> => {
+    try {
+      return await withTimeout(run(), bookTimeoutMs);
+    } catch (e) {
+      failed(report, name, e);
+      return 0;
+    }
+  };
+  report.stories = await step("cuentos", () => db.scrubStories(before, dryRun));
   // después de los libros: un email cuyo último libro acaba de caducar ya no tiene libro vigente
-  report.leads = await db.scrubLeads(before, dryRun);
-  report.spend = await db.scrubSpend(before, dryRun);
-  report.feedback = (await db.scrubFeedback?.(before, dryRun)) ?? 0;
+  report.leads = await step("leads", () => db.scrubLeads(before, dryRun));
+  report.spend = await step("gasto", () => db.scrubSpend(before, dryRun));
+  report.feedback = await step("notas", async () => (await db.scrubFeedback?.(before, dryRun)) ?? 0);
   // un día: el pago caduca a los 35 minutos, así que ningún pago en marcha necesita ya la dirección del borrador
-  report.shipping = (await db.scrubShipping?.(new Date(now.getTime() - 86_400_000), dryRun)) ?? 0;
+  report.shipping = await step("direcciones", async () => (await db.scrubShipping?.(new Date(now.getTime() - 86_400_000), dryRun)) ?? 0);
   return report;
+}
+
+function failed(report: PurgeReport, what: string, e: unknown): void {
+  report.failed++;
+  if (report.errors.length < 5) report.errors.push(`${what}: ${e instanceof Error ? e.message.slice(0, 160) : "error"}`);
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`sin respuesta en ${Math.round(ms / 1000)} s`)), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
 async function purgeBook(db: PurgeDb, b: ExpiredBook, report: PurgeReport, dryRun: boolean, now: Date): Promise<void> {
@@ -256,7 +282,8 @@ export function supabasePurgeDb(db: SupabaseClient<Database>, env: Record<string
         .eq("book_id", bookId)
         .eq("status", "paid")
         .eq("edition", "hardcover")
-        .in("print_status", ["sent", "in_production", "shipped", "delivered"]);
+        // también lo que la imprenta devolvió o canceló: /condiciones §8 ofrece otro envío (revisión 27 oct)
+        .in("print_status", ["sent", "in_production", "shipped", "delivered", "returned", "canceled"]);
       must(error, "orders.reprint");
       let until: Date | null = null;
       for (const o of data ?? []) {
@@ -283,9 +310,17 @@ export function supabasePurgeDb(db: SupabaseClient<Database>, env: Record<string
       must(jobs.error, "jobs.delete");
       const { error } = await db.from("cuentos_books").update({ draft: {}, status: "expired" }).eq("id", bookId);
       must(error, "books.scrub");
-      // la dirección de envío solo hace falta mientras el libro viaja
-      const ship = await db.from("cuentos_orders").update({ shipping: null }).eq("book_id", bookId).or("print_status.is.null,print_status.in.(delivered,canceled,returned)");
-      must(ship.error, "orders.shipping");
+      // la dirección y el seguimiento, de todos sus pedidos: si se vacía es que ya pasó el plazo para reimprimirlo (I29),
+      // y un paquete que la imprenta nunca da por entregado ya no guarda la dirección para siempre (revisión 27 oct). Lo
+      // que aún no ha salido hacia la imprenta no llega aquí (`printPending`)
+      const { data: orders, error: oErr } = await db.from("cuentos_orders").select("id, print_info").eq("book_id", bookId);
+      must(oErr, "orders.book");
+      for (const o of orders ?? []) {
+        const info = o.print_info && typeof o.print_info === "object" ? { ...(o.print_info as Record<string, unknown>) } : null;
+        if (info) delete info.trackingCode;
+        const up = await db.from("cuentos_orders").update({ shipping: null, print_tracking_url: null, print_info: info as Json }).eq("id", o.id);
+        must(up.error, "orders.shipping");
+      }
     },
     async scrubStories(before, dryRun) {
       if (dryRun) {

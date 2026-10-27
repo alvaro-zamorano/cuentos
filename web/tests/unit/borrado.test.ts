@@ -84,7 +84,7 @@ test("I11: un libro que no se deja borrar no para la pasada; se apunta y se sigu
   const { db, books } = fakeDb([book("a", 5, { stuck: true }), book("b", 4), book("c", 3, { paid: true })]);
   const r = await purgeExpired(db, { now: NOW, deadline: Date.now() + 5_000 });
   assert.equal(r.failed, 1);
-  assert.match(r.errors[0], /^axxxxxxx: storage\.remove/);
+  assert.match(r.errors[0], /^ref\. axxxxx: storage\.remove/, "con la referencia corta, no el id que abre el libro");
   assert.equal(books.get("a")!.gone, undefined, "sigue ahí para mañana");
   assert.equal(books.get("b")!.gone, "deleted");
   assert.equal(books.get("c")!.gone, "scrubbed");
@@ -202,9 +202,43 @@ test("I29 en Supabase: la fecha sale del pedido de este entorno (salida y entreg
   const { db, calls } = recording(() => rows);
   const until = await supabasePurgeDb(db, { VERCEL_ENV: "production" }).keepForReprint!("b1", NOW);
   assert.equal(until!.toISOString(), new Date(Date.parse("2026-10-09T10:00:00Z") + REPRINT_DAYS * DAY).toISOString(), "la de prueba no cuenta en producción");
-  assert.equal(calls[0].url.searchParams.get("print_status"), "in.(sent,in_production,shipped,delivered)");
+  assert.equal(calls[0].url.searchParams.get("print_status"), "in.(sent,in_production,shipped,delivered,returned,canceled)", "también lo devuelto o cancelado por la imprenta");
   // alargar nunca acorta
   const ext = recording(() => []);
   await supabasePurgeDb(ext.db, {}).extendBook!("b1", new Date("2026-11-01T00:00:00Z"));
   assert.equal(ext.calls[0].url.searchParams.get("expires_at"), "lt.2026-11-01T00:00:00.000Z");
+});
+
+test("revisión: un paso que falla no se salta los demás, y un libro colgado no se come la pasada", async () => {
+  const { db } = fakeDb([book("h", 3), book("b", 2)]);
+  let leads = 0;
+  db.scrubStories = async () => {
+    throw new Error("stories: timeout");
+  };
+  db.scrubLeads = async () => (leads++, 2);
+  // Storage no contesta para el primer libro
+  const remove = db.removeFiles;
+  db.removeFiles = async (paths) => (paths[0].startsWith("books/h/") ? new Promise(() => undefined) : remove(paths));
+  const t0 = Date.now();
+  const r = await purgeExpired(db, { now: NOW, deadline: Date.now() + 5_000, bookTimeoutMs: 200 });
+  assert.ok(Date.now() - t0 < 3_000);
+  assert.equal(r.failed, 2);
+  assert.match(r.errors.join("\n"), /hxxxxx: sin respuesta/);
+  assert.match(r.errors.join("\n"), /^cuentos: stories: timeout/m);
+  assert.equal(r.deleted, 2, "el segundo libro se borra igual");
+  assert.equal(leads, 1, "los leads se miran aunque fallen los cuentos");
+  assert.equal(r.leads, 2);
+});
+
+test("revisión: al vaciar un libro pagado, sus pedidos pierden la dirección y el seguimiento, lleguen o no a «entregado»", async () => {
+  const { db, calls } = recording((url, method) => {
+    const table = url.pathname.split("/").pop();
+    if (table === "cuentos_orders" && method === "GET") return [{ id: "o1", print_info: { trackingCode: "TR1", steps: { sent: "x" } } }];
+    return [];
+  });
+  await supabasePurgeDb(db, {}).scrubPaidBook("b1");
+  const ups = calls.filter((c) => c.method === "PATCH" && c.url.pathname.endsWith("cuentos_orders"));
+  assert.equal(ups.length, 1);
+  assert.equal(ups[0].url.searchParams.get("id"), "eq.o1");
+  assert.deepEqual(ups[0].body, { shipping: null, print_tracking_url: null, print_info: { steps: { sent: "x" } } });
 });
