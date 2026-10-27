@@ -23,7 +23,9 @@ export function clientIp(req: Request): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip")?.trim() || "local";
 }
 
-export function envInt(name: string, fallback: number): number {
-  const v = Number(process.env[name]);
-  return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
+/** Entero de una variable de entorno; sin valor, o por debajo de `min` (1 por defecto), vale `fallback`. */
+export function envInt(name: string, fallback: number, min = 1): number {
+  const raw = process.env[name]?.trim();
+  const v = Number(raw);
+  return raw && Number.isFinite(v) && v >= min ? Math.floor(v) : fallback;
 }

@@ -106,7 +106,8 @@ export async function planBook(fichaIn: unknown, llm: Llm = selectLlm("plan")): 
 
   const ms = Date.now() - t0;
   if (!last || !last.validation.usable) {
-    console.warn(`[plan] sin plan válido tras ${attempts} intentos: ${last ? msgs(last.validation.issues).slice(0, 6).join(" | ") : "sin respuesta"}`);
+    // solo cuántos avisos: su texto lleva nombres del cuento (auditoría 26 oct, I24)
+    console.warn(`[plan] sin plan válido tras ${attempts} intentos: ${last ? `${last.validation.issues.length} avisos` : "sin respuesta"}`);
     return { ok: false, status: 502, error: "invalid", message: "No hemos podido escribir el cuento ahora mismo. Inténtalo de nuevo.", issues: last ? msgs(last.validation.issues) : [], costCents: llmCostCents(last?.model ?? llm.model, usage) };
   }
   return {

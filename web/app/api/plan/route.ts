@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { selectLlm } from "@/lib/llm";
-import { fichaHash, normalizeFicha } from "@/lib/plan/ficha";
+import { fichaHash, normalizeFicha, planCacheKey } from "@/lib/plan/ficha";
 import { planBook } from "@/lib/plan/planner";
 import { TEXT_BUDGET_MESSAGE, recordText, textRoom } from "@/lib/plan/textBudget";
 import type { PlanRecord } from "@/lib/plan/types";
@@ -27,15 +27,20 @@ export async function POST(req: Request) {
   if (!body.ficha || typeof body.ficha !== "object") return NextResponse.json({ ok: false, error: "ficha" }, { status: 400 });
   const ficha = normalizeFicha(body.ficha);
   const hash = fichaHash(ficha);
+  // la caché va por todo lo que entra en el prompt, no por la huella de la historia (I25)
+  const cacheKey = `plan:${planCacheKey(ficha)}`;
   const llm = selectLlm("plan");
   const db = supabaseAdmin();
 
+  // también la caché tiene tope por IP: sin él se podían recoger cuentos probando nombres e ideas (I25)
+  const cacheLimit = rateLimit(`plancache:${clientIp(req)}`, envInt("PLAN_CACHE_RATE_PER_HOUR", 30), 0);
+  if (!cacheLimit.ok) return NextResponse.json({ ok: false, error: "rate_limited", message: "Has pedido muchos cuentos seguidos. Espera un poco y vuelve a intentarlo." }, { status: 429, headers: { "Retry-After": String(cacheLimit.retryAfter) } });
   if (db) {
     try {
       const { data } = await db
         .from("cuentos_stories")
         .select("story")
-        .eq("input_hash", `plan:${hash}`)
+        .eq("input_hash", cacheKey)
         .eq("provider", llm.name)
         .eq("fallback", false)
         .order("created_at", { ascending: false })
@@ -50,7 +55,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const limit = rateLimit(`plan:${clientIp(req)}`, envInt("PLAN_RATE_PER_HOUR", 12));
+  // PLAN_MIN_GAP_MS: el respiro mínimo entre dos cuentos de la misma IP (1 s; los tests de Playwright lo ponen a 0)
+  const limit = rateLimit(`plan:${clientIp(req)}`, envInt("PLAN_RATE_PER_HOUR", 12), envInt("PLAN_MIN_GAP_MS", 1000, 0));
   if (!limit.ok) return NextResponse.json({ ok: false, error: "rate_limited", message: "Has pedido muchos cuentos seguidos. Espera un poco y vuelve a intentarlo." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
 
   const room = await textRoom(db, "plan", llm);
@@ -65,7 +71,7 @@ export async function POST(req: Request) {
 
   if (db) {
     const { error } = await db.from("cuentos_stories").insert({
-      input_hash: `plan:${hash}`,
+      input_hash: cacheKey,
       input: ficha as unknown as Json,
       story: result.record as unknown as Json,
       provider: result.record.provider,

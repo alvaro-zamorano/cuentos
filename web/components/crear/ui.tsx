@@ -15,6 +15,20 @@ export function ErrorNote({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl bg-[#f6ded6] px-4 py-3 text-[15px] leading-snug text-danger">{children}</p>;
 }
 
+/** El libro no se ha podido cargar (sin red o error del servidor, I9): lo dice y deja volver a intentarlo. */
+export function LoadError({ text }: { text: string }) {
+  return (
+    <div className="grid gap-3 rounded-2xl bg-[#f6ded6] px-4 py-3.5 text-[15px] leading-snug text-danger" role="alert" data-testid="load-error">
+      <p className="m-0">{text}</p>
+      <div>
+        <button type="button" className="btn-soft" onClick={() => window.location.reload()}>
+          Volver a intentarlo
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Lámina pegada con cinta (la hoja de personajes, como en la landing). */
 export function Taped({ children }: { children: React.ReactNode }) {
   return (

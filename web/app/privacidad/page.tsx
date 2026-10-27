@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Política de privacidad" };
 export default function Privacidad() {
   const t = titular();
   return (
-    <LegalPage title="Política de privacidad" updated="26 de octubre de 2026">
+    <LegalPage title="Política de privacidad" updated="27 de octubre de 2026">
       <h2>1. Responsable</h2>
       <p>
         Responsable del tratamiento: {holderLine(t)}. Contacto para privacidad: <ContactEmail value={t.email} />.
@@ -28,6 +28,10 @@ export default function Privacidad() {
           <strong>De otras personas o mascotas que añadas al cuento</strong>: nombre, relación y aspecto. Añádelos solo si tienes permiso.
         </li>
         <li>
+          <strong>Datos de salud, solo si los cuentas tú</strong>: no los pedimos, pero los campos libres los admiten (por ejemplo, que lleva
+          audífono o va en silla de ruedas). Si los pones, los usamos solo para escribir e ilustrar ese cuento y se borran con él.
+        </li>
+        <li>
           <strong>De quien crea o compra el libro</strong>: el email, si quiere recibir novedades y los datos del pedido. Los datos de la
           tarjeta los recoge la entidad de pago; nosotros no los vemos.
         </li>
@@ -40,7 +44,8 @@ export default function Privacidad() {
         </li>
       </ul>
       <p>
-        Quien crea el cuento declara, en una casilla obligatoria, ser madre, padre o tutor legal del menor, o contar con su autorización.
+        Quien crea el cuento declara ser madre, padre o tutor legal del menor, o contar con su autorización: al pedir que lo escribamos y,
+        otra vez, en una casilla obligatoria antes de dibujarlo.
       </p>
 
       <h2>3. Para qué y con qué base</h2>
@@ -48,6 +53,10 @@ export default function Privacidad() {
         <li>
           Crear el cuento y sus ilustraciones con inteligencia artificial, guardarlo, mandarte el enlace, cobrar, imprimir y entregar el libro, y
           contestar lo que nos escribes: ejecución del servicio que pides. Sin estos datos no podemos hacer el libro.
+        </li>
+        <li>
+          Los datos de salud que cuentes del niño o la niña: solo para hacer ese libro y con tu consentimiento expreso (art. 9.2.a RGPD), que
+          das al pedir que lo escribamos y en la casilla antes de dibujarlo. Puedes retirarlo escribiéndonos: borramos el libro.
         </li>
         <li>Conservar los pedidos: obligaciones contables y fiscales.</li>
         <li>

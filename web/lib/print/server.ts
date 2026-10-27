@@ -1,7 +1,7 @@
 import "server-only";
 import type { PrintDeps } from "../book/print";
 import { renderPrintPdf } from "../pdf/print";
-import { sendPrintReminder, sendSentToPrint, sendShipped } from "../mail";
+import { sendPrintReminder, sendSentToPrint, sendShipped, sendSupportNotice } from "../mail";
 import { coverGeometry, createGelatoOrder, estimatedCover, gelatoOrderType, gelatoPageCount, getGelatoOrder, gelatoShipmentMethod, printMode, productSize, resolveProductUid } from "./gelato";
 
 /** Dependencias reales del libro impreso (Gelato, Chromium, Resend) para las rutas. `origin` da los enlaces de los emails. */
@@ -19,6 +19,7 @@ export function printDeps(origin: string): PrintDeps {
     createOrder: (i) => createGelatoOrder(i),
     getOrder: (id) => getGelatoOrder(id),
     mail: { sentToPrint: sendSentToPrint, shipped: sendShipped, reminder: sendPrintReminder },
+    notify: sendSupportNotice,
     link: (id) => `${origin}/crear?b=${id}`,
     trackLink: (orderId) => `${origin}/seguimiento/${orderId}`,
   };

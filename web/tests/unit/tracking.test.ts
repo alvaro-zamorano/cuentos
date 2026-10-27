@@ -24,7 +24,9 @@ const ADDRESS = { name: "Ana García López", line1: "Calle Mayor 12", line2: "3
 const GEL0: GelatoOrder = { id: "gel-0001-abcd", status: "created", orderReferenceId: null, trackingUrl: null, trackingCode: null, method: null, etaFrom: null, etaTo: null };
 
 async function sentBook(now: Date) {
-  const store = memoryStore(newMemoryState());
+  // a la imprenta de verdad no van huecos del modo sin coste (revisión 27 oct): las imágenes tienen archivo y URL
+  const plain = memoryStore(newMemoryState());
+  const store = { ...plain, signedUrl: async (p: string) => `https://files.example/${p}` };
   const start = await startBook(store, { email, ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok, JSON.stringify(start));
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
@@ -33,6 +35,7 @@ async function sentBook(now: Date) {
   const r = await requestPages(store, { bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(r.ok, JSON.stringify(r));
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
+  for (const j of await store.listJobs((await store.findBook({ publicId: bookId }))!.id)) if (j.status === "done") await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });
 
   const mails: string[] = [];
   const orders: Parameters<PrintDeps["createOrder"]>[0][] = [];
@@ -154,7 +157,7 @@ test("recorrido: el pedido pide el económico, el email lleva a nuestra página 
   assert.equal(v.title, plan.title);
   assert.equal(v.city, "Madrid");
   assert.equal(v.info.steps?.sent, t0.toISOString());
-  assert.equal(v.coverUrl, null, "en memoria las imágenes no tienen URL; en Supabase va la portada firmada");
+  assert.match(v.coverUrl ?? "", /^https:\/\/files\.example\/books\//, "va la portada firmada");
   assert.ok(!JSON.stringify(v).includes("Calle Mayor"), "sin la dirección completa");
   assert.ok(!JSON.stringify(v).includes(bookId), "sin el enlace al libro");
 

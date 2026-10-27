@@ -35,10 +35,11 @@ jobs:
       - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npx eslint .
-      - run: npm run test:unit
-      - run: npm run build
+      # Chromium y poppler antes de los tests unitarios: los del PDF (I8) imprimen de verdad y miran las letras
       - run: npx playwright install --with-deps chromium
       - run: sudo apt-get install -y poppler-utils
+      - run: npm run test:unit
+      - run: npm run build
       - run: npx playwright test
         env:
           CHROME_PATH: ""

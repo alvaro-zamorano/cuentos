@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
-import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
+import { errorMessage, fetchView, loadView, postJson, runJobs, viewErrorMessage, type JobOutcome } from "@/lib/bookClient";
 import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
 import { WaitCard } from "./Waiting";
-import { ErrorNote, Status, Taped } from "./ui";
+import { ErrorNote, LoadError, Status, Taped } from "./ui";
 
 /** La portada más reciente de una hoja: si una falla del todo, se pinta otra para la misma hoja (auditoría 26 oct, B8). */
 function coverOf(jobs: BookJobView[] | undefined, sheetId: string | undefined): BookJobView | undefined {
@@ -48,6 +48,8 @@ export function StepCast({
   // la última tanda no terminó bien (falló o tardó demasiado): se ofrece «Reintentar» (B8)
   const [stalled, setStalled] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // el libro no se ha podido cargar al volver a este paso (I9)
+  const [loadError, setLoadError] = useState<string | null>(null);
   const cancel = useRef({ cancelled: false });
   useEffect(() => {
     const c = cancel.current;
@@ -88,8 +90,13 @@ export function StepCast({
     if (!bookId || resumed.current) return;
     resumed.current = true;
     void (async () => {
-      const v = await refresh(bookId);
-      if (!v) return;
+      const r = await loadView(bookId);
+      if (!r.ok) {
+        setLoadError(viewErrorMessage(r.error));
+        return;
+      }
+      const v = r.view;
+      setView(v);
       const sheets = v.jobs.filter((j) => j.kind === "sheet");
       const last = sheets[sheets.length - 1];
       const cover = coverOf(v.jobs, last?.id);
@@ -150,12 +157,18 @@ export function StepCast({
   };
 
   const ready = shownSheet?.status === "done";
+  // pagado: los personajes ya no cambian (I2). Ni otra versión, ni elegir otra hoja: repintaba el libro entero
+  const paid = !!view?.paid;
   return (
     <div className="grid gap-8">
       <div className="grid gap-2">
         <p className="hand text-[20px] text-accent">{ready ? "aquí están" : "manos a la obra"}</p>
         <h2 className="display text-[32px] sm:text-[42px]">Así será {name}</h2>
-        <p className="text-ink-soft">Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras.</p>
+        <p className="text-ink-soft">
+          {paid
+            ? "Con este dibujo se pintan las doce páginas. El libro ya está pagado, así que los personajes ya no cambian: si una ilustración no te gusta, pide otra versión desde esa página del libro."
+            : "Con este dibujo pintamos las doce páginas: así saldrán en todo el libro. Si algo no encaja, pídelo con palabras."}
+        </p>
         {lastFree && <p className="m-0 text-[13px] text-mute" data-testid="last-free">Es tu tercer cuento con dibujos gratis de este mes.</p>}
       </div>
 
@@ -167,16 +180,17 @@ export function StepCast({
         ) : (
           <Status testId="painting">{painting}</Status>
         ))}
+      {loadError && !view && <LoadError text={loadError} />}
       {error && <ErrorNote>{error}</ErrorNote>}
-      {view && !painting && (failed || stuck) && <RetryNote failed={failed} busy={retrying} onRetry={retry} />}
+      {view && !paid && !painting && (failed || stuck) && <RetryNote failed={failed} busy={retrying} onRetry={retry} />}
 
       <figure className="m-0 grid gap-3">
         <Taped>
           <BookImage job={shownSheet} alt={`Así será ${name} en el libro: varias poses y caras`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
         </Taped>
-        <figcaption className="text-sm text-mute">Sus personajes{versions.length > 1 ? ` · versión ${versionOf(shownSheet?.id)}` : ""}</figcaption>
+        <figcaption className="text-sm text-mute">Sus personajes{versions.length > 1 && !paid ? ` · versión ${versionOf(shownSheet?.id)}` : ""}</figcaption>
       </figure>
-      {versions.length > 1 && (
+      {versions.length > 1 && !paid && (
         <div className="-mt-4 flex flex-wrap gap-2" role="group" aria-label="Versiones de los personajes">
           {versions.map((s) => (
             <button
@@ -195,7 +209,7 @@ export function StepCast({
         </div>
       )}
 
-      {view && current?.status === "done" && !painting && (
+      {view && !paid && current?.status === "done" && !painting && (
         <ChangeSheet
           left={view.sheetsLeft}
           onAsk={async (instruction) => {
@@ -242,6 +256,7 @@ export function StepCast({
           disabled={!ready || !!painting}
           data-testid="approve"
           onClick={async () => {
+            if (paid) return onNext();
             const r = await postJson("/api/libro/approve", { bookId, sheetJobId: shownSheet!.id });
             if (r.status === 200) {
               track({ name: "personajes_aprobados" });
@@ -250,11 +265,11 @@ export function StepCast({
             else setError(errorMessage(r.json));
           }}
         >
-          Me gustan, ver el libro
+          {paid ? "Volver al libro" : "Me gustan, ver el libro"}
           <Icon.arrow />
         </button>
         <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">
-          {!ready ? "En cuanto estén, podrás seguir." : painting && cover?.status !== "done" ? "Falta la portada, alrededor de un minuto. Mientras, mira sus personajes." : "Gratis hasta aquí. Después decides si lo quieres ilustrado."}
+          {paid ? "" : !ready ? "En cuanto estén, podrás seguir." : painting && cover?.status !== "done" ? "Falta la portada, alrededor de un minuto. Mientras, mira sus personajes." : "Gratis hasta aquí. Después decides si lo quieres ilustrado."}
         </p>
       </div>
     </div>
@@ -423,7 +438,8 @@ function EmailGate({
         <label className={check}>
           <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--ink)]" data-testid="consent" />
           <span>
-            Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Acepto que el cuento se guarde 30 días para poder recuperarlo con un enlace; después se borra. He leído la{" "}
+            Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Acepto que el cuento se guarde 30 días para poder recuperarlo con un enlace; después se borra. Si he
+            contado algo de su salud, consiento que se use solo para hacer este libro. He leído la{" "}
             <Link href="/privacidad" target="_blank" className="link">
               política de privacidad
             </Link>{" "}

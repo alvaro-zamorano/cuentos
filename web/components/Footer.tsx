@@ -3,15 +3,26 @@ import { Wordmark } from "./SiteHeader";
 import { OCASIONES, OCASIONES_PATH, ocasionPath } from "@/lib/ocasiones";
 import { POSTHOG_ENABLED } from "@/lib/analytics";
 import { CookieSettingsLink } from "./CookieConsent";
+import { titular } from "@/lib/legal";
 
 /** Footer común con los enlaces legales. No sale al imprimir. */
 export function Footer() {
+  // el email de contacto, a la vista en todas las páginas (auditoría 26 oct): antes solo estaba en el aviso legal
+  const email = titular().email;
   return (
     <footer className="no-print border-t border-line" data-testid="footer">
       <div className="mx-auto grid max-w-6xl gap-6 px-4 pt-10 pb-28 text-sm text-ink-soft sm:px-6 md:grid-cols-[1fr_auto] md:items-end">
         <div className="grid gap-2">
           <Wordmark className="text-ink" />
           <p className="max-w-[44ch]">Libros escritos y pintados para un solo lector.</p>
+          {email && (
+            <p data-testid="footer-contact">
+              ¿Dudas? Escríbenos a{" "}
+              <a href={`mailto:${email}`} className="font-semibold text-ink hover:underline">
+                {email}
+              </a>
+            </p>
+          )}
           <nav aria-label="Ocasiones" className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
             <Link href={OCASIONES_PATH} className="font-semibold hover:text-ink hover:underline">
               Cuentos personalizados

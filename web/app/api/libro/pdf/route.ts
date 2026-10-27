@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { bookView } from "@/lib/book/service";
+import { bookView, unsignedImages } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { renderBook2Pdf } from "@/lib/pdf/book2";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
@@ -29,6 +29,12 @@ export async function GET(req: Request) {
     // falta alguna página por pintar (en modo sin coste hay job pero no URL: se imprime el hueco)
     const missing = Object.entries(view.chosen.pages).filter(([, id]) => !id).map(([n]) => Number(n));
     if (missing.length) return NextResponse.json({ ok: false, error: "pages_missing", pages: missing }, { status: 409 });
+    // pintada pero sin URL (falló la firma): el PDF saldría con el hueco; mejor que lo intente otra vez (I8)
+    const gaps = unsignedImages(view);
+    if (gaps.length) {
+      console.error(`[libro/pdf] sin URL: ${gaps.join(", ")}`);
+      return NextResponse.json({ ok: false, error: "render_failed" }, { status: 503 });
+    }
   }
   try {
     const sheetUrl = view.chosen.sheet ? byId.get(view.chosen.sheet)?.url ?? null : null;

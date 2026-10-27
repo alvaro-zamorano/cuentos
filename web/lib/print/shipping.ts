@@ -1,4 +1,4 @@
-import type { Shipping } from "./types";
+import type { Shipping, ShippingSummary } from "./types";
 
 /**
  * Dirección de envío del libro impreso (B8). Se valida antes de abrir el pago, con los límites de la imprenta (Gelato:
@@ -12,6 +12,22 @@ export const BLOCKED_POSTCODE_PREFIXES = ["35", "38", "51", "52"];
 export type ShippingField = "name" | "line1" | "line2" | "postcode" | "city" | "phone";
 
 export type ShippingResult = { ok: true; shipping: Shipping } | { ok: false; field: ShippingField; message: string };
+
+/**
+ * Qué hacer cuando la calle, el piso o la población no caben. Lo dicen igual el formulario, al escribir, y el servidor, al
+ * guardar (revisión 27 oct: el servidor decía «Escribe la población.» a una población demasiado larga).
+ */
+export const TOO_LONG: Partial<Record<ShippingField, { max: number; fix: string }>> = {
+  line1: { max: 35, fix: "Pasa el portal, el piso o la puerta a la línea de abajo, o abrevia («Avda.», «C/»)." },
+  line2: { max: 35, fix: "Abrevia («portal B, 3.º izq.»)." },
+  city: { max: 30, fix: "Abrevia el nombre de la población." },
+};
+
+/** «La imprenta admite N letras en esta línea.» y qué hacer. */
+export function tooLongMessage(field: ShippingField): string {
+  const t = TOO_LONG[field]!;
+  return `La imprenta admite ${t.max} letras en esta línea. ${t.fix}`;
+}
 
 const clean = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max + 1) : "");
 
@@ -34,11 +50,12 @@ export function cleanShipping(input: unknown): ShippingResult {
   if (name.length < 3 || name.length > 50 || name.split(" ").length < 2) return { ok: false, field: "name", message: "Escribe el nombre y los apellidos de quien lo recibe." };
   if (splitName(name).lastName.length === 0) return { ok: false, field: "name", message: "Escribe también los apellidos." };
   if (line1.length < 3) return { ok: false, field: "line1", message: "Escribe la calle y el número." };
-  if (line1.length > 35) return { ok: false, field: "line1", message: "La dirección cabe en 35 caracteres por línea: usa la segunda línea para el piso y la puerta." };
-  if (line2.length > 35) return { ok: false, field: "line2", message: "La segunda línea cabe en 35 caracteres." };
+  if (line1.length > 35) return { ok: false, field: "line1", message: tooLongMessage("line1") };
+  if (line2.length > 35) return { ok: false, field: "line2", message: tooLongMessage("line2") };
   if (!/^\d{5}$/.test(postcode) || Number(postcode.slice(0, 2)) < 1 || Number(postcode.slice(0, 2)) > 52) return { ok: false, field: "postcode", message: "El código postal tiene 5 cifras." };
   if (BLOCKED_POSTCODE_PREFIXES.includes(postcode.slice(0, 2))) return { ok: false, field: "postcode", message: "De momento solo enviamos a la Península y Baleares." };
-  if (city.length < 2 || city.length > 30) return { ok: false, field: "city", message: "Escribe la población." };
+  if (city.length < 2) return { ok: false, field: "city", message: "Escribe la población." };
+  if (city.length > 30) return { ok: false, field: "city", message: tooLongMessage("city") };
   if (phone && !/^\+?[\d\s]{9,20}$/.test(phone)) return { ok: false, field: "phone", message: "El teléfono, solo con cifras (puede empezar por +)." };
   return {
     ok: true,
@@ -55,7 +72,12 @@ export function cleanShipping(input: unknown): ShippingResult {
   };
 }
 
-/** La dirección en una línea, para la pantalla y los emails. */
+/** La dirección en una línea, para los emails y la imprenta. */
 export function shippingLine(s: Shipping): string {
   return [s.line1, s.line2, `${s.postcode} ${s.city}`, s.province].filter(Boolean).join(", ");
+}
+
+/** Lo que va a la pantalla: nombre, código postal y población; ni calle ni teléfono (I16). */
+export function shippingSummary(s: Shipping): ShippingSummary {
+  return { name: s.name, postcode: s.postcode, city: s.city, ...(s.province ? { province: s.province } : {}) };
 }

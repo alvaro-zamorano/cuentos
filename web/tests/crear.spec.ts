@@ -39,10 +39,22 @@ async function writeStory(page: Page) {
   // el reparto va en una fila plegable
   await page.locator("summary", { hasText: "Quién más sale" }).click();
   await page.getByTestId("add-cast").click();
+  // una persona del reparto: su aspecto también puede llevar algo de salud (revisión 27 oct); una mascota, no
+  await page.getByTestId("cast-0").getByRole("button", { name: "Persona" }).click();
+  await expect(page.getByTestId("cast-0").getByTestId("cast-health-note")).toContainText("que la abuela va en silla de ruedas");
+  await page.getByTestId("cast-0").getByRole("button", { name: "Mascota" }).click();
+  await expect(page.getByTestId("cast-0").getByTestId("cast-health-note")).toHaveCount(0);
   await page.getByTestId("cast-0").getByPlaceholder("Toby").fill("Toby");
   await page.getByTestId("cast-0").getByPlaceholder("su perro").fill("su perro");
   // «Lo que solo tú sabes» está a la vista; con un detalle no salen las tres preguntas
   await page.getByTestId("detail-0").fill("le encantan los dinosaurios");
+  // antes de mandar la ficha se dice qué pasa con ella, y qué con los datos de salud (I26, I27)
+  await expect(page.getByTestId("before-write")).toContainText("proveedor de IA");
+  await expect(page.getByTestId("write-consent")).toContainText("declaras ser su madre, padre o tutor");
+  await expect(page.getByTestId("write-consent")).toContainText("consientes que usemos lo que has escrito, también lo de su salud si lo hay, solo para este cuento");
+  await page.screenshot({ path: test.info().outputPath("barra-consentimiento.png") });
+  await expect(page.getByTestId("write-consent").getByRole("link", { name: "privacidad" })).toHaveAttribute("href", "/privacidad");
+  await expect(page.getByTestId("health-note").first()).toContainText("solo para este cuento");
   await page.getByTestId("next-2").click();
   await expect(page.getByTestId("plan-pages").locator("li")).toHaveCount(12, { timeout: 20_000 });
 }
@@ -145,6 +157,45 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await page.getByTestId("report-submit").click();
   await expect(p3.getByText("Nos has avisado")).toBeVisible();
 
+  // una página pagada que no ha salido nunca no deja al padre sin salida: puede avisar (I3). El dry-run no falla,
+  // así que la vista del libro se reescribe en el navegador con la página 4 fallida
+  await page.route(/\/api\/libro\/view\?/, async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    for (const j of body.jobs as { kind: string; page: number | null; status: string; url: string | null; error: string | null }[]) {
+      if (j.kind === "page" && j.page === 4) Object.assign(j, { status: "failed", url: null, error: "error" });
+    }
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.reload();
+  const p4 = page.getByTestId("book-page-4");
+  await expect(page.getByTestId("another-4")).toHaveCount(0);
+  await expect(page.getByTestId("report-4")).toHaveText("¿No sale esta ilustración? Avísanos", { timeout: 30_000 });
+  await expect(p4).toContainText("Esta ilustración no ha salido.");
+  await p4.screenshot({ path: test.info().outputPath("pagina-sin-salir.png") });
+  await page.getByTestId("report-4").click();
+  await page.getByTestId("report-form").getByLabel("Qué falla").fill("se queda en blanco");
+  await page.getByTestId("report-submit").click();
+  await expect(p4.getByText("Nos has avisado")).toBeVisible();
+  await page.unroute(/\/api\/libro\/view\?/);
+
+  // pagado, volver atrás no repinta nada (I2): el paso 4 enseña los personajes sin cambios ni otras versiones, el 3
+  // solo deja corregir textos y los pasos 1 y 2 ya no se abren
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("approve")).toHaveText(/Volver al libro/);
+  await expect(page.getByText("¿Cambiamos algo?")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Versiones de los personajes" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("paid-text-only")).toBeVisible();
+  await expect(page.getByTestId("rewrite")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cambiar esta página" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Paso anterior" })).toHaveCount(0);
+  await expect(page.getByTestId("next-3")).toHaveText("Volver al libro");
+  await page.getByTestId("next-3").click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible();
+  const after = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
+  expect(after.jobs.length).toBe(view.jobs.length + 2);
+
   // sin claves de Stripe: ni checkout ni webhook
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
   expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);
@@ -186,9 +237,20 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
     await expect(page.getByTestId("book3d-step")).toHaveText("Portadilla");
   }
 
+  // cuándo llega, antes de pagar
+  await expect(page.getByTestId("paywall")).toContainText("Suele llegar en una o dos semanas desde que lo mandas a imprimir");
+  // una calle larga no se corta sin aviso: se cuenta y se dice qué hacer
+  await page.getByTestId("ship-line1").fill("Avenida de la Constitución, 21, portal B");
+  await expect(page.getByTestId("ship-line1")).toHaveValue("Avenida de la Constitución, 21, portal B");
+  await expect(page.getByTestId("ship-line1-count")).toHaveText("40/35");
+  await expect(page.getByTestId("ship-line1-long")).toContainText("Pasa el portal, el piso o la puerta a la línea de abajo");
+  // el aviso describe el campo, no forma parte de su nombre (revisión 27 oct)
+  await expect(page.getByRole("textbox", { name: "Calle y número", exact: true })).toHaveAccessibleDescription(/40\/35 La imprenta admite 35 letras en esta línea/);
+  await page.getByTestId("shipping-form").screenshot({ path: test.info().outputPath("direccion-larga.png") });
   // dirección: a Canarias todavía no
   await page.getByTestId("ship-name").fill("Ana García López");
   await page.getByTestId("ship-line1").fill("Calle Mayor 12");
+  await expect(page.getByTestId("ship-line1-long")).toHaveCount(0);
   await page.getByTestId("ship-line2").fill("3º B");
   await page.getByTestId("ship-postcode").fill("38001");
   await page.getByTestId("ship-city").fill("Santa Cruz");
@@ -207,19 +269,42 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
   const panel = page.getByTestId("print-panel");
   await expect(panel).toHaveAttribute("data-status", "awaiting_approval");
-  await expect(page.getByTestId("print-address")).toContainText("Calle Mayor 12, 3º B, 28013 Madrid");
+  // la vista no trae la calle ni el teléfono (I16): el enlace del libro se reenvía
+  await expect(page.getByTestId("print-address")).toContainText("Ana García López · 28013 Madrid");
+  await expect(page.getByTestId("print-address")).not.toContainText("Calle Mayor");
+  await panel.screenshot({ path: test.info().outputPath("panel-direccion.png") });
   // la última revisión antes de mandarlo: el libro en 3D con sus páginas
   await expect(page.getByTestId("book3d-section")).toContainText("así quedará impreso");
 
-  // cambiar la dirección antes de mandarlo
+  // cambiar la dirección antes de mandarlo: «Cambiar» la trae entera (no se pierden el piso ni el teléfono) y se puede
+  // cancelar sin tocar nada (revisión 27 oct)
   await panel.getByRole("button", { name: "Cambiar" }).click();
+  await expect(page.getByTestId("ship-line1")).toHaveValue("Calle Mayor 12");
+  await expect(page.getByTestId("ship-line2")).toHaveValue("3º B");
+  await page.getByTestId("ship-line2").fill("algo que no se guarda");
+  await page.getByTestId("ship-cancel").click();
+  await expect(page.getByTestId("print-address")).toContainText("Ana García López · 28013 Madrid");
+  await panel.getByRole("button", { name: "Cambiar" }).click();
+  await expect(page.getByTestId("ship-name")).toHaveValue("Ana García López");
+  await expect(page.getByTestId("ship-line2")).toHaveValue("3º B");
   await page.getByTestId("ship-line2").fill("4º A");
+  await page.getByTestId("ship-postcode").fill("28014");
   await page.getByTestId("ship-save").click();
-  await expect(page.getByTestId("print-address")).toContainText("4º A");
+  await expect(page.getByTestId("print-address")).toContainText("Ana García López · 28014 Madrid");
 
-  // un texto retocado antes de mandarlo viaja con el libro
+  // un texto retocado antes de mandarlo viaja con el libro. Se guarda solo; si el guardado falla, se dice y se
+  // reintenta, y no se da por guardado hasta que el servidor lo confirma (I13)
+  await page.route("**/api/libro/plan", (r) => r.abort(), { times: 1 });
   await page.getByLabel("Texto de la página 1", { exact: true }).fill("Aquella noche, Vera no tenía nada de sueño.");
+  await expect(page.getByTestId("save-error")).toContainText("Sin conexión");
+  errors.splice(0, errors.length); // el fallo de red provocado
+  await page.getByTestId("save-retry").click();
+  await expect(page.getByTestId("save-state")).toHaveText("Guardado");
+  await expect(page.getByTestId("save-error")).toHaveCount(0);
   await page.getByTestId("print-send").click();
+  // antes de mandarlo se ve la dirección entera, con la calle y el piso
+  await expect(panel.getByRole("alertdialog")).toContainText("Lo enviaremos a Ana García López, Calle Mayor 12, 4º A, 28014 Madrid.");
+  await panel.screenshot({ path: test.info().outputPath("panel-confirmar.png") });
   await page.getByTestId("print-confirm").click();
   await expect(panel).toHaveAttribute("data-status", /sent|failed/, { timeout: 180_000 });
   const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
@@ -232,6 +317,7 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   }
   expect(view.edition).toBe("hardcover");
   expect(view.printMode).toBe("dry-run");
+  expect(view.print.shipping).toEqual({ name: "Ana García López", postcode: "28014", city: "Madrid" });
   expect(view.plan.pages[0].text).toBe("Aquella noche, Vera no tenía nada de sueño.");
 
   // ya en la imprenta: los textos solo se leen y el servidor no acepta cambios
@@ -280,7 +366,7 @@ test("PDF primero y después tapa dura: pagas la diferencia, el panel de imprent
 
   const panel = page.getByTestId("print-panel");
   await expect(panel).toHaveAttribute("data-status", "awaiting_approval", { timeout: 30_000 });
-  await expect(page.getByTestId("print-address")).toContainText("Calle Mayor 12, 07001 Palma");
+  await expect(page.getByTestId("print-address")).toContainText("Ana García López · 07001 Palma");
   await expect(card).toHaveCount(0);
   const after = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
   expect(after.edition).toBe("hardcover");
@@ -363,6 +449,43 @@ test("Recuperar un libro con el enlace /crear?b=", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Así será Vera" })).toBeVisible();
   await page.goto("/crear?b=noexiste00");
   await expect(page.getByText("Este enlace ya no es válido")).toBeVisible();
+
+  // con el servidor fallando no dice que el enlace no vale: reintenta y, si sigue, dice que el libro sigue guardado (I9)
+  await page.evaluate(() => localStorage.clear());
+  await page.route(/\/api\/libro\/view\?/, (r) => r.fulfill({ status: 500, json: { ok: false, error: "server" } }));
+  await page.goto(`/crear?b=${bookId}`);
+  await expect(page.getByText("No hemos podido abrir tu libro ahora mismo")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Este enlace ya no es válido")).toHaveCount(0);
+  await page.unroute(/\/api\/libro\/view\?/);
+  errors.splice(0, errors.length); // los 500 provocados
+});
+
+test("Sin red al pagar: el botón no se queda colgado y lo dice (I9)", async ({ page }) => {
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("nora@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await page.getByTestId("approve").click();
+  await page.getByTestId("edition-illustrated").click();
+  await page.getByTestId("waiver").check();
+  await page.route("**/api/libro/pay", (r) => r.abort());
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("paywall")).toContainText("Sin conexión");
+  await expect(page.getByTestId("pay")).toBeEnabled();
+  await page.unroute("**/api/libro/pay");
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
+
+  // el libro no carga (servidor caído): lo dice y deja volver a intentarlo, en vez de quedarse en blanco
+  await page.route(/\/api\/libro\/view\?/, (r) => r.fulfill({ status: 503, json: { ok: false, error: "server" } }));
+  await page.reload();
+  await expect(page.getByTestId("load-error")).toContainText("Tu libro sigue guardado", { timeout: 15_000 });
+  await page.getByTestId("load-error").screenshot({ path: test.info().outputPath("libro-no-carga.png") });
+  await page.unroute(/\/api\/libro\/view\?/);
+  await page.getByRole("button", { name: "Volver a intentarlo" }).click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 30_000 });
 });
 
 test("Si falla el dibujo de los personajes, «Reintentar» lo repite aquí sin empezar otro cuento", async ({ page }) => {
@@ -428,6 +551,34 @@ test("«Que salga la abuela»: el paso 3 avisa de cómo sacarla en los dibujos, 
   await t2.fill((await t2.inputValue()).replace(" 🚀", ""));
   await expect(page.getByTestId("save-error")).toHaveCount(0, { timeout: 10_000 });
   expect(errors).toEqual([]);
+});
+
+test("Vuelta de Stripe sin red: no dice que el pago no ha llegado, dice que no puede comprobarlo (revisión 27 oct)", async ({ page }) => {
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("rita@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await page.getByTestId("approve").click();
+  await expect(page.getByTestId("paywall")).toBeVisible();
+  const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
+  // el libro se abre; la red se va mientras se espera al pago
+  let offline = false;
+  await page.route("**/api/libro/view**", (route) => (offline ? route.abort("internetdisconnected") : route.continue()));
+  await page.clock.install();
+  await page.goto(`/crear?b=${bookId}&pagado=1`);
+  await expect(page.getByText("Confirmando el pago…")).toBeVisible();
+  offline = true;
+  // dos minutos de espera, de 3 s en 3 s, dejando que cada petición fallida vuelva antes de seguir. fastForward salta el
+  // tiempo sin pasar por cada fotograma del libro en 3D (runFor los pintaba todos y en una máquina lenta no daba tiempo)
+  for (let i = 0; i < 42; i++) {
+    await page.clock.fastForward(3_000);
+    await page.waitForTimeout(50);
+  }
+  await expect(page.getByTestId("pay-pending")).toBeVisible();
+  await expect(page.getByTestId("pay-offline")).toContainText("parece que no hay conexión");
+  await expect(page.getByTestId("paywall")).toHaveCount(0);
 });
 
 test("Pago que volvió de Stripe sin confirmar: al volver con el enlace no se ofrece pagar otra vez", async ({ page }) => {

@@ -41,6 +41,76 @@ function layout(title: string, body: string, link: string, cta: string): string 
 </div></body></html>`;
 }
 
+/** Lo que lleva el recibo de compra (I28). */
+export interface Receipt {
+  title: string;
+  /** PDF, tapa dura o el paso de PDF a tapa dura. */
+  kind: "illustrated" | "hardcover" | "upgrade";
+  amountCents: number;
+  paidAt: string;
+  /** Dirección de envío en una línea (tapa dura). */
+  address: string | null;
+  /** Cuándo aceptó empezar ya y la renuncia al desistimiento (metadatos de la sesión de Stripe). */
+  waiverAt: string | null;
+  link: string;
+  conditionsLink: string;
+  /** Quién vende (holderLine) y el email de contacto. */
+  seller: string;
+  contact: string | null;
+}
+
+const RECEIPT_ITEM: Record<Receipt["kind"], string> = {
+  illustrated: "Libro ilustrado: las 12 ilustraciones y el PDF para imprimir en A4 apaisado",
+  hardcover: "Libro de tapa dura con envío a casa, y el PDF",
+  upgrade: "Paso a tapa dura (la diferencia, con el envío a casa; el PDF ya lo tenías)",
+};
+
+const when = (iso: string, withTime: boolean) =>
+  new Date(iso).toLocaleString("es-ES", { day: "numeric", month: "long", year: "numeric", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}), timeZone: "Europe/Madrid" });
+
+/** Las líneas del recibo, en orden (texto plano; el HTML las escapa). Exportado para los tests. */
+export function receiptLines(r: Receipt): { facts: [string, string][]; notes: string[] } {
+  const facts: [string, string][] = [
+    ["Libro", `«${r.title}»`],
+    ["Pedido", RECEIPT_ITEM[r.kind]],
+    ["Total pagado", `${eur(r.amountCents)}, IVA incluido`],
+    ["Fecha", when(r.paidAt, false)],
+  ];
+  if (r.address) facts.push(["Envío a", r.address]);
+  const notes: string[] = [];
+  if (r.kind !== "illustrated")
+    notes.push("La tapa dura no se imprime hasta que la mandes a imprimir desde tu libro. Desde entonces suele llegar en una o dos semanas, y te avisamos por email cuando salga.");
+  if (r.waiverAt)
+    notes.push(
+      `Antes de pagar nos pediste que empezáramos a pintar el libro en cuanto pagaras, y aceptaste que, al ser un libro personalizado, no puedes desistir de la compra. Lo aceptaste el ${when(r.waiverAt, true)} (hora de Madrid).`,
+    );
+  notes.push(`Condiciones de compra: ${r.conditionsLink}`);
+  notes.push(`Vende: ${r.seller}.${r.contact ? ` Para cualquier cosa, escríbenos a ${r.contact}.` : ""}`);
+  return { facts, notes };
+}
+
+/** Recibo de compra (I28): lo manda el webhook de Stripe cuando registra el pago, una vez por sesión. */
+export function sendOrderConfirmed(to: string, r: Receipt): Promise<MailResult> {
+  const { facts, notes } = receiptLines(r);
+  const rows = facts
+    .map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#6f6457;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:6px 0;color:#232036">${esc(v)}</td></tr>`)
+    .join("");
+  // los enlaces de las notas (las condiciones), clicables
+  const linkify = (t: string) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" style="color:#c8492c">${u}</a>`);
+  const paras = notes.map((n) => `<p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#5d566c;margin:0 0 12px">${linkify(n)}</p>`).join("");
+  const html = `<!doctype html><html lang="es"><body style="margin:0;background:#fbf5ea;font-family:Georgia,serif;color:#232036">
+<div style="max-width:520px;margin:0 auto;padding:32px 24px">
+<p style="font-style:italic;font-size:22px;margin:0 0 24px"><span style="color:#f2b84b">&#10022;</span> Érase su vez</p>
+<h1 style="font-size:26px;font-weight:500;margin:0 0 16px">Pedido confirmado</h1>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">Hemos recibido tu pago. Gracias. Este es tu recibo: guárdalo.</p>
+<table style="font-family:Helvetica,Arial,sans-serif;font-size:14px;border-collapse:collapse;margin:16px 0 20px">${rows}</table>
+<p style="margin:0 0 28px"><a href="${esc(r.link)}" style="background:#c8492c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:bold;font-family:Helvetica,Arial,sans-serif;font-size:15px">Ver mi libro</a></p>
+${paras}
+</div></body></html>`;
+  const text = ["Pedido confirmado", "Hemos recibido tu pago. Gracias. Este es tu recibo: guárdalo.", facts.map(([k, v]) => `${k}: ${v}`).join("\n"), `Tu libro: ${r.link}`, ...notes].join("\n\n");
+  return send(to, `Pedido confirmado: «${r.title}»`, html, text);
+}
+
 /** Tras el email del paso 4: el enlace para volver al libro. */
 export function sendBookLink(to: string, bookTitle: string, link: string): Promise<MailResult> {
   return send(

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
-import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
+import { errorMessage, fetchView, loadView, postJson, runJobs, viewErrorMessage, type JobOutcome } from "@/lib/bookClient";
 import { MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
 import type { Plan, PlanPage } from "@/lib/plan/types";
 import { EDITION_LABEL, PRICE_CENTS, eur } from "@/lib/print/prices";
@@ -18,7 +18,7 @@ import { BookLink } from "./BookLink";
 import { PrintPanel } from "./PrintPanel";
 import { UpgradeCard } from "./UpgradeCard";
 import { ShippingForm, type ShippingDraft } from "./ShippingForm";
-import { ErrorNote, Status } from "./ui";
+import { ErrorNote, LoadError, Status } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isPage = (j: BookJobView) => j.kind === "page";
@@ -74,12 +74,28 @@ const UPGRADE_PENDING = "El pago de la tapa dura aún no nos ha llegado. Si ya s
  * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
  * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
-export function StepBook({ bookId, confirming = false, upgrading = false, onPlan }: { bookId: string; confirming?: boolean; upgrading?: boolean; onPlan: (p: Plan) => void }) {
+export function StepBook({
+  bookId,
+  confirming = false,
+  upgrading = false,
+  onPlan,
+  onPaid,
+}: {
+  bookId: string;
+  confirming?: boolean;
+  upgrading?: boolean;
+  onPlan: (p: Plan) => void;
+  /** El libro está pagado: el flujo cierra los pasos que repintarían (I2). */
+  onPaid?: () => void;
+}) {
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // el libro no se ha podido cargar (sin red o error del servidor): se dice en vez de quedarse en blanco (I9)
+  const [loadError, setLoadError] = useState<string | null>(null);
   // vuelta de Stripe sin confirmación del pago: no se vuelve a enseñar el pago, que llevaba a pagar dos veces (B7)
   const [payPending, setPayPending] = useState(false);
+  const [payOffline, setPayOffline] = useState(false);
   // lo mismo con la mejora a tapa dura: sin confirmar, no se vuelve a ofrecer
   const [upgradePending, setUpgradePending] = useState(false);
   const cancel = useRef({ cancelled: false });
@@ -95,6 +111,10 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     if (v) setView(v);
     return v;
   }, [bookId]);
+  const paid = !!view?.paid;
+  useEffect(() => {
+    if (paid) onPaid?.();
+  }, [paid, onPaid]);
 
   /** Tira de las páginas en cola o pintándose hasta que terminan. */
   const drive = useCallback(
@@ -137,19 +157,32 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     started.current = true;
     const c = cancel.current;
     void (async () => {
-      let v = await refresh();
-      if (!v) return;
+      const first = await loadView(bookId);
+      if (!first.ok) {
+        setLoadError(viewErrorMessage(first.error));
+        return;
+      }
+      let v = first.view;
+      setView(v);
       if (!v.paid && confirming) {
         // vuelta de Stripe: el webhook registra el pago en unos segundos
         setBusy("Confirmando el pago…");
+        // si la red se va mientras, no es que el pago no haya llegado: es que no lo podemos comprobar (revisión 27 oct)
+        let lost = false;
         for (let i = 0; i < 40 && !v.paid && !c.cancelled; i++) {
           await sleep(3000);
-          v = (await refresh()) ?? v;
+          const r = await loadView(bookId, { tries: 1 });
+          lost = !r.ok;
+          if (r.ok) {
+            v = r.view;
+            setView(v);
+          }
         }
         setBusy(null);
         if (!v.paid) {
           markPending(bookId, "pago");
           setPayPending(true);
+          setPayOffline(lost);
           return;
         }
       }
@@ -190,6 +223,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     })();
   }, [bookId, confirming, upgrading, drive, paintPages, refresh]);
 
+  if (!view && loadError) return <LoadError text={loadError} />;
   if (!view)
     return (
       <div className="grid gap-6" aria-busy="true">
@@ -323,7 +357,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
       ) : (
         <>
           <LockedPages pages={plan.pages} onText={setText} />
-          {!busy && (payPending ? <PayPending contact={view.contact ?? null} /> : <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />)}
+          {!busy && (payPending ? <PayPending contact={view.contact ?? null} offline={payOffline} /> : <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />)}
         </>
       )}
 
@@ -402,10 +436,16 @@ function LockedPages({ pages, onText }: { pages: PlanPage[]; onText: (n: number,
  * Se vuelve de Stripe (?pagado=1) y en dos minutos no ha llegado la confirmación del pago. En vez del pago otra vez, que
  * llevaba a pagar dos veces (auditoría 26 oct, B7), un aviso y un botón para volver a mirar.
  */
-function PayPending({ contact }: { contact: string | null }) {
+function PayPending({ contact, offline }: { contact: string | null; offline: boolean }) {
   return (
     <div className="card grid gap-3 p-6" role="status" data-testid="pay-pending">
       <h3 className="display text-[22px]">Estamos esperando la confirmación del pago</h3>
+      {/* sin red no sabemos si ha llegado: no es lo mismo que «aún no ha llegado» (revisión 27 oct) */}
+      {offline && (
+        <p className="m-0 font-semibold text-ink" data-testid="pay-offline">
+          No hemos podido comprobarlo: parece que no hay conexión. Cuando vuelva, pulsa «Volver a mirar».
+        </p>
+      )}
       <p className="m-0 text-ink-soft">Si ya te han cobrado, no vuelvas a pagar. El libro aparecerá aquí en cuanto nos llegue, normalmente en unos minutos.</p>
       <p className="m-0 text-ink-soft">
         Si te han cobrado y en un rato no aparece, escríbenos
@@ -444,30 +484,45 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
     setField(json?.field ?? null);
     setErr(errorMessage(json));
   };
+  // si algo lanza, el botón se suelta y se dice (I9); si va bien, el pago real navega a Stripe y el botón sigue ocupado
   const checkout = async () => {
     setBusy(true);
     setErr(null);
     setField(null);
-    const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body());
-    if (r.status === 200 && r.json.url) {
-      track({ name: "pago_iniciado", props: { edicion: edition } }, { beacon: true });
-      window.location.assign(r.json.url);
-      return;
+    try {
+      const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body());
+      if (r.status === 200 && r.json.url) {
+        track({ name: "pago_iniciado", props: { edicion: edition } }, { beacon: true });
+        window.location.assign(r.json.url);
+        return;
+      }
+      failed(r.json);
+    } catch {
+      failed({});
     }
-    failed(r.json);
   };
   const dryRun = async () => {
     setBusy(true);
     setErr(null);
     setField(null);
-    const r = await postJson<{ field?: string }>("/api/libro/pay", body());
-    if (r.status === 200) {
-      setBusy(false);
-      onPaid();
-    } else failed(r.json);
+    try {
+      const r = await postJson<{ field?: string }>("/api/libro/pay", body());
+      if (r.status === 200) {
+        setBusy(false);
+        onPaid();
+      } else failed(r.json);
+    } catch {
+      failed({});
+    }
   };
   const perks: Record<PaidEdition, string[]> = {
-    hardcover: [`Libro apaisado de tapa dura, con ${name || "tus personajes"} en las doce ilustraciones`, "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya"],
+    hardcover: [
+      `Libro apaisado de tapa dura, con ${name || "tus personajes"} en las doce ilustraciones`,
+      "Revisas cada página y no lo imprimimos hasta que nos lo digas",
+      // cuándo llega: la primera duda de quien regala (auditoría 26 oct)
+      "Suele llegar en una o dos semanas desde que lo mandas a imprimir",
+      "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya",
+    ],
     illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4 apaisado: imprímelo en casa o en una copistería"],
   };
   return (
@@ -587,14 +642,16 @@ function PageView({
   const done = current.filter((j) => j.status === "done");
   const busyHere = current.some(inFlight);
   const canAnother = !locked && jobs.length < 2 + MAX_PAGE_REDOS && done.length > 0 && current.filter((j) => j.status !== "failed").length < 1 + MAX_PAGE_REDOS && redosLeft > 0;
-  // sin versiones (de la página o del libro) y con alguna hecha: nos avisa y la arreglamos a mano
-  const canReport = !locked && !reported && done.length > 0 && !canAnother && !busyHere;
+  // sin versiones (de la página o del libro) y con alguna hecha: nos avisa y la arreglamos a mano. También si no ha salido
+  // ninguna y no se está pintando: antes no había ni «Otra versión» ni «Avísanos» y el padre se quedaba sin salida (I3)
+  const failedOnly = done.length === 0 && current.some((j) => j.status === "failed");
+  const canReport = !locked && !reported && (done.length > 0 || failedOnly) && !canAnother && !busyHere;
   const left = Math.min(1 + MAX_PAGE_REDOS - current.filter((j) => j.status !== "failed").length, redosLeft);
   return (
     <BookSpread
       as="li"
       testId={`book-page-${page.n}`}
-      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} box="absolute inset-0 overflow-hidden bg-paper-deep" />}
+      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} failedText="Esta ilustración no ha salido." box="absolute inset-0 overflow-hidden bg-paper-deep" />}
       right={
         <div className="grid flex-1 content-between gap-3 px-5 pt-5 pb-4 sm:px-8 sm:pt-7">
           <div className="grid gap-3">
@@ -627,7 +684,7 @@ function PageView({
               )}
               {canReport && panel !== "report" && (
                 <button className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={() => setPanel("report")} data-testid={`report-${page.n}`}>
-                  ¿Sigue sin estar bien? Avísanos
+                  {failedOnly ? "¿No sale esta ilustración? Avísanos" : "¿Sigue sin estar bien? Avísanos"}
                 </button>
               )}
               {reported && !locked && <span className="text-[13px] text-mute">Nos has avisado: la estamos mirando.</span>}
