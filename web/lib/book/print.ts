@@ -370,11 +370,6 @@ const HOUR = 3_600_000;
 const KEEP_FOR_PRINT_MS = 30 * 24 * HOUR;
 
 /**
- * Cron diario: recordatorio a quien pagó la tapa dura y no la ha mandado a imprimir (a los 2 días y otra vez a los 7, con
- * las ilustraciones terminadas), pedidos atascados en `sending` más de 15 minutos a `failed` (para reintentar), y
- * consulta de los pedidos abiertos por si un aviso de la imprenta se perdió.
- */
-/**
  * Lo más que puede tardar un pedido del cron una vez empezado: una consulta a la imprenta (25 s, lib/print/gelato.ts) y
  * dos emails (15 s cada uno, lib/mail.ts), con margen. El plazo interno del cron deja este hueco antes de que Vercel corte
  * la ruta (revisión del 27 oct: con 12 s, un pedido empezado al final se cortaba a medias).
@@ -386,6 +381,11 @@ export function printCronDeadline(t0: number, maxDurationS: number): number {
   return t0 + maxDurationS * 1000 - PRINT_CRON_SLOWEST_MS;
 }
 
+/**
+ * Cron diario: recordatorio a quien pagó la tapa dura y no la ha mandado a imprimir (a los 2 días y otra vez a los 7, con
+ * las ilustraciones terminadas), pedidos atascados en `sending` más de 15 minutos a `failed` (para reintentar), y
+ * consulta de los pedidos abiertos por si un aviso de la imprenta se perdió.
+ */
 export async function printCron(store: GenStore, deps: PrintDeps, opts: { deadline?: number } = {}): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
   const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0, remaining: false };
