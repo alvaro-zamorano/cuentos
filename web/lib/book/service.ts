@@ -65,8 +65,8 @@ export interface BookDraftV2 {
   readyMailedAt?: number;
   /** Cuándo se avisó a soporte de que el libro pagado no terminaba (rescate, auditoría 26 oct, B4): una vez por libro. */
   stuckAlertedAt?: number;
-  /** Cuándo se avisó a soporte de una imagen pagada que no sale (I3): una vez por libro. */
-  failAlertedAt?: number;
+  /** Jobs de imágenes pagadas que no salen de los que ya se avisó a soporte (I3): cada uno, una vez. */
+  failAlertedJobs?: string[];
   /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
   edition?: PaidEdition;
   shipping?: Shipping;
@@ -694,44 +694,73 @@ export async function notifyBookReady(
   return true;
 }
 
+/** El job falló por el tope de coste del libro: no gasta intentos y otra vuelta solo vuelve a fallar. */
+export const isBookCapError = (error: string | null | undefined): boolean => !!error?.includes("tope de coste por libro");
+
 /**
- * Una imagen pagada que no va a salir sola (I3): agotó sus intentos con un fallo que no es pasajero, o chocó con el tope
+ * Una imagen pagada que falló sin remedio (I3): agotó sus intentos con un fallo que no es pasajero, o chocó con el tope
  * de coste del libro. Los fallos pasajeros (429, 5xx, red) no cuentan: se reintentan solos.
  */
 export function paidFailure(job: Pick<GenJob, "paid" | "status" | "attempts" | "error">): boolean {
   if (!job.paid || job.status !== "failed") return false;
-  if (job.error?.includes("tope de coste por libro")) return true;
+  if (isBookCapError(job.error)) return true;
   return job.attempts >= MAX_ATTEMPTS && !job.error?.startsWith("pasajero");
 }
 
 /**
- * Aviso a soporte cuando una imagen pagada no sale (I3; I12): con las páginas afectadas y el motivo, una vez por libro.
- * Devuelve si lo ha mandado. `bookId`: el id público.
+ * Lo que de verdad ya no va a salir solo (revisión 27 oct): una página o la portada del libro pagado sin ninguna versión
+ * hecha ni en marcha, que ya no admite otra versión automática o que chocó con el tope del libro. Una versión 1 fallida
+ * con hueco para otra no cuenta (la pide el siguiente `requestPages`), ni los retratos (si fallan, el libro usa la hoja).
+ */
+function stuckPaidImages(jobs: GenJob[], d: BookDraftV2): GenJob[] {
+  const sheets = sheetJobs(jobs).filter((j) => j.status === "done");
+  const sheet = sheets.find((j) => j.id === d.approvedSheetJobId) ?? sheets[sheets.length - 1];
+  if (!sheet || !d.castArt) return [];
+  const live = (j: GenJob) => j.status === "done" || j.status === "pending" || j.status === "running";
+  const out: GenJob[] = [];
+  for (let n = 1; n <= 12; n++) {
+    const cur = currentPageJobs(jobs, d, n, sheet.id);
+    if (cur.length === 0 || cur.some(live)) continue;
+    const last = cur[cur.length - 1];
+    const all = jobs.filter((j) => j.kind === "page" && j.page_n === n && v2Of(j));
+    if (isBookCapError(last.error) || (paidFailure(last) && all.length >= MAX_PAGE_JOBS)) out.push(last);
+  }
+  const covers = coverJobs(jobs).filter((j) => sheetRefOf(j) === sheet.id);
+  const lastCover = covers[covers.length - 1];
+  if (lastCover?.paid && !covers.some(live) && (isBookCapError(lastCover.error) || (paidFailure(lastCover) && coverJobs(jobs).length >= DB_MAX_VARIANT))) out.push(lastCover);
+  return out;
+}
+
+/**
+ * Aviso a soporte cuando una imagen pagada no va a salir (I3; I12): con las páginas afectadas y el motivo. Cada job, una
+ * vez: si después se atasca otra página, también avisa. Devuelve si lo ha mandado. `bookId`: el id público.
  */
 export async function alertPaidFailures(
   store: GenStore,
   bookId: string,
   notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
   link: (publicId: string) => string,
-  now = Date.now(),
 ): Promise<boolean> {
   const book = await store.findBook({ publicId: bookId });
   const d = book ? draftV2(book) : null;
-  if (!book || !d || d.failAlertedAt) return false;
-  const failed = (await store.listJobs(book.id)).filter((j) => v2Of(j) && paidFailure(j));
-  if (failed.length === 0) return false;
-  const what = (j: GenJob) => (j.kind === "page" ? `página ${j.page_n}` : j.kind === "portrait" ? `retrato ${j.page_n}` : j.kind === "cover" ? "portada" : j.kind);
+  if (!book || !d) return false;
+  const told = new Set(d.failAlertedJobs ?? []);
+  const stuck = stuckPaidImages(await store.listJobs(book.id), d).filter((j) => !told.has(j.id));
+  if (stuck.length === 0) return false;
+  const what = (j: GenJob) => (j.kind === "page" ? `página ${j.page_n}` : "portada");
   const r = await notify(
     `Imagen pagada que no sale: «${d.plan.title}»`,
     [
-      `En el libro «${d.plan.title}» (${book.public_id}) no salen: ${failed.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
-      "El padre puede pedir otra versión o avisarnos desde la página. Si es el tope por libro (MAX_COST_CENTS_PER_BOOK), hay que mirarlo a mano.",
+      `En el libro «${d.plan.title}» (${book.public_id}) ya no salen solas: ${stuck.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
+      stuck.some((j) => isBookCapError(j.error))
+        ? "Ha llegado al tope de coste por libro (MAX_COST_CENTS_PER_BOOK): hay que mirarlo a mano."
+        : "Ya no quedan versiones automáticas. El padre puede avisarnos desde la página; hay que pintarla a mano.",
       `Libro: ${link(book.public_id)}`,
     ].join("\n\n"),
   ).catch(() => ({ sent: false }));
   if (!r.sent) return false;
   const fresh = draftV2((await store.findBook({ publicId: bookId })) ?? book) ?? d;
-  await save(store, book, { ...fresh, failAlertedAt: now });
+  await save(store, book, { ...fresh, failAlertedJobs: [...(fresh.failAlertedJobs ?? []), ...stuck.map((j) => j.id)].slice(-40) }, fresh.edition ?? "illustrated");
   return true;
 }
 
@@ -801,6 +830,8 @@ async function ensureCover(store: GenStore, book: BookRecord, d: BookDraftV2, sh
     const resume = mine.find((j) => hung(j) && j.paid && j.attempts < MAX_ATTEMPTS);
     if (resume) return [resume.id];
     for (const j of mine.filter(hung)) await store.updateJob(j.id, { status: "failed", error: "tiempo agotado" });
+    // con el tope del libro alcanzado, otra vuelta solo vuelve a fallar (y no gasta intentos): se queda así y avisa (I3)
+    if (mine.some((j) => j.status === "failed" && isBookCapError(j.error))) return [];
     const retry = mine.find((j) => j.status === "failed" && j.attempts < MAX_ATTEMPTS && j.paid);
     if (retry) return (await store.reopen(retry)) ? [retry.id] : [];
     const variant = coverJobs(jobs).length + 1;
@@ -877,6 +908,7 @@ async function ensurePortraits(store: GenStore, book: BookRecord, d: BookDraftV2
     for (let i = 0; i < (d.castArt?.cast.length ?? 0); i++) {
       const cur = currentPortraitJobs(jobs, d, i, sheetJobId);
       if (cur.some((j) => j.status !== "failed")) continue;
+      if (cur.some((j) => isBookCapError(j.error))) continue;
       const retry = cur.find((j) => j.attempts < MAX_ATTEMPTS);
       if (retry) {
         if (await store.reopen(retry)) reopened.push(retry.id);
@@ -967,6 +999,8 @@ export async function requestPages(
     for (let n = 1; n <= 12; n++) {
       const cur = currentPageJobs(jobs, d, n, sheet.id);
       if (cur.some((j) => j.status !== "failed")) continue;
+      // tope del libro: reabrirla en cada recarga solo vuelve a fallar y esconde «Avísanos» (I3)
+      if (cur.some((j) => isBookCapError(j.error))) continue;
       const retry = cur.find((j) => j.attempts < MAX_ATTEMPTS);
       if (retry) {
         if (await store.reopen(retry)) reopenedIds.push(retry.id);

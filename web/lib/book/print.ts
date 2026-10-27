@@ -49,19 +49,27 @@ export interface PrintDeps {
 }
 
 /** Aviso a soporte de un pedido de tapa dura que falla; nunca rompe el flujo. */
-async function printAlert(store: GenStore, deps: PrintDeps, order: Pick<PaidOrder, "id" | "bookId">, error: string, phase: "send" | "printer"): Promise<void> {
+/**
+ * Qué ha pasado: no ha salido hacia la imprenta (`send`), la imprenta lo da por fallido y el padre puede volver a mandarlo
+ * (`printer_failed`, que crearía otro pedido en Gelato), o la imprenta lo ha cancelado o devuelto (`printer_stopped`).
+ */
+type PrintAlertKind = "send" | "printer_failed" | "printer_stopped";
+
+async function printAlert(store: GenStore, deps: PrintDeps, order: Pick<PaidOrder, "id" | "bookId">, error: string, kind: PrintAlertKind): Promise<void> {
   if (!deps.notify) return;
   try {
     const book = await store.getBookById(order.bookId);
     const title = (book ? draftV2(book) : null)?.plan.title ?? "libro";
-    const sending = phase === "send";
+    const advice: Record<PrintAlertKind, string> = {
+      send: "El padre puede volver a pulsar «Mandar a imprimir». Si vuelve a fallar, míralo en Gelato y en los logs de Vercel (en Hobby duran una hora).",
+      printer_failed: "El padre puede volver a pulsar «Mandar a imprimir», pero eso crea otro pedido en Gelato: mira antes qué ha pasado con el primero.",
+      printer_stopped: "El padre ya no puede reenviarlo desde la web. Míralo en Gelato y escríbele.",
+    };
     await deps.notify(
-      sending ? `Tapa dura que no sale hacia la imprenta: «${title}»` : `La imprenta ha parado una tapa dura: «${title}»`,
+      kind === "send" ? `Tapa dura que no sale hacia la imprenta: «${title}»` : `La imprenta ha parado una tapa dura: «${title}»`,
       [
         `El pedido ${order.id} ha fallado: ${error.slice(0, 300)}`,
-        sending
-          ? "El padre puede volver a pulsar «Mandar a imprimir». Si vuelve a fallar, míralo en Gelato y en los logs de Vercel (en Hobby duran una hora)."
-          : "El padre ya no puede reenviarlo desde la web. Míralo en Gelato y escríbele.",
+        advice[kind],
         book ? `Libro: ${deps.link(book.public_id)}` : "El libro ya no está.",
       ].join("\n\n"),
     );
@@ -213,8 +221,8 @@ export async function refreshPrint(store: GenStore, order: PaidOrder, deps: Prin
   if (Object.keys(patch).length === 0) return "unchanged";
   await store.updateOrder(order.id, patch);
   // la imprenta lo da por fallido, cancelado o devuelto: aviso a soporte, al cambiar a ese estado (I12)
-  const bad = patch.printStatus === "failed" || patch.printStatus === "canceled" || patch.printStatus === "returned";
-  if (bad) await printAlert(store, deps, order, patch.printError ?? `imprenta: ${g.status}`, "printer");
+  if (patch.printStatus === "failed") await printAlert(store, deps, order, patch.printError ?? `imprenta: ${g.status}`, "printer_failed");
+  if (patch.printStatus === "canceled" || patch.printStatus === "returned") await printAlert(store, deps, order, `imprenta: ${g.status}`, "printer_stopped");
   return "updated";
 }
 
@@ -289,6 +297,8 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     // `sending` sin terminar: la función se cortó. Se libera para que el padre lo reintente.
     if (book && now.getTime() - Date.parse(o.updatedAt ?? o.createdAt) > 15 * 60_000 && (await store.claimPrint(o.id, ["sending"], "failed"))) {
       await store.updateOrder(o.id, { printError: "interrumpido" });
+      // también es un pedido que no ha salido hacia la imprenta (revisión 27 oct)
+      await printAlert(store, deps, o, "interrumpido: la función se cortó mientras lo mandaba", "send");
       report.unstuck++;
     }
   }
