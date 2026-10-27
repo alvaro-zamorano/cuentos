@@ -1439,7 +1439,8 @@ function failReason(error: string | null | undefined): BookJobView["error"] {
   return "error";
 }
 
-export async function bookView(store: GenStore, bookId: unknown, env: Env = process.env): Promise<BookView | Fail> {
+/** `sign: false`: sin firmar las URL de las imágenes (todas null), para quien solo necesita qué va en el libro (el PDF, I10). */
+export async function bookView(store: GenStore, bookId: unknown, env: Env = process.env, { sign = true }: { sign?: boolean } = {}): Promise<BookView | Fail> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
@@ -1463,7 +1464,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       page: j.page_n,
       variant: j.variant,
       status: j.status,
-      url: j.status === "done" && j.storage_path && !hidden ? await store.signedUrl(j.storage_path, 3600) : null,
+      url: sign && j.status === "done" && j.storage_path && !hidden ? await store.signedUrl(j.storage_path, 3600) : null,
       placeholder: j.status === "done" && !j.storage_path,
       error: j.status === "failed" ? failReason(j.error) : null,
       current,

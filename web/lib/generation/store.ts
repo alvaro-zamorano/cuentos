@@ -148,7 +148,10 @@ export interface GenStore {
   /** Vuelve a `pending` un job `failed` (reintento), con el mismo bloqueo optimista. */
   reopen(job: GenJob): Promise<boolean>;
   upload(path: string, data: Uint8Array, contentType: string): Promise<void>;
-  signedUrl(path: string, seconds: number): Promise<string | null>;
+  /** `download`: el nombre con el que se descarga (Content-Disposition). */
+  signedUrl(path: string, seconds: number, opts?: { download?: string }): Promise<string | null>;
+  /** ¿Está ese archivo en el bucket? En memoria no hay bucket: siempre false. */
+  exists(path: string): Promise<boolean>;
   /** ¿Hay un pedido pagado? Con `accept`, solo cuenta si su sesión de Stripe pasa el filtro (ver `paidInEnv`). */
   hasPaidOrder(bookId: string, accept?: (sessionId: string | null) => boolean): Promise<boolean>;
   markIllustrating(bookId: string): Promise<void>;
@@ -384,9 +387,14 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       const { error } = await db.storage.from(BUCKET).upload(path, data, { contentType, upsert: true });
       if (error) throw new Error(`storage: ${error.message}`);
     },
-    async signedUrl(path, seconds) {
-      const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds);
+    async signedUrl(path, seconds, opts) {
+      const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds, opts?.download ? { download: opts.download } : undefined);
       return data?.signedUrl ?? null;
+    },
+    async exists(path) {
+      // false solo si Storage dice que no está (400/404); cualquier otro fallo lanza
+      const { data } = await db.storage.from(BUCKET).exists(path);
+      return data;
     },
     async hasPaidOrder(bookId, accept) {
       const { data, error } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
@@ -731,6 +739,9 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async signedUrl() {
       return null;
+    },
+    async exists() {
+      return false;
     },
     async hasPaidOrder(bookId, accept) {
       const mine = [...(state.orders?.values() ?? [])].filter((o) => o.bookId === bookId);

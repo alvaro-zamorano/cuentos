@@ -211,7 +211,19 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
     const info = execFileSync("pdfinfo", [file]).toString();
     expect(info).toMatch(/Pages:\s+29/);
     expect(info).toMatch(/Page size:\s+841\.\d+ x 59[45]\.\d+ pts \(A4\)/);
+
+    // el botón (I10): «Preparando el PDF…» mientras tanto y después la descarga, sin salir de la página
+    const download = page.waitForEvent("download");
+    await page.getByTestId("full-pdf").click();
+    await expect(page.getByTestId("full-pdf")).toHaveAttribute("aria-busy", "true");
+    expect((await download).suggestedFilename()).toMatch(/^cuento-.+-ilustrado\.pdf$/);
+    await expect(page.getByTestId("full-pdf")).toBeVisible();
   }
+  // el enlace directo con un error: una página en castellano, no un JSON (I10)
+  const bad = await page.request.get(`/api/libro/pdf?b=zzzzzzzz&kind=full`);
+  expect(bad.status()).toBe(404);
+  expect(bad.headers()["content-type"]).toContain("text/html");
+  expect(await bad.text()).toContain("Guardamos los libros 30 días");
   expect(errors).toEqual([]);
 });
 
