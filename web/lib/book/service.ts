@@ -546,6 +546,23 @@ export async function prepareUpgrade(
   return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true };
 }
 
+/**
+ * La dirección entera de la tapa dura, solo cuando el padre la pide con un gesto: «Cambiar» (para no tener que escribirla
+ * otra vez ni perder el piso o el teléfono) y la confirmación antes de imprimir (para ver la calle que va a la imprenta).
+ * La vista, que se carga cada vez que se abre el enlace, lleva solo el resumen (I16; revisión 27 oct). Una vez en la
+ * imprenta ya no se da: no hay nada que cambiar.
+ */
+export async function shippingOf(store: GenStore, input: { bookId?: unknown }): Promise<{ ok: true; shipping: Shipping } | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  const { book, d } = loaded;
+  const order = await store.getOrder(book.id);
+  if (!order || order.edition !== "hardcover") return fail(409, "not_hardcover");
+  if (order.printStatus && LOCKED_PRINT_STATUSES.includes(order.printStatus)) return lockedFail();
+  const shipping = order.shipping ?? d.shipping;
+  return shipping ? { ok: true, shipping } : fail(404, "no_shipping", "Falta la dirección de envío.");
+}
+
 /** Cambiar la dirección de la tapa dura ya pagada, mientras no haya salido hacia la imprenta. */
 export async function updateShipping(store: GenStore, input: { bookId?: unknown; shipping?: unknown }): Promise<{ ok: true; shipping: ShippingSummary } | Fail> {
   const loaded = await loadBook(store, input.bookId);

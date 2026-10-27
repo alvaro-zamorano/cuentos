@@ -214,11 +214,17 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   // la última revisión antes de mandarlo: el libro en 3D con sus páginas
   await expect(page.getByTestId("book3d-section")).toContainText("así quedará impreso");
 
-  // cambiar la dirección antes de mandarlo
+  // cambiar la dirección antes de mandarlo: «Cambiar» la trae entera (no se pierden el piso ni el teléfono) y se puede
+  // cancelar sin tocar nada (revisión 27 oct)
+  await panel.getByRole("button", { name: "Cambiar" }).click();
+  await expect(page.getByTestId("ship-line1")).toHaveValue("Calle Mayor 12");
+  await expect(page.getByTestId("ship-line2")).toHaveValue("3º B");
+  await page.getByTestId("ship-line2").fill("algo que no se guarda");
+  await page.getByTestId("ship-cancel").click();
+  await expect(page.getByTestId("print-address")).toContainText("Ana García López · 28013 Madrid");
   await panel.getByRole("button", { name: "Cambiar" }).click();
   await expect(page.getByTestId("ship-name")).toHaveValue("Ana García López");
-  await expect(page.getByTestId("ship-line1")).toHaveValue("");
-  await page.getByTestId("ship-line1").fill("Calle Mayor 12");
+  await expect(page.getByTestId("ship-line2")).toHaveValue("3º B");
   await page.getByTestId("ship-line2").fill("4º A");
   await page.getByTestId("ship-postcode").fill("28014");
   await page.getByTestId("ship-save").click();
@@ -227,7 +233,9 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   // un texto retocado antes de mandarlo viaja con el libro
   await page.getByLabel("Texto de la página 1", { exact: true }).fill("Aquella noche, Vera no tenía nada de sueño.");
   await page.getByTestId("print-send").click();
-  await expect(panel.getByRole("alertdialog")).toContainText("Lo enviaremos a Ana García López, 28014 Madrid.");
+  // antes de mandarlo se ve la dirección entera, con la calle y el piso
+  await expect(panel.getByRole("alertdialog")).toContainText("Lo enviaremos a Ana García López, Calle Mayor 12, 4º A, 28014 Madrid.");
+  await panel.screenshot({ path: test.info().outputPath("panel-confirmar.png") });
   await page.getByTestId("print-confirm").click();
   await expect(panel).toHaveAttribute("data-status", /sent|failed/, { timeout: 180_000 });
   const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
