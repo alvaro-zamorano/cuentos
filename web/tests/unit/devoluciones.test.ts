@@ -380,6 +380,9 @@ test("devuelto mientras se maquetaba para la imprenta: no se crea el pedido en G
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, start.bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
   const s = await startPrint(store, start.bookId, "gelato", {});
   assert.ok(s.ok, JSON.stringify(s));
+  // a una imprenta de verdad van imágenes con archivo y URL
+  for (const j of await store.listJobs((await store.findBook({ publicId: start.bookId }))!.id)) if (j.status === "done") await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });
+  const signing = { ...store, signedUrl: async (path: string) => `https://files.example/${path}` };
   const created: string[] = [];
   // la devolución llega mientras se maqueta el PDF
   const deps = printDeps({
@@ -390,7 +393,7 @@ test("devuelto mientras se maquetaba para la imprenta: no se crea el pedido en G
     },
     createOrder: async (i) => (created.push(i.orderReferenceId), { error: "no debería llegar" }),
   });
-  const r = await completePrint(store, s.orderId, deps);
+  const r = await completePrint(signing, s.orderId, deps);
   assert.equal((r as { error?: string }).error, "refunded");
   assert.deepEqual(created, []);
   assert.equal((await store.getOrderById(s.orderId))!.printStatus, "canceled");
