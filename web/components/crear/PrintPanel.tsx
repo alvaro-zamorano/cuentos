@@ -24,27 +24,36 @@ export function PrintPanel({ view, allDone, onSend, onShipping }: { view: BookVi
   const simulated = view.printMode === "dry-run";
   const open = print.status === "awaiting_approval" || print.status === "failed";
 
+  // los botones nunca se quedan en «Mandando…»: pase lo que pase, se sueltan (I9)
   const saveShipping = async () => {
     setBusy(true);
     setErr(null);
     setField(null);
-    const r = await postJson<{ shipping?: Shipping; field?: string }>("/api/libro/shipping", { bookId: view.bookId, shipping: draft });
-    setBusy(false);
-    if (r.status === 200 && r.json.shipping) {
-      onShipping(r.json.shipping);
-      setEditing(false);
-    } else {
-      setField(r.json.field ?? null);
-      setErr(errorMessage(r.json));
+    try {
+      const r = await postJson<{ shipping?: Shipping; field?: string }>("/api/libro/shipping", { bookId: view.bookId, shipping: draft });
+      if (r.status === 200 && r.json.shipping) {
+        onShipping(r.json.shipping);
+        setEditing(false);
+      } else {
+        setField(r.json.field ?? null);
+        setErr(errorMessage(r.json));
+      }
+    } finally {
+      setBusy(false);
     }
   };
   const send = async () => {
     setBusy(true);
     setErr(null);
-    const e = await onSend();
-    setBusy(false);
-    setConfirm(false);
-    if (e) setErr(e);
+    try {
+      const e = await onSend();
+      if (e) setErr(e);
+    } catch {
+      setErr(errorMessage(undefined));
+    } finally {
+      setBusy(false);
+      setConfirm(false);
+    }
   };
 
   return (

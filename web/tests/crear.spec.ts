@@ -363,6 +363,43 @@ test("Recuperar un libro con el enlace /crear?b=", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Así será Vera" })).toBeVisible();
   await page.goto("/crear?b=noexiste00");
   await expect(page.getByText("Este enlace ya no es válido")).toBeVisible();
+
+  // con el servidor fallando no dice que el enlace no vale: reintenta y, si sigue, dice que el libro sigue guardado (I9)
+  await page.evaluate(() => localStorage.clear());
+  await page.route(/\/api\/libro\/view\?/, (r) => r.fulfill({ status: 500, json: { ok: false, error: "server" } }));
+  await page.goto(`/crear?b=${bookId}`);
+  await expect(page.getByText("No hemos podido abrir tu libro ahora mismo")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Este enlace ya no es válido")).toHaveCount(0);
+  await page.unroute(/\/api\/libro\/view\?/);
+  errors.splice(0, errors.length); // los 500 provocados
+});
+
+test("Sin red al pagar: el botón no se queda colgado y lo dice (I9)", async ({ page }) => {
+  await writeStory(page);
+  await page.getByTestId("next-3").click();
+  await page.getByTestId("email").fill("nora@example.com");
+  await page.getByTestId("consent").check();
+  await page.getByTestId("start").click();
+  await expect(page.getByTestId("sheet")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
+  await page.getByTestId("approve").click();
+  await page.getByTestId("edition-illustrated").click();
+  await page.getByTestId("waiver").check();
+  await page.route("**/api/libro/pay", (r) => r.abort());
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("paywall")).toContainText("Sin conexión");
+  await expect(page.getByTestId("pay")).toBeEnabled();
+  await page.unroute("**/api/libro/pay");
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 120_000 });
+
+  // el libro no carga (servidor caído): lo dice y deja volver a intentarlo, en vez de quedarse en blanco
+  await page.route(/\/api\/libro\/view\?/, (r) => r.fulfill({ status: 503, json: { ok: false, error: "server" } }));
+  await page.reload();
+  await expect(page.getByTestId("load-error")).toContainText("Tu libro sigue guardado", { timeout: 15_000 });
+  await page.getByTestId("load-error").screenshot({ path: test.info().outputPath("libro-no-carga.png") });
+  await page.unroute(/\/api\/libro\/view\?/);
+  await page.getByRole("button", { name: "Volver a intentarlo" }).click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible({ timeout: 30_000 });
 });
 
 test("Si falla el dibujo de los personajes, «Reintentar» lo repite aquí sin empezar otro cuento", async ({ page }) => {

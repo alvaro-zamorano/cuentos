@@ -11,7 +11,7 @@ import { StepStory } from "@/components/crear/StepStory";
 import { StepCast } from "@/components/crear/StepCast";
 import { StepBook } from "@/components/crear/StepBook";
 import { track } from "@/lib/analytics";
-import { errorMessage, fetchView, postJson } from "@/lib/bookClient";
+import { errorMessage, loadView, postJson, viewErrorMessage } from "@/lib/bookClient";
 import { fichaHash, TONES } from "@/lib/plan/ficha";
 import { STARTERS, starterIdea } from "@/lib/plan/starters";
 import { resetCrear, setCrear, useCrear, type CrearState, type Step } from "@/lib/crearStore";
@@ -55,12 +55,14 @@ function Crear() {
     if (!b || !/^[a-z0-9]{8,16}$/.test(b) || tried.current === b) return;
     tried.current = b;
     setRecovering(b);
-    void fetchView(b).then((v) => {
+    void loadView(b).then((r) => {
       setRecovering(null);
-      if (!v) {
-        setNotice({ text: "Este enlace ya no es válido. Guardamos los libros 30 días.", ok: false });
+      // «no existe» solo si el servidor lo dice; sin red o con un error suyo, se dice eso (I9)
+      if (!r.ok) {
+        setNotice({ text: viewErrorMessage(r.error), ok: false });
         return;
       }
+      const v = r.view;
       setCrear((prev) => ({
         v: 2,
         step: v.paid || v.approvedSheetJobId || pagado ? 5 : 4,

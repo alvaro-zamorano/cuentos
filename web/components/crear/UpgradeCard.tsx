@@ -30,6 +30,15 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
     setBusy(true);
     setErr(null);
     setField(null);
+    try {
+      await payNow();
+    } catch {
+      // nunca se queda en «Abriendo el pago…» (I9)
+      setBusy(false);
+      setErr(errorMessage(undefined));
+    }
+  };
+  const payNow = async () => {
     const body = { bookId: view.bookId, upgrade: true, waiver, shipping };
     if (payment === "stripe") {
       const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body);

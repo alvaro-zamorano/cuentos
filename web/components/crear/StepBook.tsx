@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
-import { errorMessage, fetchView, postJson, runJobs, type JobOutcome } from "@/lib/bookClient";
+import { errorMessage, fetchView, loadView, postJson, runJobs, viewErrorMessage, type JobOutcome } from "@/lib/bookClient";
 import { MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
 import type { Plan, PlanPage } from "@/lib/plan/types";
 import { EDITION_LABEL, PRICE_CENTS, eur } from "@/lib/print/prices";
@@ -18,7 +18,7 @@ import { BookLink } from "./BookLink";
 import { PrintPanel } from "./PrintPanel";
 import { UpgradeCard } from "./UpgradeCard";
 import { ShippingForm, type ShippingDraft } from "./ShippingForm";
-import { ErrorNote, Status } from "./ui";
+import { ErrorNote, LoadError, Status } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isPage = (j: BookJobView) => j.kind === "page";
@@ -78,6 +78,8 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // el libro no se ha podido cargar (sin red o error del servidor): se dice en vez de quedarse en blanco (I9)
+  const [loadError, setLoadError] = useState<string | null>(null);
   // vuelta de Stripe sin confirmación del pago: no se vuelve a enseñar el pago, que llevaba a pagar dos veces (B7)
   const [payPending, setPayPending] = useState(false);
   // lo mismo con la mejora a tapa dura: sin confirmar, no se vuelve a ofrecer
@@ -137,8 +139,13 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     started.current = true;
     const c = cancel.current;
     void (async () => {
-      let v = await refresh();
-      if (!v) return;
+      const first = await loadView(bookId);
+      if (!first.ok) {
+        setLoadError(viewErrorMessage(first.error));
+        return;
+      }
+      let v = first.view;
+      setView(v);
       if (!v.paid && confirming) {
         // vuelta de Stripe: el webhook registra el pago en unos segundos
         setBusy("Confirmando el pago…");
@@ -190,6 +197,7 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     })();
   }, [bookId, confirming, upgrading, drive, paintPages, refresh]);
 
+  if (!view && loadError) return <LoadError text={loadError} />;
   if (!view)
     return (
       <div className="grid gap-6" aria-busy="true">
@@ -444,27 +452,36 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
     setField(json?.field ?? null);
     setErr(errorMessage(json));
   };
+  // si algo lanza, el botón se suelta y se dice (I9); si va bien, el pago real navega a Stripe y el botón sigue ocupado
   const checkout = async () => {
     setBusy(true);
     setErr(null);
     setField(null);
-    const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body());
-    if (r.status === 200 && r.json.url) {
-      track({ name: "pago_iniciado", props: { edicion: edition } }, { beacon: true });
-      window.location.assign(r.json.url);
-      return;
+    try {
+      const r = await postJson<{ url?: string; field?: string }>("/api/libro/checkout", body());
+      if (r.status === 200 && r.json.url) {
+        track({ name: "pago_iniciado", props: { edicion: edition } }, { beacon: true });
+        window.location.assign(r.json.url);
+        return;
+      }
+      failed(r.json);
+    } catch {
+      failed({});
     }
-    failed(r.json);
   };
   const dryRun = async () => {
     setBusy(true);
     setErr(null);
     setField(null);
-    const r = await postJson<{ field?: string }>("/api/libro/pay", body());
-    if (r.status === 200) {
-      setBusy(false);
-      onPaid();
-    } else failed(r.json);
+    try {
+      const r = await postJson<{ field?: string }>("/api/libro/pay", body());
+      if (r.status === 200) {
+        setBusy(false);
+        onPaid();
+      } else failed(r.json);
+    } catch {
+      failed({});
+    }
   };
   const perks: Record<PaidEdition, string[]> = {
     hardcover: [`Libro apaisado de tapa dura, con ${name || "tus personajes"} en las doce ilustraciones`, "Revisas cada página y no lo imprimimos hasta que nos lo digas", "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya"],

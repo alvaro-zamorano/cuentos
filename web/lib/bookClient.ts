@@ -10,9 +10,19 @@ export type JobOutcome = "done" | "failed" | "budget" | "error";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * POST con JSON. Nunca lanza (auditoría 26 oct, I9): sin red devuelve `status: 0` y `error: "network"`, y una respuesta
+ * que no es JSON (un 504 de Vercel en HTML) devuelve `error: "server"`. Antes, sin cobertura, los botones se quedaban en
+ * «Abriendo el pago…» para siempre.
+ */
 export async function postJson<T = Record<string, unknown>>(url: string, body: unknown): Promise<{ status: number; json: T & { ok?: boolean; error?: string; reason?: string; message?: string } }> {
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const json = (await res.json().catch(() => ({ ok: false, error: "json" }))) as T & { ok?: boolean; error?: string };
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    return { status: 0, json: { ok: false, error: "network" } as T & { ok?: boolean; error?: string } };
+  }
+  const json = (await res.json().catch(() => ({ ok: false, error: res.status >= 500 ? "server" : "json" }))) as T & { ok?: boolean; error?: string };
   return { status: res.status, json };
 }
 
@@ -25,10 +35,8 @@ export async function runJob(jobId: string, signal?: { cancelled: boolean }, max
   const until = Date.now() + maxMs;
   while (Date.now() < until) {
     if (signal?.cancelled) return "error";
-    let r: { status: number; json: { job?: { status?: string }; error?: string } };
-    try {
-      r = await postJson("/api/generate/run", { jobId });
-    } catch {
+    const r: { status: number; json: { job?: { status?: string }; error?: string } } = await postJson("/api/generate/run", { jobId });
+    if (r.status === 0) {
       if (++networkErrors > 2) return "error";
       await sleep(3000);
       continue;
@@ -65,14 +73,41 @@ export async function runJobs(ids: string[], concurrency: number, onEach: (id: s
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
 }
 
-export async function fetchView(bookId: string): Promise<BookView | null> {
-  try {
-    const res = await fetch(`/api/libro/view?b=${encodeURIComponent(bookId)}`, { cache: "no-store" });
-    const json = await res.json();
-    return res.ok && json.ok ? (json as BookView) : null;
-  } catch {
-    return null;
+export type ViewResult = { ok: true; view: BookView } | { ok: false; error: "not_found" | "network" | "server" };
+
+/**
+ * La vista del libro, distinguiendo «no existe» (404: caducado o enlace mal copiado) de «ahora no se puede» (sin red o
+ * un error del servidor), que se reintenta (I9). Antes un 500 decía «Este enlace ya no es válido» a quien había pagado.
+ */
+export async function loadView(bookId: string, { tries = 3, wait = 1500 }: { tries?: number; wait?: number } = {}): Promise<ViewResult> {
+  let last: "network" | "server" = "network";
+  for (let i = 0; i < tries; i++) {
+    if (i > 0) await sleep(wait * i);
+    try {
+      const res = await fetch(`/api/libro/view?b=${encodeURIComponent(bookId)}`, { cache: "no-store" });
+      // 400: id mal formado; 404: no existe o caducó; 409: un libro del flujo antiguo
+      if (res.status === 400 || res.status === 404 || res.status === 409) return { ok: false, error: "not_found" };
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.ok) return { ok: true, view: json as BookView };
+      last = "server";
+    } catch {
+      last = "network";
+    }
   }
+  return { ok: false, error: last };
+}
+
+/** La vista del libro, de una vez (para refrescar mientras se pinta: si falla, se sigue con la que había). */
+export async function fetchView(bookId: string): Promise<BookView | null> {
+  const r = await loadView(bookId, { tries: 1 });
+  return r.ok ? r.view : null;
+}
+
+/** Lo que se le dice al padre cuando su libro no se puede abrir. */
+export function viewErrorMessage(error: Exclude<ViewResult, { ok: true }>["error"]): string {
+  if (error === "not_found") return "Este enlace ya no es válido. Guardamos los libros 30 días.";
+  if (error === "network") return "No hemos podido abrir tu libro: parece que no hay conexión. Recarga la página cuando vuelva. Tu libro sigue guardado.";
+  return "No hemos podido abrir tu libro ahora mismo. Recarga la página en un momento. Tu libro sigue guardado.";
 }
 
 /** Mensaje para el padre a partir del error de una ruta de /api/libro. */
@@ -80,6 +115,10 @@ export function errorMessage(json: { error?: string; reason?: string; message?: 
   if (!json) return fallback;
   if (json.message) return json.message;
   switch (json.error) {
+    case "network":
+      return "Sin conexión. Revisa la red e inténtalo de nuevo.";
+    case "server":
+      return "El servidor no responde ahora mismo. Inténtalo de nuevo en un momento.";
     case "budget":
       return json.reason?.includes("diario")
         ? "Hoy ya hemos pintado todas las ilustraciones que podemos. Vuelve mañana y seguimos donde lo dejaste."
