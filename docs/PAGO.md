@@ -42,7 +42,8 @@ Ninguna clave por el chat. En Vercel, proyecto `cuentos` → Settings → Enviro
 2. Developers → API keys → la «Secret key» (`sk_test_…`) → `STRIPE_SECRET_KEY`.
 3. Developers → Webhooks → Add endpoint:
    - URL: `https://cuentos-git-feat-fase-1-journey-clasico-wcoach24s-projects.vercel.app/api/stripe/webhook`. Es el alias fijo de la rama; la protección de despliegues está desactivada en el proyecto, así que Stripe puede llegar.
-   - Eventos: `checkout.session.completed` y `checkout.session.async_payment_succeeded`.
+   - Eventos: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `charge.refunded`, `charge.dispute.created` y `charge.dispute.closed` (los tres últimos, devoluciones y disputas, desde el 27 oct).
+   - La clave secreta tiene que poder leer las sesiones de Checkout: las devoluciones y disputas traen el PaymentIntent y el webhook busca su sesión. La «Secret key» estándar puede; una clave restringida necesita «Checkout Sessions: lectura».
 4. En ese endpoint, el «Signing secret» (`whsec_…`) → `STRIPE_WEBHOOK_SECRET`.
 5. Para producción: lo mismo con las claves «live» y el endpoint en el dominio definitivo (abajo).
 
@@ -52,7 +53,7 @@ En producción Gelato imprime de verdad. Con claves de prueba, un pago con la ta
 
 1. Activar la cuenta de Stripe para cobros reales (datos del negocio y cuenta bancaria). Nombre público: «Érase su vez».
 2. En modo real, Developers → API keys → `sk_live_…` → `STRIPE_SECRET_KEY`, solo en **Production**. Preview sigue con `sk_test_…`.
-3. En modo real, Webhooks → Add endpoint `https://www.erasesuvez.com/api/stripe/webhook`, con los mismos dos eventos. Su «Signing secret» → `STRIPE_WEBHOOK_SECRET`, solo en **Production**. Hasta que el PR #1 llegue a `main`, el dominio da 404 y Stripe reintenta: no pasa nada.
+3. En modo real, Webhooks → Add endpoint `https://www.erasesuvez.com/api/stripe/webhook`, con los mismos cinco eventos. Su «Signing secret» → `STRIPE_WEBHOOK_SECRET`, solo en **Production**. Hasta que el PR #1 llegue a `main`, el dominio da 404 y Stripe reintenta: no pasa nada.
 4. Hoy `STRIPE_WEBHOOK_SECRET` tiene un solo valor para Production y Preview (el del endpoint de prueba). Hay que dejarlo solo en Preview y crear aparte el de Production.
 5. Salvaguarda en el código (18 oct): en producción el webhook ignora los eventos con `livemode: false`, y «Mandar a imprimir» rechaza los pedidos cuya sesión no empieza por `cs_live_` (la base es la misma que la de la preview).
 
