@@ -27,7 +27,7 @@ import { planFromClient } from "../plan/planner";
 import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping, shippingLine, shippingSummary } from "../print/shipping";
-import type { Receipt } from "../mail";
+import type { MailResult, Receipt } from "../mail";
 import { EDITION_LABEL, PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping, type ShippingSummary } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
@@ -778,7 +778,10 @@ async function recordCharge(
   }
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
-  await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
+  const added = await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
+  // la red de la base (0014) para cuando el bloqueo no basta: otra tapa dura pagada del libro, cobro doble
+  if (added === "hardcover_taken") return { action: "double_charge", bookId: publicId, already: "hardcover" };
+  if (added === "same_session") return { action: "duplicate", bookId: publicId };
   await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
   const mismatch = paymentMismatch(PRICES[edition], s);
   return { action: "paid", bookId: publicId, ...(mismatch ? { mismatch } : {}) };
@@ -802,7 +805,10 @@ async function recordUpgrade(
   if (!printableInEnv(order.sessionId, env)) return { action: "ignored", reason: "upgrade:test_order" };
   const expected = upgradeCents(order.amountCents);
   const amount = typeof s.amount_total === "number" ? s.amount_total : (expected ?? 0);
-  await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
+  const added = await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
+  // otra mejora del mismo libro entró antes (0014): como si ya fuera de tapa dura, con aviso para devolverla
+  if (added === "hardcover_taken") return { action: "ignored", reason: "upgrade:already_hardcover" };
+  if (added === "same_session") return { action: "duplicate", bookId: book.public_id };
   // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
   // caducara al pedir la mejora
   await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
@@ -823,6 +829,18 @@ export function receiptNotice(to: string, reason: string, bookUuid: string | nul
       bookUuid ? bookLine(bookUuid) : `Sesión de Stripe: ${sessionId ?? "?"} (el libro va en sus metadatos)`,
     ].join("\n\n"),
   };
+}
+
+/** Los avisos que el reintento de Stripe vuelve a dar igual: no cambian nada en la base. */
+const REPEATABLE_NOTICES = new Set(["ignored", "double_charge", "unmatched", "partial_refund"]);
+
+/**
+ * ¿Responder 500 a Stripe porque el aviso a soporte no ha salido? Revisión 27 oct (Álvaro: sí): antes, si fallaba el
+ * correo, un cobro doble solo quedaba en los registros. Solo con los avisos que el reintento vuelve a mandar y con fallos
+ * pasajeros (red, Resend caído o saturado). Sin destino o sin correo configurado, reintentar no arregla nada.
+ */
+export function retryUnsentNotice(action: string, mail: MailResult): boolean {
+  return REPEATABLE_NOTICES.has(action) && !mail.sent && /^(red|error|resend_429|resend_5\d\d)$/.test(mail.reason ?? "error");
 }
 
 /**

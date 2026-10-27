@@ -9,7 +9,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState, type GenStore } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { paymentNotice, pendingPageJobs, recordStripePayment, requestPages, startBook, type PaidEvent } from "../../lib/book/service";
+import { paymentNotice, pendingPageJobs, recordStripePayment, requestPages, retryUnsentNotice, startBook, type PaidEvent } from "../../lib/book/service";
 import { completePrint, startPrint } from "../../lib/book/print";
 import { recordChargeEvent, type ChargeEvent } from "../../lib/book/refunds";
 import { estimatedCover } from "../../lib/print/gelato";
@@ -147,4 +147,36 @@ test("pagada la tapa dura, «Mandar a imprimir» dos veces a la vez y otra vez d
   assert.ok("ok" in done && done.ok, JSON.stringify(done));
   assert.equal(created.length, 1);
   assert.equal(((await startPrint(store, bookId, "gelato", {})) as { error: string }).error, "already_sent", "mandado: no se puede volver a mandar");
+});
+
+test("si el bloqueo no basta (caducado con un cobro a medias), la base no deja entrar la segunda tapa dura: cobro doble con aviso", async () => {
+  const { state, store, bookId } = await book();
+  // un bloqueo que no bloquea: como si hubiera caducado
+  const loose: GenStore = { ...store, lock: async () => crypto.randomUUID(), unlock: async () => undefined };
+  const [a, b] = await Promise.all([recordStripePayment(loose, hardcover("cs_1", bookId), {}), recordStripePayment(loose, hardcover("cs_2", bookId), {})]);
+  assert.deepEqual([a.action, b.action].sort(), ["double_charge", "paid"]);
+  assert.equal(paidOrders(state).filter((o) => o.edition === "hardcover").length, 1);
+  const extra = a.action === "double_charge" ? a : b;
+  assert.equal(paymentNotice(extra, hardcover("cs_x", bookId))?.subject, "Cobro doble de un libro ya pagado");
+  // dos mejoras igual: una tapa dura y la otra mejora sin registrar, con aviso
+  const other = await book();
+  assert.equal((await recordStripePayment(other.store, pdf("cs_pdf", other.bookId), {})).action, "paid");
+  const loose2: GenStore = { ...other.store, lock: async () => crypto.randomUUID(), unlock: async () => undefined };
+  const ups = await Promise.all([recordStripePayment(loose2, upgrade("cs_u1", other.bookId), {}), recordStripePayment(loose2, upgrade("cs_u2", other.bookId), {})]);
+  assert.deepEqual(ups.map((u) => u.action).sort(), ["ignored", "upgraded"]);
+  assert.equal(paidOrders(other.state).filter((o) => o.edition === "hardcover").length, 1);
+});
+
+test("aviso a soporte que no sale: 500 para que Stripe reintente solo si el reintento lo repite y el fallo es pasajero", () => {
+  for (const action of ["double_charge", "ignored", "unmatched", "partial_refund"]) {
+    assert.equal(retryUnsentNotice(action, { sent: false, reason: "red" }), true, action);
+    assert.equal(retryUnsentNotice(action, { sent: false, reason: "resend_503" }), true, action);
+    assert.equal(retryUnsentNotice(action, { sent: false, reason: "resend_429" }), true, action);
+    assert.equal(retryUnsentNotice(action, { sent: true }), false, `${action}: salió`);
+    assert.equal(retryUnsentNotice(action, { sent: false, reason: "sin_destino" }), false, `${action}: sin MAIL_FORWARD_TO`);
+    assert.equal(retryUnsentNotice(action, { sent: false, reason: "sin_configurar" }), false, `${action}: sin Resend`);
+    assert.equal(retryUnsentNotice(action, { sent: false, reason: "resend_422" }), false, `${action}: Resend lo rechaza`);
+  }
+  // ya registrado (importe que no cuadra) o con la devolución apuntada: el reintento no repetiría el aviso
+  for (const action of ["paid", "upgraded", "refunded", "disputed", "dispute_won", "duplicate"]) assert.equal(retryUnsentNotice(action, { sent: false, reason: "red" }), false, action);
 });
