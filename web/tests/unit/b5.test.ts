@@ -124,6 +124,9 @@ test("webhook: el pedido se registra una vez; lo que no es un cobro se ignora", 
   assert.deepEqual(await recordStripePayment(store, ev("payment_intent.created", paid)), { action: "ignored", reason: "payment_intent.created" });
   assert.equal((await recordStripePayment(store, ev("checkout.session.completed", { ...paid, payment_status: "unpaid" }))).action, "ignored");
   assert.equal((await recordStripePayment(store, ev("checkout.session.completed", { ...paid, metadata: { bookId: "noexiste1" } }))).action, "ignored");
+  // sin personajes dibujados no se paga (menores de la auditoría 26 oct)
+  assert.equal(((await prepareCheckout(store, { bookId: start.bookId })) as { error: string }).error, "cast_not_ready");
+  await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
   assert.equal((await prepareCheckout(store, { bookId: start.bookId })).ok, true, "antes del pago se puede abrir el checkout");
 
   assert.deepEqual(await recordStripePayment(store, ev("checkout.session.completed", paid)), { action: "paid", bookId: start.bookId });

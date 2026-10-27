@@ -195,6 +195,7 @@ test("I10: sin pagar o con páginas por pintar, no se pinta nada", async () => {
   const c = counting();
   const unpaid = await bookPdf(store, start.bookId, "full", c.deps);
   assert.ok(!unpaid.ok && unpaid.status === 402);
+  await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
   assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "illustrated" })).ok);
   const missing = await bookPdf(store, start.bookId, "full", c.deps);
   assert.ok(!missing.ok && missing.status === 409 && missing.error === "pages_missing" && (missing.pages?.length ?? 0) > 0, JSON.stringify(missing));

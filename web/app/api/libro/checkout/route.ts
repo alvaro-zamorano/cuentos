@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
-import { prepareCheckout, prepareUpgrade } from "@/lib/book/service";
+import { prepareCheckout, prepareUpgrade, rememberCheckoutShipping } from "@/lib/book/service";
 import type { Fail } from "@/lib/generation/service";
 import { printMode } from "@/lib/print/gelato";
 import { clientIp, envInt, rateLimit } from "@/lib/rateLimit";
@@ -31,6 +31,9 @@ export async function POST(req: Request) {
       console.error("[libro/checkout]", r.error);
       return { ok: false, status: 502, error: "stripe" } satisfies Fail;
     }
+    // la dirección con la que se abre esta sesión: el pedido llevará esa, aunque otra pestaña escriba otra (menores de la
+    // auditoría 26 oct). Si no se puede apuntar, el pedido usa la última escrita, como antes
+    if (info.shipping) await rememberCheckoutShipping(store, info.bookId, r.id, info.shipping).catch((e: unknown) => console.warn("[libro/checkout] dirección de la sesión sin apuntar", e instanceof Error ? e.message.slice(0, 120) : ""));
     return { ok: true as const, url: r.url };
   });
 }

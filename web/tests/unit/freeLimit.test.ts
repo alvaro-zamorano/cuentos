@@ -57,12 +57,16 @@ test("dentro de un cuento empezado, los cambios con palabras no cuentan como cue
 test("comprar un libro renueva los gratis", async () => {
   const store = memoryStore(newMemoryState());
   const ids: string[] = [];
+  const sheets: string[] = [];
   for (let i = 0; i < 3; i++) {
     const r = await start(store, "ana@example.com");
     assert.ok(r.ok);
     ids.push(r.bookId);
+    sheets.push(r.sheetJobId);
   }
   assert.equal(((await start(store, "ana@example.com")) as { error: string }).error, "free_limit");
+  // se paga con los personajes dibujados
+  await store.updateJob(sheets[0], { status: "done", chosen: "dry-run/sheet.png" });
   assert.ok((await payDryRun(store, { bookId: ids[0], edition: "illustrated" })).ok);
   const r = await start(store, "ana@example.com");
   assert.ok(r.ok, JSON.stringify(r));

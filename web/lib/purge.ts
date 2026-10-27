@@ -345,20 +345,28 @@ export function supabasePurgeDb(db: SupabaseClient<Database>, env: Record<string
           must(up.error, "orders.shipping");
         }
       }
-      // 2. borradores con dirección que nadie toca desde hace un día: pago abandonado, o ya copiada en el pedido
-      const { data: books, error: bErr } = await db
-        .from("cuentos_books")
-        .select("id, draft, updated_at")
-        .not("draft->shipping", "is", null)
-        .lt("updated_at", draftBefore.toISOString())
-        .neq("status", "expired")
-        .limit(500);
-      must(bErr, "books.shipping");
-      n += books?.length ?? 0;
+      // 2. borradores con dirección que nadie toca desde hace un día: pago abandonado, o ya copiada en el pedido. También
+      // las de las sesiones de pago abiertas (`checkoutShipping`, 27 oct)
+      const drafts = async (key: "shipping" | "checkoutShipping") => {
+        const { data, error } = await db
+          .from("cuentos_books")
+          .select("id, draft, updated_at")
+          .not(`draft->${key}`, "is", null)
+          .lt("updated_at", draftBefore.toISOString())
+          .neq("status", "expired")
+          .limit(500);
+        must(error, "books.shipping");
+        return data ?? [];
+      };
+      const byId = new Map<string, Awaited<ReturnType<typeof drafts>>[number]>();
+      for (const b of [...(await drafts("shipping")), ...(await drafts("checkoutShipping"))]) byId.set(b.id, b);
+      const books = [...byId.values()];
+      n += books.length;
       if (!dryRun) {
-        for (const b of books ?? []) {
+        for (const b of books) {
           const draft = { ...(b.draft as Record<string, unknown>) };
           delete draft.shipping;
+          delete draft.checkoutShipping;
           // solo si nadie lo ha tocado entre medias (el padre puede estar justo editándolo)
           const up = await db.from("cuentos_books").update({ draft: draft as Json }).eq("id", b.id).eq("updated_at", b.updated_at);
           must(up.error, "books.shipping");
