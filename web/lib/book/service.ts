@@ -728,11 +728,6 @@ async function recordUpgrade(
 }
 
 /**
- * Aviso a soporte (`MAIL_FORWARD_TO`) cuando un cobro de Stripe no acaba bien: no se ha podido registrar, es un cobro
- * doble o el importe no cuadra. Puro, para probarlo; lo manda el webhook. Auditoría 26 oct, B7: antes solo se avisaba de
- * las mejoras a tapa dura y el resto de cobros sin pedido pasaban sin que nadie se enterara.
- */
-/**
  * Aviso a soporte de un recibo que el correo rechaza (I28): la dirección del padre, para revisarla, y el libro por su
  * referencia, sin el enlace que lo abre (I30). Puro, para probarlo; lo manda el webhook.
  */
@@ -746,6 +741,11 @@ export function receiptNotice(to: string, reason: string, bookUuid: string | nul
   };
 }
 
+/**
+ * Aviso a soporte (`MAIL_FORWARD_TO`) cuando un cobro de Stripe no acaba bien: no se ha podido registrar, es un cobro
+ * doble o el importe no cuadra. Puro, para probarlo; lo manda el webhook. Auditoría 26 oct, B7: antes solo se avisaba de
+ * las mejoras a tapa dura y el resto de cobros sin pedido pasaban sin que nadie se enterara.
+ */
 export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: string; text: string } | null {
   const s = event.data?.object ?? {};
   const paidSession = (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && s.payment_status === "paid";
