@@ -39,8 +39,10 @@ export default function Privacidad() {
           <strong>Si compras el libro impreso</strong>: nombre y dirección de entrega y, si lo das, un teléfono.
         </li>
         <li>
-          <strong>Si aceptas la medición</strong>: qué páginas ves y qué pasos das, el navegador, el dispositivo, la dirección IP y un
-          identificador al azar guardado en una cookie. Nunca tu nombre, tu email ni lo que escribes.
+          <strong>Si aceptas la medición</strong>: qué páginas ves (su dirección, sin el enlace de tu libro, y su título), desde qué página
+          llegas, qué pasos das, el navegador, el dispositivo, el idioma, el tamaño de la pantalla, la zona horaria, la dirección IP (de ella
+          se deduce el país y la ciudad aproximada) y un identificador al azar guardado en una cookie. Nunca tu nombre, tu email ni lo que
+          escribes.
         </li>
       </ul>
       <p>
@@ -86,6 +88,11 @@ export default function Privacidad() {
         </li>
         <li>El pedido (email, importe y fecha), el plazo que exige la normativa fiscal y mercantil.</li>
         <li>Tus mensajes, el tiempo necesario para atenderte.</li>
+        <li>
+          Los proveedores que nos ayudan guardan además sus propias copias, durante el plazo que fija cada uno: la entidad de pago, los datos
+          del cobro; el servicio de email, los emails que te mandamos; la imprenta, el libro impreso y la dirección de entrega. Puedes
+          pedirnos los plazos de cada uno.
+        </li>
         <li>
           Los datos de medición, un año. Las cookies de medición son propias de este sitio, duran como mucho un año y solo se instalan si
           aceptas.

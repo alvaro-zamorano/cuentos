@@ -170,3 +170,25 @@ test("extractJsonObject: primer objeto completo aunque haya texto u otro objeto 
   assert.deepEqual(extractJsonObject('texto ```json\n{"a":"x}y{","b":{"c":[1,2]}}\n```'), { a: "x}y{", b: { c: [1, 2] } });
   assert.deepEqual(extractJsonObject('{"a":"comillas \\" dentro"}'), { a: 'comillas " dentro' });
 });
+
+test("rewritePage con plazo: cada intento espera solo lo que queda de la ruta, y sin tiempo para otro no se empieza (menores de la auditoría 26 oct)", async () => {
+  const f = normalizeFicha(ficha);
+  const plan = mockPlan(f);
+  // el modelo falla las dos veces: antes cada intento podía esperar 120 s en una ruta de 120
+  const llm = fakeLlm([]);
+  const deadline = Date.now() + 60_000;
+  const r = await rewritePage(f, plan, 5, "que llueva", llm, { deadline });
+  assert.equal(r.ok, false);
+  assert.equal(llm.calls.length, 2);
+  for (const c of llm.calls) assert.ok(c.timeoutMs !== undefined && c.timeoutMs <= deadline - Date.now() && c.timeoutMs > 40_000, String(c.timeoutMs));
+  // con menos de 25 s por delante no se llama al modelo: la ruta responde antes de que Vercel la corte
+  const late = fakeLlm(["{}"]);
+  const r2 = await rewritePage(f, plan, 5, "que llueva", late, { deadline: Date.now() + 20_000 });
+  assert.equal(r2.ok, false);
+  assert.equal(late.calls.length, 0);
+  if (!r2.ok) assert.equal(r2.status, 504);
+  // sin plazo, como antes
+  const free = fakeLlm(["{}"]);
+  await rewritePage(f, plan, 5, "que llueva", free);
+  assert.equal(free.calls[0].timeoutMs, undefined);
+});

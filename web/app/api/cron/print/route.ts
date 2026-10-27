@@ -12,14 +12,16 @@ import { cronAuthorized, printDeps } from "@/lib/print/server";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
+  const t0 = Date.now();
   const auth = cronAuthorized(req);
   if (auth === "unauthorized") return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   if (auth === "missing") return NextResponse.json({ ok: false, error: "cron_secret_missing" }, { status: 503 });
   const ctx = generationContext();
   if ("error" in ctx) return NextResponse.json({ ok: false, error: ctx.error }, { status: 503 });
   try {
-    const report = await printCron(ctx.store, printDeps(publicOrigin(req)));
+    const report = await printCron(ctx.store, printDeps(publicOrigin(req)), { deadline: t0 + (maxDuration - 12) * 1000 });
     console.log(`[cron/print] ${JSON.stringify(report)}`);
+    if (report.remaining) console.warn("[cron/print] sin tiempo: lo que falta, en la próxima pasada");
     return NextResponse.json({ ok: true, ...report }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[cron/print]", e instanceof Error ? e.message.slice(0, 200) : "error");

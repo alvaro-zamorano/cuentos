@@ -46,6 +46,10 @@ Los nombres de los archivos no son las versiones con que constan en la base (all
 - Sin políticas para anon/authenticated salvo `cuentos_assets` (select). El advisor de seguridad lo marca como INFO "RLS enabled no policy" en las tablas sin políticas: es intencionado. La función `cuentos_email_norm` solo la puede ejecutar el service role.
 - Tipos: `web/lib/supabase/types.ts` (generados con `generate_typescript_types` y filtrados a `cuentos_*`). Regenerar al cambiar el esquema.
 
+## Borrar a quien lo pide
+
+Desde el 27 oct (menores de la auditoría 26 oct), a mano: `node --import tsx scripts/borrar-email.mts <email>` en `web/`, con las claves de `.env.local`. Sin `--de-verdad` solo cuenta. Borra por buzón (mismas variantes que el límite de gratis): los libros sin pagar enteros, los pagados vaciados (el pedido se queda por la normativa fiscal), sus cuentos escritos (por la huella de la ficha de cada libro), sus leads y el email del gasto. Una tapa dura pagada sin imprimir no se toca sin `--aunque-no-se-haya-impreso`. Detalle en `web/lib/forget.ts`.
+
 ## Borrado a 30 días (PRD §9)
 
 Desde el 13 oct lo hace el cron diario de Vercel `/api/cron/purge` (`web/lib/purge.ts`, `web/vercel.json`; en Vercel exige `CRON_SECRET`).

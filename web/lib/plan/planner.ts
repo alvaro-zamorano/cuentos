@@ -42,6 +42,9 @@ export interface PlanFail {
 
 const MAX_TOKENS_PLAN = 6000;
 const MAX_TOKENS_PAGE = 1200;
+/** Lo que se deja a la ruta para responder después del último intento, y lo mínimo que se da a un intento. */
+const REWRITE_MARGIN_MS = 5_000;
+const MIN_ATTEMPT_MS = 20_000;
 
 function refusalOf(parsed: unknown): string | null {
   const r = (parsed as { refusal?: unknown } | null)?.refusal;
@@ -144,7 +147,12 @@ export function planFromClient(f: Ficha, v: unknown): Plan | null {
   return plan.pages.length === 12 ? plan : null;
 }
 
-export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknown, instructionIn: unknown, llm: Llm = selectLlm("plan")): Promise<PageOk | PlanFail> {
+/**
+ * `deadline` (ms desde epoch): cuándo tiene que haber terminado todo, intentos incluidos. Menores de la auditoría 26 oct:
+ * la ruta tiene 120 s y daba hasta 120 s a cada uno de los dos intentos; ahora cada intento espera lo que queda y, si no
+ * da para otro, no se empieza.
+ */
+export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknown, instructionIn: unknown, llm: Llm = selectLlm("plan"), opts: { deadline?: number } = {}): Promise<PageOk | PlanFail> {
   const f = normalizeFicha(fichaIn);
   const plan = planFromClient(f, planIn);
   const n = Number(nIn);
@@ -168,10 +176,14 @@ export async function rewritePage(fichaIn: unknown, planIn: unknown, nIn: unknow
   let lastIssues: Issue[] = [];
   let lastPage: PlanPage | null = null;
   let model = llm.model;
+  const deadline = opts.deadline ?? Number.POSITIVE_INFINITY;
   for (let attempt = 0; attempt < 2; attempt++) {
+    // un intento con menos de 20 s no suele terminar: mejor responder ya que esperar a que Vercel corte la ruta
+    const left = deadline - Date.now() - REWRITE_MARGIN_MS;
+    if (left < MIN_ATTEMPT_MS) return { ok: false, status: 504, error: "provider", message: "No hemos podido cambiar la página ahora mismo. Inténtalo de nuevo.", costCents: llmCostCents(model, usage) };
     let raw: string;
     try {
-      const res = await llm.complete({ system: rewriteSystem(), messages, maxTokens: MAX_TOKENS_PAGE, temperature: 0.8 });
+      const res = await llm.complete({ system: rewriteSystem(), messages, maxTokens: MAX_TOKENS_PAGE, temperature: 0.8, ...(Number.isFinite(left) ? { timeoutMs: left } : {}) });
       usage.input += res.usage.input;
       usage.output += res.usage.output;
       raw = res.raw;

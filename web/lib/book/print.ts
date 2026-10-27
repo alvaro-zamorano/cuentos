@@ -361,6 +361,8 @@ export interface PrintCronReport {
   kept: number;
   /** Envíos cortados a medias que sí llegaron a la imprenta: se dan por enviados en vez de liberarlos (I4). */
   reconciled: number;
+  /** Se acabó el tiempo de la pasada con pedidos por mirar: siguen en la próxima. */
+  remaining: boolean;
 }
 
 const HOUR = 3_600_000;
@@ -372,9 +374,15 @@ const KEEP_FOR_PRINT_MS = 30 * 24 * HOUR;
  * las ilustraciones terminadas), pedidos atascados en `sending` más de 15 minutos a `failed` (para reintentar), y
  * consulta de los pedidos abiertos por si un aviso de la imprenta se perdió.
  */
-export async function printCron(store: GenStore, deps: PrintDeps): Promise<PrintCronReport> {
+export async function printCron(store: GenStore, deps: PrintDeps, opts: { deadline?: number } = {}): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
-  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0 };
+  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0, remaining: false };
+  // plazo propio por debajo del de la ruta (menores de la auditoría 26 oct): con muchos pedidos abiertos, las consultas a
+  // la imprenta no caben en los 60 s del cron y Vercel lo cortaba a medias. Lo que no da tiempo, en la próxima pasada
+  const late = () => {
+    if (opts.deadline !== undefined && Date.now() > opts.deadline) report.remaining = true;
+    return report.remaining;
+  };
   // cada entorno, solo sus pedidos: la preview no escribe a clientes reales ni toca sus pedidos; producción no recuerda
   // los de prueba (auditoría 26 oct, B1)
   const env = deps.env ?? process.env;
@@ -385,6 +393,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
   // hasta que se manda. El borrado ya la conservaba (`printPending`), pero el enlace dejaba de abrir a los 30 días
   // también la parada por una disputa: dura de 60 a 75 días y, si se gana, vuelve a esperar al padre (revisión 27 oct)
   for (const o of await store.listPrintOrders(["awaiting_approval", "failed", "canceled"], 500, live)) {
+    if (late()) return report;
     if (!mine(o) || (o.printStatus === "canceled" && o.printError !== DISPUTE_HOLD)) continue;
     const book = await store.getBookById(o.bookId);
     if (!book?.expiresAt || Date.parse(book.expiresAt) - now.getTime() > 3 * 24 * HOUR) continue;
@@ -392,6 +401,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     report.kept++;
   }
   for (const o of await store.listPrintOrders(["awaiting_approval"], 200, live)) {
+    if (late()) return report;
     if (!mine(o)) continue;
     const age = now.getTime() - Date.parse(o.createdAt);
     const sinceReminder = o.remindedAt ? now.getTime() - Date.parse(o.remindedAt) : Infinity;
@@ -408,6 +418,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     }
   }
   for (const o of await store.listPrintOrders(["sending"], 50, live)) {
+    if (late()) return report;
     if (!mine(o)) continue;
     const book = await store.getBookById(o.bookId);
     if (!book || now.getTime() - Date.parse(o.updatedAt ?? o.createdAt) <= 15 * 60_000) continue;
@@ -440,6 +451,7 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     }
   }
   for (const o of await store.listPrintOrders(["sent", "in_production", "shipped"], 100, live)) {
+    if (late()) return report;
     if (!mine(o)) continue;
     if ((await refreshPrint(store, o, deps)) === "updated") report.refreshed++;
   }
