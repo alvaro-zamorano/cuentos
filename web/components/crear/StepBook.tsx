@@ -74,7 +74,20 @@ const UPGRADE_PENDING = "El pago de la tapa dura aún no nos ha llegado. Si ya s
  * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
  * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
-export function StepBook({ bookId, confirming = false, upgrading = false, onPlan }: { bookId: string; confirming?: boolean; upgrading?: boolean; onPlan: (p: Plan) => void }) {
+export function StepBook({
+  bookId,
+  confirming = false,
+  upgrading = false,
+  onPlan,
+  onPaid,
+}: {
+  bookId: string;
+  confirming?: boolean;
+  upgrading?: boolean;
+  onPlan: (p: Plan) => void;
+  /** El libro está pagado: el flujo cierra los pasos que repintarían (I2). */
+  onPaid?: () => void;
+}) {
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +111,10 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     if (v) setView(v);
     return v;
   }, [bookId]);
+  const paid = !!view?.paid;
+  useEffect(() => {
+    if (paid) onPaid?.();
+  }, [paid, onPaid]);
 
   /** Tira de las páginas en cola o pintándose hasta que terminan. */
   const drive = useCallback(
@@ -619,14 +636,16 @@ function PageView({
   const done = current.filter((j) => j.status === "done");
   const busyHere = current.some(inFlight);
   const canAnother = !locked && jobs.length < 2 + MAX_PAGE_REDOS && done.length > 0 && current.filter((j) => j.status !== "failed").length < 1 + MAX_PAGE_REDOS && redosLeft > 0;
-  // sin versiones (de la página o del libro) y con alguna hecha: nos avisa y la arreglamos a mano
-  const canReport = !locked && !reported && done.length > 0 && !canAnother && !busyHere;
+  // sin versiones (de la página o del libro) y con alguna hecha: nos avisa y la arreglamos a mano. También si no ha salido
+  // ninguna y no se está pintando: antes no había ni «Otra versión» ni «Avísanos» y el padre se quedaba sin salida (I3)
+  const failedOnly = done.length === 0 && current.some((j) => j.status === "failed");
+  const canReport = !locked && !reported && (done.length > 0 || failedOnly) && !canAnother && !busyHere;
   const left = Math.min(1 + MAX_PAGE_REDOS - current.filter((j) => j.status !== "failed").length, redosLeft);
   return (
     <BookSpread
       as="li"
       testId={`book-page-${page.n}`}
-      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} box="absolute inset-0 overflow-hidden bg-paper-deep" />}
+      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} failedText="Esta ilustración no ha salido." box="absolute inset-0 overflow-hidden bg-paper-deep" />}
       right={
         <div className="grid flex-1 content-between gap-3 px-5 pt-5 pb-4 sm:px-8 sm:pt-7">
           <div className="grid gap-3">
@@ -659,7 +678,7 @@ function PageView({
               )}
               {canReport && panel !== "report" && (
                 <button className="text-sm font-semibold text-ink-soft hover:text-ink hover:underline" onClick={() => setPanel("report")} data-testid={`report-${page.n}`}>
-                  ¿Sigue sin estar bien? Avísanos
+                  {failedOnly ? "¿No sale esta ilustración? Avísanos" : "¿Sigue sin estar bien? Avísanos"}
                 </button>
               )}
               {reported && !locked && <span className="text-[13px] text-mute">Nos has avisado: la estamos mirando.</span>}

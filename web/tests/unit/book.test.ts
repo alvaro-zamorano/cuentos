@@ -121,20 +121,22 @@ test("flujo nuevo en memoria: hoja + portada tras el email, cambios con palabras
   const pageJob = (await store.listJobs(start.bookId)).find((j) => j.kind === "page" && j.page_n === 1)!;
   assert.ok(JSON.stringify(pageJob.references).includes(r2.sheetJobId));
 
-  // cambiar el texto de una página no repinta; cambiar la escena sí deja la imagen como «no actual»
-  const edited = { ...plan, pages: plan.pages.map((p) => (p.n === 2 ? { ...p, text: `${p.text} Y se rió.` } : p.n === 4 ? { ...p, scene: "Vera y Toby cruzan un puente de madera sobre un río." } : p)) };
+  // tras pagar, el texto se corrige; una escena distinta se rechaza: nada se repinta a nuestra costa (I2)
+  const withScene = { ...plan, pages: plan.pages.map((p) => (p.n === 4 ? { ...p, scene: "Vera y Toby cruzan un puente de madera sobre un río." } : p)) };
+  assert.equal(((await savePlan(store, { bookId: start.bookId, plan: withScene })) as { error?: string }).error, "already_paid");
+  const edited = { ...plan, pages: plan.pages.map((p) => (p.n === 2 ? { ...p, text: `${p.text} Y se rió.` } : p)) };
   assert.ok((await savePlan(store, { bookId: start.bookId, plan: edited })).ok);
   const view = await bookView(store, start.bookId);
   assert.ok(view.ok);
   if (!view.ok) return;
   assert.equal(view.paid, true);
   assert.equal(view.approvedSheetJobId, r2.sheetJobId);
-  const p2 = view.jobs.find((j) => j.kind === "page" && j.page === 2)!;
+  assert.match(view.plan.pages[1].text, /Y se rió\.$/);
+  assert.equal(view.plan.pages[3].scene, plan.pages[3].scene);
   const p4 = view.jobs.find((j) => j.kind === "page" && j.page === 4)!;
-  assert.equal(p2.current, true);
-  assert.equal(p4.current, false);
+  assert.equal(p4.current, true);
   const redo = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
-  assert.ok(redo.ok && redo.created === 1, "solo se repinta la página cuya escena cambió");
+  assert.ok(redo.ok && redo.created === 0, "nada que repintar");
 });
 
 test("startBook valida email, ficha y plan antes de gastar", async () => {

@@ -9,7 +9,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, choosePage, payDryRun, pendingPageJobs, prepareCheckout, recordStripePayment, requestPages, savePlan, startBook, updateShipping } from "../../lib/book/service";
+import { bookView, choosePage, payDryRun, pendingPageJobs, prepareCheckout, recordStripePayment, requestPages, savePlan, shippingOf, startBook, updateShipping } from "../../lib/book/service";
 import { completePrint, handlePrintWebhook, printCron, refreshPrint, startPrint, type PrintDeps } from "../../lib/book/print";
 import { advances, coverFromApi, estimatedCover, gelatoOrderBody, gelatoOrderType, gelatoPageCount, isLandscapeHardcover, landscapeSizeMm, mapGelatoStatus, pickLandscapeHardcover, printMode, type GelatoOrder } from "../../lib/print/gelato";
 import { cleanShipping, splitName } from "../../lib/print/shipping";
@@ -262,7 +262,17 @@ test("pago: la tapa dura pide dirección y el pedido nace esperando a que el pad
   // la dirección se puede cambiar mientras no haya salido
   const moved = await updateShipping(store, { bookId, shipping: { ...ADDRESS, postcode: "07001", city: "Palma" } });
   assert.ok(moved.ok);
+  assert.deepEqual(moved.shipping, { name: ADDRESS.name, postcode: "07001", city: "Palma" });
   assert.equal((await bookView(store, bookId) as { print: { shipping: { city: string } } }).print.shipping.city, "Palma");
+  // la vista y la respuesta no llevan la calle ni el teléfono (I16); el pedido sí
+  const shown = JSON.stringify([(await bookView(store, bookId) as { print: unknown }).print, moved]);
+  assert.ok(!shown.includes(ADDRESS.line1) && !shown.includes("600"), shown);
+  const kept = await store.getOrder((await store.findBook({ publicId: bookId }))!.id);
+  assert.equal(kept?.shipping?.line1, ADDRESS.line1);
+  // entera, solo al pedirla con un gesto (Cambiar, confirmar): con el piso y el teléfono (revisión 27 oct)
+  const full = await shippingOf(store, { bookId });
+  assert.ok(full.ok && full.shipping.line1 === ADDRESS.line1 && full.shipping.line2 === "3º B" && full.shipping.phone === "600111222", JSON.stringify(full));
+  assert.equal((await shippingOf(store, { bookId: "nooo1234" }) as { error: string }).error, "not_found");
 });
 
 test("PDF solo: sin dirección y sin imprenta", async () => {
@@ -304,6 +314,7 @@ test("mandar a imprimir: solo con las 12 páginas, una vez, y después el libro 
   const page = v.jobs.find((j) => j.kind === "page");
   assert.equal((await choosePage(store, { bookId, jobId: page?.id }) as { error: string }).error, "printed");
   assert.equal((await updateShipping(store, { bookId, shipping: ADDRESS }) as { error: string }).error, "printed");
+  assert.equal((await shippingOf(store, { bookId }) as { error: string }).error, "printed", "ya en la imprenta, la dirección no se vuelve a dar");
 });
 
 test("imprenta real (doble): pedido con el PDF, aviso, seguimiento y un solo email de envío", async () => {
@@ -490,4 +501,49 @@ test("personajes (25 oct): un libro ya enviado a la imprenta sin retratos no los
   const v = await bookView(store, bookId);
   assert.ok(v.ok);
   assert.equal(v.portraitsToRequest, false);
+});
+
+test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprenta da por fallido llegan a soporte", async () => {
+  const { store, bookId } = await paidHardcover();
+  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await paintPages(store, bookId);
+  const notices: string[] = [];
+  const notify = async (subject: string, text: string) => (notices.push(`${subject}|${text}`), { sent: true });
+  // a una imprenta de verdad van imágenes con archivo y URL
+  for (const j of await store.listJobs((await store.findBook({ publicId: bookId }))!.id)) if (j.status === "done") await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });
+  const signing = { ...store, signedUrl: async (p: string) => `https://files.example/${p}` };
+  const s = await startPrint(store, bookId, "gelato");
+  assert.ok(s.ok);
+  const broken = fakeDeps({ mode: "gelato", coverGeometry: async () => null, notify });
+  assert.ok(!(await completePrint(signing, s.orderId, broken.deps)).ok);
+  assert.equal(notices.length, 1);
+  assert.match(notices[0], /^Tapa dura que no sale hacia la imprenta: «Vera y la gran idea»\|El pedido .* ha fallado: sin_medidas_de_cubierta/);
+  assert.match(notices[0], new RegExp(`crear\\?b=${bookId}`));
+
+  // se reintenta, sale, y después la imprenta lo cancela
+  const again = await startPrint(store, bookId, "gelato");
+  assert.ok(again.ok);
+  const ok = fakeDeps({ mode: "gelato", notify });
+  assert.ok((await completePrint(signing, again.orderId, ok.deps)).ok);
+  ok.setGelato({ status: "canceled" });
+  assert.equal(await refreshPrint(store, (await store.getOrderById(again.orderId))!, ok.deps), "updated");
+  assert.equal(notices.length, 2);
+  assert.match(notices[1], /^La imprenta ha parado una tapa dura: «Vera y la gran idea»\|[^]*canceled[^]*ya no puede reenviarlo/);
+  assert.equal(await refreshPrint(store, (await store.getOrderById(again.orderId))!, ok.deps), "unchanged", "una vez");
+  assert.equal(notices.length, 2);
+});
+
+test("avisos (I12): un envío a la imprenta que se cortó a medias también avisa a soporte", async () => {
+  const { store, bookId } = await paidHardcover();
+  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await paintPages(store, bookId);
+  const notices: string[] = [];
+  const s = await startPrint(store, bookId, "gelato");
+  assert.ok(s.ok);
+  // la función se cortó: el pedido sigue en `sending` y han pasado 20 minutos
+  const later = new Date(Date.now() + 20 * 60_000);
+  const { deps } = fakeDeps({ mode: "gelato", now: () => later, notify: async (subject, text) => (notices.push(`${subject}|${text}`), { sent: true }) });
+  assert.equal((await printCron(store, deps)).unstuck, 1);
+  assert.equal(notices.length, 1);
+  assert.match(notices[0], /^Tapa dura que no sale hacia la imprenta[^]*interrumpido[^]*volver a pulsar/);
 });

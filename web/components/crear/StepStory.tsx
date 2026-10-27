@@ -25,6 +25,7 @@ export function StepStory({
   onBack,
   onNext,
   drawn = false,
+  paid = false,
 }: {
   ficha: Ficha;
   record?: PlanRecord;
@@ -34,6 +35,8 @@ export function StepStory({
   onNext: () => void;
   /** Ya hay personajes dibujados: lo que se añada ahora en el paso 2 no cambia los dibujos. */
   drawn?: boolean;
+  /** Libro pagado: solo se cambian los textos; las escenas ya están pintadas (I2). */
+  paid?: boolean;
 }) {
   const clean = normalizeFicha(ficha);
   const hash = fichaHash(clean);
@@ -140,10 +143,15 @@ export function StepStory({
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-sage px-3.5 py-1.5 text-[13px] font-semibold text-sage-ink">
             <Icon.check size={14} />
-            Escrito. Léelo y cambia lo que quieras
+            {paid ? "Pagado. Aquí puedes corregir los textos" : "Escrito. Léelo y cambia lo que quieras"}
           </span>
-          <Rewrite onConfirm={() => onFicha({ ...ficha, seed: (ficha.seed ?? 0) + 1 })} />
+          {!paid && <Rewrite onConfirm={() => onFicha({ ...ficha, seed: (ficha.seed ?? 0) + 1 })} />}
         </div>
+        {paid && (
+          <p className="notice m-0" data-testid="paid-text-only">
+            Las ilustraciones ya están encargadas con estas escenas. Si alguna no te gusta, pide otra versión desde esa página del libro.
+          </p>
+        )}
         <div className="relative">
           {/* área de texto de una línea lógica: en móvil el título largo se parte en renglones en vez de cortarse */}
           <AutoTextarea
@@ -182,13 +190,13 @@ export function StepStory({
 
       <ol className="grid gap-4" data-testid="plan-pages">
         {plan.pages.map((p) => (
-          <PageCard key={p.n} page={p} ficha={clean} plan={plan} hint={familyHint(p.text)} onText={(text) => setPage(p.n, { text })} onReplace={(np) => setPage(p.n, np)} />
+          <PageCard key={p.n} page={p} ficha={clean} plan={plan} hint={familyHint(p.text)} canReplace={!paid} onText={(text) => setPage(p.n, { text })} onReplace={(np) => setPage(p.n, np)} />
         ))}
       </ol>
 
       <div className="actionbar">
         <button className="btn-primary btn-lg w-full sm:w-auto" onClick={onNext} data-testid="next-3">
-          Así está bien, dibujar a {name}
+          {paid ? "Volver al libro" : `Así está bien, dibujar a ${name}`}
         </button>
       </div>
     </div>
@@ -261,7 +269,24 @@ function Trail() {
   );
 }
 
-function PageCard({ page, ficha, plan, hint, onText, onReplace }: { page: PlanPage; ficha: Ficha; plan: Plan; hint: string | null; onText: (t: string) => void; onReplace: (p: PlanPage) => void }) {
+function PageCard({
+  page,
+  ficha,
+  plan,
+  hint,
+  canReplace = true,
+  onText,
+  onReplace,
+}: {
+  page: PlanPage;
+  ficha: Ficha;
+  plan: Plan;
+  hint: string | null;
+  /** «Cambiar esta página» reescribe también la escena: tras pagar, no (I2). */
+  canReplace?: boolean;
+  onText: (t: string) => void;
+  onReplace: (p: PlanPage) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [ask, setAsk] = useState("");
   const [busy, setBusy] = useState(false);
@@ -348,10 +373,12 @@ function PageCard({ page, ficha, plan, hint, onText, onReplace }: { page: PlanPa
         </form>
       ) : (
         <div className="flex flex-wrap items-center gap-1">
-          <button className="chip" onClick={() => setOpen(true)}>
-            <Sparkle size={13} color="var(--accent)" />
-            Cambiar esta página
-          </button>
+          {canReplace && (
+            <button className="chip" onClick={() => setOpen(true)}>
+              <Sparkle size={13} color="var(--accent)" />
+              Cambiar esta página
+            </button>
+          )}
           <button className="px-3 py-2 text-sm font-semibold text-ink-soft hover:text-ink" onClick={() => document.getElementById(`page-text-${page.n}`)?.focus()}>
             Editar el texto
           </button>

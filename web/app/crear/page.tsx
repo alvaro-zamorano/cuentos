@@ -11,7 +11,7 @@ import { StepStory } from "@/components/crear/StepStory";
 import { StepCast } from "@/components/crear/StepCast";
 import { StepBook } from "@/components/crear/StepBook";
 import { track } from "@/lib/analytics";
-import { errorMessage, loadView, postJson, viewErrorMessage } from "@/lib/bookClient";
+import { errorMessage, fetchView, loadView, postJson, viewErrorMessage } from "@/lib/bookClient";
 import { fichaHash, TONES } from "@/lib/plan/ficha";
 import { STARTERS, starterIdea } from "@/lib/plan/starters";
 import { resetCrear, setCrear, useCrear, type CrearState, type Step } from "@/lib/crearStore";
@@ -70,6 +70,8 @@ function Crear() {
         record: { plan: v.plan, provider: "guardado", model: "", fichaHash: fichaHash(v.ficha), createdAt: Date.now() },
         bookId: v.bookId,
         email: prev.email,
+        // pagado: los pasos 1 y 2 se cierran también al volver con el enlace (revisión 27 oct)
+        paid: v.paid || undefined,
       }));
       setNotice(pagado ? null : { text: "Libro recuperado.", ok: true });
     });
@@ -104,6 +106,13 @@ function Crear() {
   const [saveError, setSaveError] = useState<string | null>(null);
   // solo cuenta la respuesta del último guardado: una vieja que llega tarde no pisa a la nueva (revisión 26 oct)
   const saveSeq = useRef(0);
+  // «Guardando…» y «Guardado» junto al texto; «Reintentar» vuelve a mandar lo último (auditoría 26 oct, I13)
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [retry, setRetry] = useState(0);
+  // «Reintentar» manda ya, una vez; después vuelve la espera entre teclas (revisión 27 oct)
+  const saveNow = useRef(false);
+  // un guardado detrás de otro, en orden: dos a la vez podían llegar al revés y dejar el texto viejo
+  const saveChain = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
     if (!bookId || !plan) return;
     const json = JSON.stringify(plan);
@@ -111,19 +120,53 @@ function Crear() {
       saved.current = json;
       return;
     }
-    if (json === saved.current) return;
-    const t = setTimeout(async () => {
-      saved.current = json;
+    if (json === saved.current) {
+      // se ha deshecho lo que no se pudo guardar: lo que se ve ya es lo guardado
+      const t = setTimeout(() => setSaveError(null), 0);
+      return () => clearTimeout(t);
+    }
+    const delay = saveNow.current ? 0 : 1200;
+    saveNow.current = false;
+    const t = setTimeout(() => {
       const seq = ++saveSeq.current;
-      try {
-        const r = await postJson("/api/libro/plan", { bookId, plan });
-        if (seq === saveSeq.current) setSaveError(r.status === 200 ? null : errorMessage(r.json, "Inténtalo de nuevo en un momento."));
-      } catch {
-        if (seq === saveSeq.current) setSaveError("Sin conexión. Cuando vuelva, cambia algo y se guardará.");
-      }
-    }, 1200);
+      setSaveState("saving");
+      saveChain.current = saveChain.current.then(async () => {
+        // si mientras esperaba ha salido otro cambio, este ya no hace falta: lo manda el siguiente
+        if (seq !== saveSeq.current) return;
+        let r: Awaited<ReturnType<typeof postJson>> | null = null;
+        try {
+          r = await postJson("/api/libro/plan", { bookId, plan });
+        } catch {
+          r = null;
+        }
+        if (seq !== saveSeq.current) return;
+        // solo se da por guardado cuando el servidor lo dice: antes se marcaba al mandarlo y un fallo no se repetía
+        if (r?.status === 200) {
+          saved.current = json;
+          setSaveError(null);
+          setSaveState("saved");
+        } else if (r?.json.error === "already_paid") {
+          // otra pestaña o un cuento reescrito tras pagar: las escenas ya están pintadas. Se vuelve al cuento guardado
+          setSaveState("idle");
+          const v = await fetchView(bookId);
+          if (v) {
+            saved.current = JSON.stringify(v.plan);
+            setCrear((x) => ({ ...x, paid: true, ...(x.record ? { record: { ...x.record, plan: v.plan } } : {}) }));
+          }
+          setNotice({ text: `${errorMessage(r.json)} Hemos vuelto a cargar el cuento tal como está guardado.`, ok: false });
+        } else {
+          setSaveState("idle");
+          setSaveError(r ? errorMessage(r.json, "Inténtalo de nuevo en un momento.") : "Sin conexión.");
+        }
+      });
+    }, delay);
     return () => clearTimeout(t);
-  }, [bookId, plan]);
+  }, [bookId, plan, retry]);
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const t = setTimeout(() => setSaveState("idle"), 2500);
+    return () => clearTimeout(t);
+  }, [saveState]);
 
   // embudo (lib/analytics.ts): un evento cada vez que se ve un paso; sin datos del niño
   const step = s?.step;
@@ -147,7 +190,8 @@ function Crear() {
   };
   const update = (patch: Partial<CrearState>) => setCrear((x) => ({ ...x, ...patch }));
   const maxStep: Step = s.bookId ? 5 : s.record ? 3 : s.ficha.hero.name ? 2 : 1;
-  const reachable = (n: Step) => n <= Math.max(maxStep, s.step) && !(n >= 4 && !s.record);
+  // pagado, los pasos 1 y 2 ya no se abren: cambiar la ficha vuelve a escribir el cuento (I2)
+  const reachable = (n: Step) => n <= Math.max(maxStep, s.step) && !(n >= 4 && !s.record) && !(s.paid && n < 3);
   const dirty = !!(s.ficha.hero.name || s.ficha.idea || s.record);
   const aside = s.step <= 3;
 
@@ -168,20 +212,47 @@ function Crear() {
           {saveError && (
             <p className="rise fixed inset-x-4 top-3 z-30 mx-auto flex max-w-xl items-start justify-between gap-3 rounded-2xl bg-[#f6ded6] px-4 py-3 text-[15px] text-danger shadow-[0_12px_30px_-18px_rgba(35,32,54,0.6)]" role="alert" data-testid="save-error">
               <span>No se ha guardado tu último cambio. {saveError}</span>
-              <button type="button" aria-label="Cerrar el aviso" className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-black/5" onClick={() => setSaveError(null)}>
-                <Icon.close size={15} />
-              </button>
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="rounded-full px-3 py-1 text-sm font-semibold underline-offset-2 hover:underline"
+                  onClick={() => {
+                    setSaveError(null);
+                    saveNow.current = true;
+                    setRetry((x) => x + 1);
+                  }}
+                  data-testid="save-retry"
+                >
+                  Reintentar
+                </button>
+                <button type="button" aria-label="Cerrar el aviso" className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/5" onClick={() => setSaveError(null)}>
+                  <Icon.close size={15} />
+                </button>
+              </span>
+            </p>
+          )}
+          {saveState !== "idle" && !saveError && (
+            <p className="rise fixed inset-x-0 top-3 z-30 mx-auto w-fit rounded-full bg-ink px-3 py-1.5 text-[13px] text-paper shadow-[0_8px_20px_-12px_rgba(35,32,54,0.7)]" role="status" data-testid="save-state">
+              {saveState === "saving" ? "Guardando…" : "Guardado"}
             </p>
           )}
           <div key={s.step} className="rise">
             {s.step === 1 && <StepIdea ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(2)} />}
             {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
-            {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} drawn={!!s.bookId} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(4)} />}
+            {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} drawn={!!s.bookId} paid={!!s.paid} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(s.paid ? 5 : 4)} />}
             {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => {
                   update({ bookId: id, email });
                   track({ name: "libro_empezado" });
                 }} onNext={() => go(5)} />}
-            {s.step === 5 && s.bookId && <StepBook bookId={s.bookId} confirming={pagado && s.bookId === b} upgrading={mejora && s.bookId === b} onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })} />}
+            {s.step === 5 && s.bookId && (
+              <StepBook
+                bookId={s.bookId}
+                confirming={pagado && s.bookId === b}
+                upgrading={mejora && s.bookId === b}
+                onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })}
+                onPaid={() => !s.paid && update({ paid: true })}
+              />
+            )}
           </div>
         </div>
         {aside && <BookAside s={s} />}
@@ -200,7 +271,7 @@ function CrearHeader({ step, reachable, go, dirty }: { step: Step; reachable: (n
     <header className="no-print">
       <div className="mx-auto max-w-3xl px-4 pt-3 sm:px-6 lg:hidden">
         <div className="grid grid-cols-[72px_1fr_72px] items-center">
-          {step === 1 ? (
+          {step === 1 || !reachable((step - 1) as Step) ? (
             <Link href="/" aria-label="Salir al inicio" className="btn-icon">
               <Icon.close />
             </Link>

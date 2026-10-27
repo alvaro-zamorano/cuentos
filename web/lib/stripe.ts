@@ -115,6 +115,22 @@ export async function createCheckout(input: CheckoutInput): Promise<{ url: strin
   return { url: json.url, id: json.id };
 }
 
+/**
+ * La sesión de Checkout de un cobro (devoluciones y disputas, I5: los eventos traen el PaymentIntent, no la sesión).
+ * `{ id: null }` si Stripe no la conoce; `{ error }` si la clave no vale (no se arregla reintentando). La red y los 5xx
+ * lanzan: el webhook responde 500 y Stripe reintenta.
+ */
+export async function sessionForPaymentIntent(paymentIntent: string, env: Record<string, string | undefined> = process.env): Promise<{ id: string | null } | { error: string }> {
+  const key = env.STRIPE_SECRET_KEY?.trim();
+  if (!key) return { error: "stripe_off" };
+  const url = `https://api.stripe.com/v1/checkout/sessions?payment_intent=${encodeURIComponent(paymentIntent)}&limit=1`;
+  const res = await fetch(url, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) });
+  if (res.status >= 500 || res.status === 429) throw new Error(`stripe_${res.status}`);
+  if (!res.ok) return { error: `stripe_${res.status}` };
+  const json = (await res.json().catch(() => null)) as { data?: { id?: string }[] } | null;
+  return { id: json?.data?.[0]?.id ?? null };
+}
+
 export interface StripeEvent {
   id: string;
   type: string;
