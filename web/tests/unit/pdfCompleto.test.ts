@@ -126,3 +126,23 @@ test("con Chromium y sin red: el PDF lleva Lora y Figtree dentro", { skip: (!chr
   assert.match(fonts, /Lora/);
   assert.match(fonts, /Figtree/);
 });
+
+test("página de personajes: un retrato sin URL cuenta como hueco, y la hoja solo cuando es la que se usa (revisión 27 oct)", () => {
+  type V = Parameters<typeof unsignedImages>[0];
+  const job = (id: string, url: string | null, placeholder = false) => ({ id, status: "done", url, placeholder }) as V["jobs"][number];
+  const pages = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, `p${i + 1}`]));
+  const base = [job("cover", "u"), ...Array.from({ length: 12 }, (_, i) => job(`p${i + 1}`, "u"))];
+  const view = (jobs: V["jobs"], portraits: V["chosen"]["portraits"]): V => ({ jobs, chosen: { cover: "cover", sheet: "sheet", pages, portraits } });
+
+  // retratos con URL: la hoja no se usa y da igual que no tenga
+  assert.deepEqual(unsignedImages(view([...base, job("sheet", null), job("r1", "u")], [{ name: "Vera", job: "r1" }])), []);
+  // un retrato sin URL: hueco (el libro pasaría a la hoja sin avisar) y, si la hoja tampoco tiene, también la hoja
+  assert.deepEqual(unsignedImages(view([...base, job("sheet", "u"), job("r1", null)], [{ name: "Vera", job: "r1" }])), ["retrato de Vera"]);
+  assert.deepEqual(unsignedImages(view([...base, job("sheet", null), job("r1", null)], [{ name: "Vera", job: "r1" }])), ["retrato de Vera", "hoja de personajes"]);
+  // sin retratos encargados, la hoja es la página de personajes
+  assert.deepEqual(unsignedImages(view([...base, job("sheet", null)], [])), ["hoja de personajes"]);
+  // modo sin coste: no cuentan, salvo en un pedido real a la imprenta (saldrían en blanco)
+  const free = view([...base.map((j) => (j.id === "p3" ? job("p3", null, true) : j)), job("sheet", "u")], []);
+  assert.deepEqual(unsignedImages(free), []);
+  assert.deepEqual(unsignedImages(free, { placeholders: true }), ["página 3"]);
+});

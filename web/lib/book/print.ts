@@ -98,8 +98,9 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
     if (!book || !d || !book.email || !order.shipping) return await failWith("libro_o_direccion");
     const view = await bookView(store, book.public_id);
     if (!view.ok) return await failWith(`vista: ${view.error}`);
-    // una ilustración sin URL saldría en blanco en el libro impreso: no se manda (I8)
-    const gaps = unsignedImages(view);
+    // una ilustración sin URL saldría en blanco en el libro impreso: no se manda (I8). En un pedido real a la imprenta,
+    // tampoco una del modo sin coste (revisión 27 oct)
+    const gaps = unsignedImages(view, { placeholders: deps.mode === "gelato" });
     if (gaps.length) return await failWith(`imagenes_sin_url: ${gaps.join(", ")}`);
     const byId = new Map(view.jobs.map((j) => [j.id, j]));
     const url = (id: string | null) => (id ? byId.get(id)?.url ?? null : null);

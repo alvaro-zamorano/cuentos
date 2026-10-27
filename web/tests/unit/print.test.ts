@@ -313,7 +313,13 @@ test("imprenta real (doble): pedido con el PDF, aviso, seguimiento y un solo ema
   const { deps, mails, orders, setGelato } = fakeDeps({ mode: "gelato" });
   const s = await startPrint(store, bookId, "gelato");
   assert.ok(s.ok);
-  const done = await completePrint(store, s.orderId, deps);
+  // a la imprenta de verdad no van huecos del modo sin coste: se le dan imágenes con su URL
+  assert.equal(((await completePrint(store, s.orderId, deps)) as { error?: string }).error, "print_failed", "con huecos, no se manda");
+  assert.match((await store.getOrderById(s.orderId))!.printError ?? "", /^imagenes_sin_url: portada/);
+  for (const j of await store.listJobs((await store.findBook({ publicId: bookId }))!.id)) if (j.status === "done") await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });
+  assert.ok(await store.claimPrint(s.orderId, ["failed"], "sending"));
+  const signing = { ...store, signedUrl: async (p: string) => `https://files.example/${p}` };
+  const done = await completePrint(signing, s.orderId, deps);
   assert.ok(done.ok && done.printOrderId === "gel-0001-abcd");
   assert.equal(orders.length, 1);
   assert.equal(orders[0].orderReferenceId, s.orderId);
