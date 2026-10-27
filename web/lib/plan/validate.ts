@@ -5,7 +5,7 @@
  * Gravedad: `hard` obliga a reintentar y, si persiste, no se enseña; `soft` (longitudes, detalles) se acepta en el
  * segundo intento y se registra.
  */
-import { blockedWord } from "./moderation";
+import { blockedWord, contactOrDomain } from "./moderation";
 import { COMMON_PROPER, DEDICATION_MAX_WORDS, DIMINUTIVE_SET, MAX_CAST, MAX_IN_IMAGE, MAX_OBJECTS, MAX_PLACES, MIN_HERO_PAGES, PAGES, TITLE_MAX_WORDS, countingIn, lengthRule, namedIp, textInImage } from "./rules";
 import { countWords, disallowedNames, keywords, norm, sentences, stem, tokens } from "../story/validate";
 import type { BookObject, CastId, CastMember, Ficha, Place, Plan, PlanPage, Shot, TimeOfDay, Tone } from "./types";
@@ -261,6 +261,9 @@ export function validatePlan(plan: Plan, f: Ficha, { fromParent = false }: { fro
   else {
     if (countWords(plan.title, [f.hero.name]) > TITLE_MAX_WORDS) issues.push({ msg: `El título tiene más de ${TITLE_MAX_WORDS} palabras.`, hard: false });
     commonChecks("Título", plan.title, issues, "el título");
+    // el título va en el asunto de los emails: ni enlaces ni datos de contacto (menores de la auditoría 26 oct)
+    const contact = contactOrDomain(plan.title);
+    if (contact) issues.push({ msg: `Título: lleva un dato de contacto (${contact}).`, hard: true, parent: "El título no puede llevar un email, un enlace ni un teléfono." });
   }
   if (!plan.dedication) issues.push({ msg: "Falta la dedicatoria.", hard: true, parent: "Falta la dedicatoria." });
   else if (!f.dedication) {

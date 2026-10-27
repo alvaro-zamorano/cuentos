@@ -16,6 +16,7 @@ import type { Draft } from "../types";
 import type { OrderStatus, PaidEdition, PaidOrder, PrintInfo, PrintStatus, Shipping } from "../print/types";
 import type { JobKind } from "./keys";
 import { isLiveSession } from "../stripe";
+import { normalizeEmail } from "../emailNorm";
 
 /**
  * Qué pedidos pide un cron (revisión del 26 oct): `true`, solo cobros reales (`cs_live_…`, producción); `false`, solo los
@@ -28,6 +29,9 @@ const liveMatch = (live: LiveFilter, sessionId: string | null | undefined) => li
 const paidRow = (o: PaidOrder) => (o.status ?? "paid") === "paid";
 
 export const BUCKET = "cuentos";
+
+/** Libros de un buzón que mira el límite de cuentos gratis (30 días): de sobra para una persona, y los ids van en la URL. */
+const FREE_BOOKS_SCAN = 100;
 
 export type JobStatus = "pending" | "running" | "done" | "failed";
 
@@ -71,6 +75,21 @@ export interface BookRecord {
   createdAt?: string | null;
 }
 
+/** Lo que mira el límite de cuentos gratis de un libro (I7). */
+export interface FreeBook {
+  id: string;
+  publicId: string;
+  createdAt: string;
+  /** Cuándo pasó la puerta de los gratis; null en los libros de antes de la migración 0013. */
+  freeClaimedAt: string | null;
+  /** El título del cuento, para el email con los que tiene empezados. */
+  title: string | null;
+  /** Sus pedidos pagados (estado `paid`). */
+  paid: { sessionId: string | null; createdAt: string }[];
+  /** Sus hojas de personajes. */
+  sheets: { status: JobStatus; updatedAt: string }[];
+}
+
 /** Libro del flujo nuevo para crear o actualizar (sin public_id se crea uno). */
 export interface SaveBook {
   publicId?: string;
@@ -98,8 +117,24 @@ export interface GenStore {
    * Si la base falla, lanza: antes devolvía null y un cobro se daba por «libro no encontrado» (auditoría 26 oct, B7).
    */
   findBook(q: { publicId?: string; includeExpired?: boolean }): Promise<BookRecord | null>;
-  /** Libros con email de ese dominio creados desde `since` (para el límite de cuentos gratis por buzón). */
-  listBooksByEmailDomain(domain: string, since: string): Promise<BookRecord[]>;
+  /**
+   * Libros de ese buzón (`email_norm`, ver normalizeEmail) creados desde `since` que han pasado la puerta de los gratis
+   * (`free_claimed_at`; la migración 0013 la pone en los que ya tenían hoja), los más recientes primero, con lo justo para
+   * el límite: sin el borrador (auditoría 26 oct, I7). Los intentos rechazados no entran: con cien, ya no tapaban a los
+   * que cuentan (revisión 27 oct).
+   */
+  listFreeBooks(emailNorm: string, since: string): Promise<FreeBook[]>;
+  /**
+   * Marca que el libro ha pasado la puerta de los cuentos gratis (cuentos_books.free_claimed_at), o la quita con null.
+   * Devuelve el updated_at nuevo de la fila.
+   */
+  claimFree(bookId: string, at: string | null): Promise<string | null>;
+  /**
+   * Bloqueo corto con caducidad (cuentos_locks): devuelve una marca si lo consigue, null si lo tiene otro. Si quien lo
+   * tiene no lo suelta, a los `ms` lo puede coger otro.
+   */
+  lock(key: string, ms: number): Promise<string | null>;
+  unlock(key: string, holder: string): Promise<void>;
   getBookById(id: string): Promise<BookRecord | null>;
   /** Solo memoria: crea o actualiza el libro con el borrador que manda el cliente (sin Supabase no hay /api/books). */
   saveMemoryBook?(b: { publicId: string; email: string | null; draft: Draft }): Promise<BookRecord>;
@@ -113,7 +148,16 @@ export interface GenStore {
   /** Vuelve a `pending` un job `failed` (reintento), con el mismo bloqueo optimista. */
   reopen(job: GenJob): Promise<boolean>;
   upload(path: string, data: Uint8Array, contentType: string): Promise<void>;
-  signedUrl(path: string, seconds: number): Promise<string | null>;
+  /** `download`: el nombre con el que se descarga (Content-Disposition). Sin él, sale de `signedUrls` (con su caché). */
+  signedUrl(path: string, seconds: number, opts?: { download?: string }): Promise<string | null>;
+  /**
+   * Varias de una vez (auditoría 26 oct, I20): una sola llamada a Storage, y la misma URL mientras le quede al menos
+   * `seconds` de vida, para que el móvil no vuelva a descargar la imagen en cada consulta. Las que no se puedan firmar
+   * no vienen.
+   */
+  signedUrls(paths: string[], seconds: number): Promise<Map<string, string>>;
+  /** ¿Está ese archivo en el bucket? En memoria no hay bucket: siempre false. */
+  exists(path: string): Promise<boolean>;
   /** ¿Hay un pedido pagado? Con `accept`, solo cuenta si su sesión de Stripe pasa el filtro (ver `paidInEnv`). */
   hasPaidOrder(bookId: string, accept?: (sessionId: string | null) => boolean): Promise<boolean>;
   markIllustrating(bookId: string): Promise<void>;
@@ -234,8 +278,45 @@ function asJob(row: Record<string, unknown>): GenJob {
 
 /* ------------------------------ Supabase ------------------------------ */
 
+/**
+ * URLs firmadas por cliente (el de service role se crea una vez por instancia) y ruta (I20). Se firman por hora y media y
+ * se reutilizan mientras les quede lo que se pide (la vista, una hora): la misma imagen tiene la misma URL entre
+ * consultas y el navegador la tiene en caché. Ninguna URL de imagen vale más de hora y media (antes, una hora).
+ */
+const SIGN_S = 5400;
+const signCaches = new WeakMap<object, Map<string, { url: string; exp: number }>>();
+
+function signCache(db: object): Map<string, { url: string; exp: number }> {
+  let c = signCaches.get(db);
+  if (!c) signCaches.set(db, (c = new Map()));
+  return c;
+}
+
 export function supabaseStore(db: SupabaseClient<Database>): GenStore {
   const jobs = () => db.from("cuentos_generation_jobs");
+  const signMany = async (paths: string[], seconds: number): Promise<Map<string, string>> => {
+    const cache = signCache(db);
+    const now = Date.now();
+    const out = new Map<string, string>();
+    const missing: string[] = [];
+    for (const p of new Set(paths)) {
+      const c = cache.get(p);
+      if (c && c.exp - now >= seconds * 1000) out.set(p, c.url);
+      else missing.push(p);
+    }
+    if (missing.length === 0) return out;
+    const { data, error } = await db.storage.from(BUCKET).createSignedUrls(missing, Math.max(SIGN_S, seconds));
+    if (error) return out;
+    if (cache.size > 5000) for (const [k, v] of cache) if (v.exp < now) cache.delete(k);
+    if (cache.size > 5000) cache.clear();
+    for (const r of data ?? []) {
+      if (!r.signedUrl || r.error || !r.path) continue;
+      // con margen: la vida cuenta desde que Storage firma
+      cache.set(r.path, { url: r.signedUrl, exp: now + Math.max(SIGN_S, seconds) * 1000 - 10_000 });
+      out.set(r.path, r.signedUrl);
+    }
+    return out;
+  };
   const toBook = (row: { id: string; public_id: string; email: string | null; draft: Json; expires_at?: string | null; updated_at?: string | null }): BookRecord => ({
     id: row.id,
     public_id: row.public_id,
@@ -261,18 +342,57 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       const { data } = await db.from("cuentos_books").select(BOOK_COLUMNS).eq("id", id).maybeSingle();
       return data ? toBook(data) : null;
     },
-    async listBooksByEmailDomain(domain, since) {
-      // el dominio se escapa para ilike (% y _ son comodines)
-      const safe = domain.replace(/[\\%_]/g, (c) => `\\${c}`);
+    async listFreeBooks(emailNorm, since) {
+      // del borrador, solo el título (PostgREST lo saca en la base): nada de leer los borradores enteros (I7)
       const { data, error } = await db
         .from("cuentos_books")
-        .select(`${BOOK_COLUMNS}, created_at`)
-        .ilike("email", `%@${safe}`)
+        .select("id, public_id, created_at, free_claimed_at, title:draft->plan->>title")
+        .eq("email_norm", emailNorm)
+        .not("free_claimed_at", "is", null)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(1000);
+        .limit(FREE_BOOKS_SCAN);
       if (error) throw new Error(`books: ${error.message}`);
-      return (data ?? []).map((r) => ({ ...toBook(r), createdAt: r.created_at }));
+      const books = (data ?? []) as unknown as { id: string; public_id: string; created_at: string; free_claimed_at: string | null; title: string | null }[];
+      if (books.length === 0) return [];
+      const ids = books.map((b) => b.id);
+      const [orders, sheets] = await Promise.all([
+        db.from("cuentos_orders").select("book_id, stripe_session_id, created_at").in("book_id", ids).eq("status", "paid"),
+        jobs().select("book_id, status, updated_at").in("book_id", ids).eq("kind", "sheet").not("job_key", "is", null),
+      ]);
+      if (orders.error) throw new Error(`orders: ${orders.error.message}`);
+      if (sheets.error) throw new Error(`jobs: ${sheets.error.message}`);
+      return books.map((b) => ({
+        id: b.id,
+        publicId: b.public_id,
+        createdAt: b.created_at,
+        freeClaimedAt: b.free_claimed_at ?? null,
+        title: typeof b.title === "string" ? b.title : null,
+        paid: (orders.data ?? []).filter((o) => o.book_id === b.id).map((o) => ({ sessionId: o.stripe_session_id ?? null, createdAt: o.created_at })),
+        sheets: (sheets.data ?? []).filter((j) => j.book_id === b.id).map((j) => ({ status: asJob(j as Record<string, unknown>).status, updatedAt: j.updated_at })),
+      }));
+    },
+    async claimFree(bookId, at) {
+      const { data, error } = await db.from("cuentos_books").update({ free_claimed_at: at }).eq("id", bookId).select("updated_at").maybeSingle();
+      if (error) throw new Error(`books: ${error.message}`);
+      return data?.updated_at ?? null;
+    },
+    async lock(key, ms) {
+      const holder = crypto.randomUUID();
+      const now = Date.now();
+      const until = new Date(now + ms).toISOString();
+      // libre: la fila no existe (si existe, «ignore duplicates» no devuelve nada)
+      const ins = await db.from("cuentos_locks").upsert({ key, holder, expires_at: until }, { onConflict: "key", ignoreDuplicates: true }).select("holder");
+      if (ins.error) throw new Error(`locks: ${ins.error.message}`);
+      if ((ins.data ?? []).some((r) => r.holder === holder)) return holder;
+      // o caducado: quien lo tenía no lo soltó
+      const upd = await db.from("cuentos_locks").update({ holder, expires_at: until }).eq("key", key).lt("expires_at", new Date(now).toISOString()).select("holder");
+      if (upd.error) throw new Error(`locks: ${upd.error.message}`);
+      return (upd.data ?? []).some((r) => r.holder === holder) ? holder : null;
+    },
+    async unlock(key, holder) {
+      const { error } = await db.from("cuentos_locks").delete().eq("key", key).eq("holder", holder);
+      if (error) throw new Error(`locks: ${error.message}`);
     },
     async listJobs(bookId) {
       const { data, error } = await jobs().select(JOB_COLUMNS).eq("book_id", bookId).not("job_key", "is", null).order("created_at", { ascending: true });
@@ -310,9 +430,18 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       const { error } = await db.storage.from(BUCKET).upload(path, data, { contentType, upsert: true });
       if (error) throw new Error(`storage: ${error.message}`);
     },
-    async signedUrl(path, seconds) {
-      const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds);
-      return data?.signedUrl ?? null;
+    async signedUrl(path, seconds, opts) {
+      if (opts?.download) {
+        const { data } = await db.storage.from(BUCKET).createSignedUrl(path, seconds, { download: opts.download });
+        return data?.signedUrl ?? null;
+      }
+      return (await signMany([path], seconds)).get(path) ?? null;
+    },
+    signedUrls: signMany,
+    async exists(path) {
+      // false solo si Storage dice que no está (400/404); cualquier otro fallo lanza
+      const { data } = await db.storage.from(BUCKET).exists(path);
+      return data;
     },
     async hasPaidOrder(bookId, accept) {
       const { data, error } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
@@ -438,6 +567,10 @@ interface MemoryState {
   paid?: Set<string>;
   orders?: Map<string, PaidOrder>;
   feedback?: FeedbackRow[];
+  /** cuentos_books.free_claimed_at, por id de libro. */
+  freeClaims?: Map<string, string>;
+  /** cuentos_locks. */
+  locks?: Map<string, { holder: string; until: number }>;
 }
 
 /** Como el `default` de cuentos_books.expires_at: 30 días desde que se crea el libro. */
@@ -467,10 +600,47 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     async getBookById(id) {
       return state.books.get(id) ?? null;
     },
-    async listBooksByEmailDomain(domain, since) {
+    async listFreeBooks(emailNorm, since) {
+      const created = (b: BookRecord) => b.createdAt ?? (b.expiresAt ? new Date(Date.parse(b.expiresAt) - 30 * 24 * 3600 * 1000).toISOString() : new Date().toISOString());
+      const title = (b: BookRecord) => {
+        const t = (b.raw as { plan?: { title?: unknown } } | null)?.plan?.title;
+        return typeof t === "string" ? t : null;
+      };
+      // como la base: los que pasaron la puerta, y los de antes que ya tenían hoja (lo que rellena la migración 0013)
+      const passed = (b: BookRecord) => state.freeClaims?.has(b.id) || [...state.jobs.values()].some((j) => j.book_id === b.id && j.kind === "sheet");
       return [...state.books.values()]
-        .map((b) => ({ ...b, createdAt: b.createdAt ?? (b.expiresAt ? new Date(Date.parse(b.expiresAt) - 30 * 24 * 3600 * 1000).toISOString() : new Date().toISOString()) }))
-        .filter((b) => !!b.email && b.email.toLowerCase().endsWith(`@${domain}`) && b.createdAt >= since);
+        .filter((b) => !!b.email && normalizeEmail(b.email) === emailNorm && created(b) >= since && passed(b))
+        .sort((a, b) => created(b).localeCompare(created(a)))
+        .slice(0, FREE_BOOKS_SCAN)
+        .map((b) => ({
+          id: b.id,
+          publicId: b.public_id,
+          createdAt: created(b),
+          freeClaimedAt: state.freeClaims?.get(b.id) ?? null,
+          title: title(b),
+          paid: [...(state.orders?.values() ?? [])].filter((o) => o.bookId === b.id && paidRow(o)).map((o) => ({ sessionId: o.sessionId ?? null, createdAt: o.createdAt })),
+          sheets: [...state.jobs.values()].filter((j) => j.book_id === b.id && j.kind === "sheet").map((j) => ({ status: j.status, updatedAt: j.updated_at })),
+        }));
+    },
+    async claimFree(bookId, at) {
+      // con el reloj del almacén, como el updated_at de los jobs (en Supabase, la hora del servidor contra now() de la base)
+      if (at) (state.freeClaims ??= new Map()).set(bookId, stamp());
+      else state.freeClaims?.delete(bookId);
+      const b = state.books.get(bookId);
+      if (!b) return null;
+      b.updatedAt = stamp();
+      return b.updatedAt;
+    },
+    async lock(key, ms) {
+      const locks = (state.locks ??= new Map());
+      const cur = locks.get(key);
+      if (cur && cur.until > Date.now()) return null;
+      const holder = crypto.randomUUID();
+      locks.set(key, { holder, until: Date.now() + ms });
+      return holder;
+    },
+    async unlock(key, holder) {
+      if (state.locks?.get(key)?.holder === holder) state.locks.delete(key);
     },
     async saveMemoryBook({ publicId, email, draft }) {
       const prev = state.books.get(publicId);
@@ -485,7 +655,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     async saveBook({ publicId, email, draft }) {
       const id = publicId && state.books.has(publicId) ? publicId : newPublicId();
       const prev = state.books.get(id);
-      const book: BookRecord = { id, public_id: id, email: email ?? prev?.email ?? null, draft: normalizeDraft({}), raw: JSON.parse(JSON.stringify(draft)), expiresAt: prev?.expiresAt ?? memoryExpiry(), updatedAt: stamp() };
+      const book: BookRecord = { id, public_id: id, email: email ?? prev?.email ?? null, draft: normalizeDraft({}), raw: JSON.parse(JSON.stringify(draft)), expiresAt: prev?.expiresAt ?? memoryExpiry(), updatedAt: stamp(), createdAt: prev?.createdAt ?? new Date().toISOString() };
       state.books.set(id, book);
       return book;
     },
@@ -616,6 +786,18 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async signedUrl() {
       return null;
+    },
+    async exists() {
+      return false;
+    },
+    // sin Storage no hay nada que firmar; de una en una con `signedUrl`, por si un test la sustituye
+    async signedUrls(paths, seconds) {
+      const out = new Map<string, string>();
+      for (const p of paths) {
+        const url = await this.signedUrl(p, seconds);
+        if (url) out.set(p, url);
+      }
+      return out;
     },
     async hasPaidOrder(bookId, accept) {
       const mine = [...(state.orders?.values() ?? [])].filter((o) => o.bookId === bookId);

@@ -101,7 +101,7 @@ test("lo que no es un cobro no avisa", () => {
 
 test("la sesión de pago caduca a los 35 minutos (B7)", () => {
   const now = Date.parse("2026-10-26T10:00:00Z");
-  const p = checkoutBody({ bookId: "abcdefgh12", email: null, title: "T", amountCents: 1490, origin: "https://x" }, now);
+  const p = checkoutBody({ bookId: "abcdefgh12", email: null, amountCents: 1490, origin: "https://x" }, now);
   assert.equal(CHECKOUT_TTL_S, 35 * 60);
   assert.equal(p.get("expires_at"), String(now / 1000 + 35 * 60));
 });

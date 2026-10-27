@@ -39,7 +39,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `README.md` — portada del repo; apunta aquí
 - `CLAUDE.md` — instrucciones para hilos de Claude Code en el repo · vigente
 - `docs/supabase.md` — proyecto de Supabase, tablas `cuentos_*`, bucket, convención · vigente
-- `supabase/migrations/*.sql`, `docs/sql/*.sql` — esquema de la base · vigente
+- `supabase/migrations/*.sql` — esquema de la base, de la 0001 a la 0013, todas aplicadas; reconstruyen la base real (lo comprueba `web/tests/unit/migraciones.test.ts`) · vigente
 - `docs/GENERATION.md`, `docs/STORY-ENGINE.md`, `docs/PDF.md` — imágenes, motor de historia y PDF del flujo antiguo (Clásico) · histórico
 - `docs/AGENT-BRIEF*.md`, `docs/hermes-mision-assets.md` — encargos a agentes del 8–9 oct · histórico
 
@@ -52,7 +52,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 | Costes por lead y por libro | `ILUSTRACION.md` (Coste medido) | PLAN, PAGO |
 | Pago, emails, segundo plano, variables de B5 | `PAGO.md` | — |
 | Todas las variables de entorno | `web/.env.example` | PAGO, PLAN §7 |
-| Esquema de la base | `supabase/migrations/` + `docs/sql/` | `docs/supabase.md` |
+| Esquema de la base | `supabase/migrations/` | `docs/supabase.md` |
 | Texto del libro de muestra | `web/lib/muestra.ts` | `MUESTRA-LUNA.md` |
 | Reglas de trabajo con Álvaro | `PLAN.md` §6 | `CLAUDE.md` |
 | Proveedores y sus contratos | `PROVEEDORES.md` | `/privacidad` §7 |
@@ -85,7 +85,7 @@ El detalle está en `PLAN.md` §5. Resumen:
 | Stripe y Resend | `lib/stripe.ts` (también la renuncia al desistimiento: `waiverAccepted`, metadatos `withdrawal_waiver_*`), `lib/mail.ts`, `app/api/libro/checkout`, `app/api/stripe/webhook` |
 | Correo entrante (`hola@` → Gmail) | `lib/inbound.ts` (firma de Svix, reenvío), `app/api/mail/inbound` |
 | «Otra versión» con motivo y «Sigue sin estar bien» | `lib/book/feedback.ts` (motivos, topes), `lib/book/service.ts` (`requestPages`, `reportPage`), `lib/plan/art.ts` (`redoScene`), `app/api/libro/report`, tabla `cuentos_feedback` |
-| PDF y maqueta del libro | `lib/pdf/printHtml.ts` (maqueta única del libro apaisado: impreso y PDF), `lib/pdf/book2.ts` (PDF en A4 apaisado), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium), `app/api/libro/pdf`; en la web, `BookCover` y `BookSpread` en `components/brand.tsx` |
+| PDF y maqueta del libro | `lib/pdf/printHtml.ts` (maqueta única del libro apaisado: impreso y PDF), `lib/pdf/book2.ts` (PDF en A4 apaisado), `lib/pdf/text.ts`, `lib/pdf/render.ts` (Chromium, de uno en uno por instancia con `lib/pdf/queue.ts`), `lib/book/pdf.ts` (el PDF que se descarga: se pinta una vez y se guarda en el bucket, I10), `app/api/libro/pdf` y su botón `components/crear/PdfLink.tsx`; en la web, `BookCover` y `BookSpread` en `components/brand.tsx` |
 | Libro en 3D (tapa dura) | `lib/book3d/scene.ts` (Three.js: hojas que se curvan, giro con el libro cerrado, texturas bajo demanda), `components/book3d/Book3D.tsx` (carga diferida, portada 2D mientras carga o sin WebGL); se usa en `StepBook.tsx` |
 | Libro impreso (B8) | `lib/print/{types,shipping,prices,gelato,server}.ts`, `lib/book/print.ts` (mandar a imprimir, seguimiento, webhook, cron), `lib/pdf/{printHtml,print}.ts` (maqueta de imprenta), `components/crear/{PrintPanel,ShippingForm}.tsx`, rutas `app/api/libro/{shipping,print}`, `app/api/print/webhook`, `app/api/cron/print`, `scripts/print-sample.mts` (PDF de imprenta de la muestra y los dos PDF que se descargan), migración `0005` |
 | Borrado a 30 días | `lib/purge.ts` (libros, planes, leads sin novedades y emails del gasto), `app/api/cron/purge`, `vercel.json` (tres crons diarios: borrado, imprenta y rescate) |

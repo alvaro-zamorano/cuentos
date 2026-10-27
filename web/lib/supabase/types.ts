@@ -1,5 +1,7 @@
 // Tipos de Supabase limitados a las tablas cuentos_* (la base es compartida con otros productos).
-// Generado con generate_typescript_types (MCP Supabase) el 8 oct 2026 y filtrado; regenerar al cambiar el esquema.
+// Generado con generate_typescript_types (MCP Supabase) el 8 oct 2026 y filtrado; puesto al día el 27 oct (I14, y la
+// migración 0013 de I7: email_norm, free_claimed_at, cuentos_locks y cuentos_email_norm). Regenerar
+// al cambiar el esquema; tests/unit/migraciones.test.ts comprueba que las migraciones reconstruyen la base.
 export type Json =
   | string
   | number
@@ -50,7 +52,9 @@ export type Database = {
           draft: Json
           edition: string
           email: string | null
+          email_norm: string | null
           expires_at: string
+          free_claimed_at: string | null
           id: string
           public_id: string
           status: string
@@ -61,7 +65,9 @@ export type Database = {
           draft: Json
           edition?: string
           email?: string | null
+          email_norm?: never
           expires_at?: string
+          free_claimed_at?: string | null
           id?: string
           public_id: string
           status?: string
@@ -72,7 +78,9 @@ export type Database = {
           draft?: Json
           edition?: string
           email?: string | null
+          email_norm?: never
           expires_at?: string
+          free_claimed_at?: string | null
           id?: string
           public_id?: string
           status?: string
@@ -80,7 +88,24 @@ export type Database = {
         }
         Relationships: []
       }
-      // job_key, variant, paid y storage_path añadidas a mano (brief 7, docs/sql/cuentos_generation_jobs_b3.sql).
+      cuentos_locks: {
+        Row: {
+          expires_at: string
+          holder: string
+          key: string
+        }
+        Insert: {
+          expires_at: string
+          holder: string
+          key: string
+        }
+        Update: {
+          expires_at?: string
+          holder?: string
+          key?: string
+        }
+        Relationships: []
+      }
       cuentos_feedback: {
         Row: {
           book_id: string | null
@@ -118,7 +143,22 @@ export type Database = {
           style_id?: string | null
           variant?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cuentos_feedback_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "cuentos_books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentos_feedback_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "cuentos_generation_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cuentos_generation_jobs: {
         Row: {
@@ -194,7 +234,7 @@ export type Database = {
           },
         ]
       }
-      // Añadida a mano (brief 5) con las columnas acordadas; regenerar los tipos cuando la tabla exista.
+      // Migración 0008 (cuentos_stories): al día con la base del 27 oct.
       cuentos_stories: {
         Row: {
           cost_cents: number
@@ -217,7 +257,7 @@ export type Database = {
           input: Json
           input_hash: string
           issues?: Json
-          model: string
+          model?: string
           provider: string
           story: Json
           usage?: Json
@@ -237,7 +277,6 @@ export type Database = {
         }
         Relationships: []
       }
-      // Añadida a mano (brief 6, docs/sql/cuentos_spend.sql); regenerar los tipos cuando la tabla exista.
       cuentos_spend: {
         Row: {
           cost_cents: number
@@ -371,7 +410,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      cuentos_email_norm: { Args: { email: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

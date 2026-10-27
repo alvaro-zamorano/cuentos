@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { brandRedirects } from "./lib/site";
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -19,13 +20,22 @@ const nextConfig: NextConfig = {
   // pedido (auditoría 26 oct, I22)
   headers() {
     const strict = [{ key: "Referrer-Policy", value: "strict-origin" }];
+    // ninguna web puede meter estas páginas en un marco (la del pago tampoco), ni el navegador adivinar tipos (menores de
+    // la auditoría 26 oct). Una CSP mínima: lo que no rompe nada de lo que carga la app.
+    const security = [
+      { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+    ];
     return Promise.resolve([
+      { source: "/:path*", headers: security },
       { source: "/crear", headers: strict },
       { source: "/seguimiento/:path*", headers: strict },
     ]);
   },
   redirects() {
-    return ["/clasico", "/ilustrado", "/libro", "/gratis"].map((source) => ({ source, destination: "/crear", permanent: false }));
+    // los alias de vercel.app de producción, al dominio (lib/site.ts, I21); van primero
+    return [...brandRedirects(), ...["/clasico", "/ilustrado", "/libro", "/gratis"].map((source) => ({ source, destination: "/crear", permanent: false }))];
   },
   turbopack: {
     rules: {

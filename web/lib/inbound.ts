@@ -111,7 +111,8 @@ export function forwardPlan(email: ReceivedEmail, attachments: ReceivedAttachmen
 
   const who = cleanName(sender.name || sender.address) || "Alguien";
   const brand = cleanName(fromEnv.name) || ownDomain;
-  const subject = (email.subject ?? "").trim() || "(sin asunto)";
+  // en una línea y con largo razonable: un asunto con saltos de línea no debe colar cabeceras (menores de la auditoría)
+  const subject = (email.subject ?? "").replace(/[\r\n\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 250) || "(sin asunto)";
   const to = (email.to ?? []).join(", ");
   const head = `De: ${email.from}\nPara: ${to}${email.cc?.length ? `\nCC: ${email.cc.join(", ")}` : ""}`;
   const replyTo = email.reply_to?.length ? email.reply_to : [sender.address];

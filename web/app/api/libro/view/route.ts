@@ -5,7 +5,10 @@ import { paymentMode } from "@/lib/stripe";
 import { titular } from "@/lib/legal";
 import { backgroundPaint, withContext } from "../_shared";
 
-/** GET /api/libro/view?b=<bookId> → ficha, plan, pago y estado de las imágenes (URLs firmadas 1 h), y cómo se paga aquí. */
+/**
+ * GET /api/libro/view?b=<bookId> → ficha, plan, pago y estado de las imágenes (URLs firmadas que valen al menos 1 h y como
+ * mucho 1 h 30 min: la misma imagen repite URL entre consultas, I20), y cómo se paga aquí.
+ */
 export async function GET(req: Request) {
   const b = new URL(req.url).searchParams.get("b");
   return withContext("view", async (store) => {

@@ -1,11 +1,11 @@
 /**
- * Presupuesto de generación (B3): cuánto se puede gastar por lead y por día UTC. Tabla `cuentos_spend`
- * (docs/sql/cuentos_spend.sql; RLS sin políticas: solo service role).
+ * Presupuesto de generación (B3): cuánto se puede gastar por lead y por día (de Madrid). Tabla `cuentos_spend`
+ * (supabase/migrations/0009_cuentos_9_spend.sql; RLS sin políticas: solo service role).
  *
  *   LEAD_CAP_CENTS   tope por lead antes del pago (por defecto 30, D2 del 13 oct: hoja 1K + portada 2K y hasta 2 cambios de hoja,
  *                    cada uno con su portada: 3 × (4 + 6) c). `paid: true` lo salta (libro pagado;
  *                    ahí manda MAX_COST_CENTS_PER_BOOK del worker).
- *   DAILY_CAP_CENTS  tope global por día UTC (por defecto 500) para lo que no se cobra. Lo frena todo salvo los
+ *   DAILY_CAP_CENTS  tope global por día de Madrid (por defecto 500) para lo que no se cobra. Lo frena todo salvo los
  *                    libros cobrados de verdad con Stripe (16 oct): un cliente que paga no se queda sin libro por el tope;
  *                    a esos los limita MAX_COST_CENTS_PER_BOOK. Desde el 26 oct (auditoría, B2) lo que se pinta para
  *                    ellos tras el cobro tampoco cuenta: con unas cinco ventas, el resto del día nadie podía dibujar
@@ -64,9 +64,35 @@ export function dailyCapCents(): number {
   return capFromEnv("DAILY_CAP_CENTS", 500);
 }
 
-/** Inicio del día UTC de `now`, en ISO. */
-export function utcDayStart(now = new Date()): string {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+/**
+ * El día del tope es el de España (menores de la auditoría 26 oct): antes era el UTC y el contador volvía a cero a la
+ * 01:00 o las 02:00 de Madrid, mientras el aviso decía «vuelve mañana».
+ */
+export const CAP_TZ = "Europe/Madrid";
+
+/** Lo que adelanta la hora de `tz` a la UTC en ese momento, en ms. */
+function tzOffsetMs(at: Date, tz: string): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(at)
+      .map((x) => [x.type, x.value]),
+  );
+  return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second)) - Math.floor(at.getTime() / 1000) * 1000;
+}
+
+/** La fecha del día del tope (AAAA-MM-DD, hora de Madrid). */
+export function capDay(now = new Date()): string {
+  return new Date(now.getTime() + tzOffsetMs(now, CAP_TZ)).toISOString().slice(0, 10);
+}
+
+/** Medianoche de Madrid del día de `now`, en ISO (UTC). */
+export function capDayStart(now = new Date()): string {
+  const [y, m, d] = capDay(now).split("-").map(Number);
+  const midnight = Date.UTC(y, m - 1, d);
+  // el desfase de esa medianoche (el día del cambio de hora no es el de ahora)
+  let t = midnight - tzOffsetMs(now, CAP_TZ);
+  t = midnight - tzOffsetMs(new Date(t), CAP_TZ);
+  return new Date(t).toISOString();
 }
 
 function sum(rows: { cost_cents: number | null }[] | null): number {
@@ -89,7 +115,7 @@ const DAY_MS = 24 * 3600 * 1000;
 const PAID_LOOKBACK_MS = 40 * DAY_MS;
 
 export interface FreeSpendToday {
-  /** Lo gastado hoy (UTC) que cuenta para el tope diario. */
+  /** Lo gastado hoy (día de Madrid) que cuenta para el tope diario. */
   total: number;
   /** ¿Cuenta un gasto de este lead en este momento? No, si es de un libro cobrado de verdad y posterior al cobro. */
   counts: (leadId: string, at: number) => boolean;
@@ -113,7 +139,7 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
  * después de cobrarlos. Lo de antes del pago (hoja y portada gratis) sí cuenta. null si falla la lectura.
  */
 export async function freeSpendToday(db: Db, now = new Date()): Promise<FreeSpendToday | null> {
-  const dayStart = utcDayStart(now);
+  const dayStart = capDayStart(now);
   const day = await allRows((from, to) => db.from("cuentos_spend").select("cost_cents, lead_id, created_at").gte("created_at", dayStart).order("created_at", { ascending: true }).range(from, to));
   if (!day) return null;
   const since = new Date(Date.parse(dayStart) - PAID_LOOKBACK_MS).toISOString();
@@ -202,7 +228,7 @@ async function dailyAlert(db: Db, now: Date, notify: Notify): Promise<void> {
     if (!day || day.total < DAILY_ALERT_AT * cap) return;
     // una vez al día, con una fila de gasto cero como marca (sin tabla nueva). Antes se miraba si este gasto cruzaba la
     // línea, y con varios gastos a la vez el aviso podía no salir nunca (revisión 26 oct); ahora, como mucho, sale dos veces
-    const marker = `aviso-tope:${utcDayStart(now).slice(0, 10)}`;
+    const marker = `aviso-tope:${capDay(now)}`;
     const seen = await db.from("cuentos_spend").select("id").eq("lead_id", marker).limit(1);
     if (seen.error || (seen.data && seen.data.length > 0)) return;
     const mark = await db.from("cuentos_spend").insert({ lead_id: marker, kind: "story", provider: "aviso", model: "80%", cost_cents: 0 });
@@ -210,7 +236,7 @@ async function dailyAlert(db: Db, now: Date, notify: Notify): Promise<void> {
     const r = await notify(
       `Gasto del día al ${Math.round((day.total / cap) * 100)} %`,
       [
-        `Hoy (UTC) se llevan ${day.total} c de ${cap} c (DAILY_CAP_CENTS) en lo que no se ha cobrado: dibujos y texto.`,
+        `Hoy (día de Madrid) se llevan ${day.total} c de ${cap} c (DAILY_CAP_CENTS) en lo que no se ha cobrado: dibujos y texto.`,
         "Al llegar al tope, nadie más puede escribir ni dibujar gratis hasta mañana. Lo que se pinta para libros cobrados no cuenta.",
         "Si hace falta, sube DAILY_CAP_CENTS en Vercel. El detalle, en la tabla cuentos_spend de Supabase.",
       ].join("\n"),

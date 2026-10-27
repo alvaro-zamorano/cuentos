@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- URLs firmadas de Supabase de 1 h: next/image no aporta nada aquí */
+import { forgetUrl } from "@/lib/bookClient";
 import { Icon, Sparkle } from "@/components/brand";
 import type { BookJobView } from "@/lib/book/service";
 import { PaintingPlaceholder } from "./Waiting";
@@ -67,7 +68,8 @@ export function BookImage({
   }
   return (
     <div className={box} data-testid={testId} data-state="done">
-      <img src={job.url} alt={alt} className="rise absolute inset-0 block h-full w-full object-cover" />
+      {/* si no carga (URL caducada o retirada), la próxima vista trae otra en vez de la guardada (I20) */}
+      <img src={job.url} alt={alt} className="rise absolute inset-0 block h-full w-full object-cover" onError={() => forgetUrl(job.url)} />
       {title && <div aria-hidden className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-[rgba(15,20,40,0.5)] to-transparent" />}
       {title && (
         <span className="display absolute top-4 right-5 left-5 text-2xl text-moon sm:text-4xl" style={{ textShadow: "0 2px 12px rgba(10,20,50,.5)" }}>

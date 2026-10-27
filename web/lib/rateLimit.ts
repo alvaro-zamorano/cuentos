@@ -5,7 +5,8 @@
 const buckets = new Map<string, number[]>();
 const HOUR = 3_600_000;
 
-export function rateLimit(key: string, perHour: number, minGapMs = 1000): { ok: true } | { ok: false; retryAfter: number } {
+/** `undo`: devuelve el turno (lo que falló por nuestra culpa no cuenta, auditoría 26 oct, I10). */
+export function rateLimit(key: string, perHour: number, minGapMs = 1000): { ok: true; undo: () => void } | { ok: false; retryAfter: number } {
   const now = Date.now();
   const list = (buckets.get(key) ?? []).filter((t) => now - t < HOUR);
   const last = list[list.length - 1];
@@ -16,7 +17,14 @@ export function rateLimit(key: string, perHour: number, minGapMs = 1000): { ok: 
   if (buckets.size > 5000) {
     for (const [k, v] of buckets) if (!v.length || now - v[v.length - 1] > HOUR) buckets.delete(k);
   }
-  return { ok: true };
+  return {
+    ok: true,
+    undo: () => {
+      const l = buckets.get(key);
+      const i = l ? l.lastIndexOf(now) : -1;
+      if (l && i >= 0) l.splice(i, 1);
+    },
+  };
 }
 
 export function clientIp(req: Request): string {

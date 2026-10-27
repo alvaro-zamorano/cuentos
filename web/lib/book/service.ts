@@ -13,10 +13,12 @@ import { hashString } from "../story/hash";
 import { getStyle } from "../generation/styles";
 import { MAX_ATTEMPTS, STALE_RUNNING_MS, gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
 import { jobKey } from "../generation/keys";
+import { VIEW_URL_SECONDS } from "../signing";
+import { bookLine, bookRef } from "../support";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
 import { canSpend, freeBookCapCents } from "../generation/budget";
-import { FREE_BOOKS, freeUse } from "./freeLimit";
+import { passFreeGate } from "./freeLimit";
 import { castArt, castArtKey, coverPrompt, pageArtKey, pagePrompt, pagesArt, pagesArtKey, portraitPrompt, redoScene, reviseCast, sheetPrompt, type CastArt, type PageFix, type PagesArt } from "../plan/art";
 import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_FIX_EN, REDO_REASONS, cleanNote, isRedoReason, type RedoReason } from "./feedback";
 import { fichaHash, normalizeFicha } from "../plan/ficha";
@@ -48,7 +50,7 @@ const KEEP_AFTER_PAYMENT_MS = 30 * 24 * 3600 * 1000;
 
 export const MAX_SHEETS = 3; // la primera + 2 cambios con palabras
 /**
- * Lo que admite la base (cuentos_generation_jobs_variant_check): 1..4 desde docs/sql/cuentos_8_variant_hasta_4.sql
+ * Lo que admite la base (cuentos_generation_jobs_variant_check): 1..4 desde supabase/migrations/0012_cuentos_12_variant_hasta_4.sql
  * (aplicada el 25 oct). Si se cambia, cambiar las dos cosas a la vez: sin este tope, una versión de más fallaba al
  * guardarse (500) en vez de decir que no hay más.
  */
@@ -299,36 +301,64 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
   const gate = await freeGate(store, email, book, sheets);
   if ("error" in gate) return gate;
   const { freeLeft } = gate;
+  const saved = book;
 
-  // ya hay hoja para este reparto: no se gasta otra vez (lo fallido se reabre; si ya no le quedan intentos, otra versión)
-  if (current.length > 0) {
-    const r = await reviveCast(store, book, d, existing, current[current.length - 1], adapter);
-    if (r) return r.ok ? { ...r, freeLeft } : r;
+  return afterGate(store, saved, gate.claimed, async () => {
+    let book = saved;
+    // ya hay hoja para este reparto: no se gasta otra vez (lo fallido se reabre; si ya no le quedan intentos, otra versión)
+    if (current.length > 0) {
+      const r = await reviveCast(store, book, d, existing, current[current.length - 1], adapter);
+      if (r) return r.ok ? { ...r, freeLeft } : r;
+    }
+    if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado las versiones de la hoja de este libro.");
+
+    // hoja + portada tienen que caber en el presupuesto del libro y en el del día
+    const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
+    if (!both.ok) return fail(402, "budget", both.reason);
+
+    let drawn = d;
+    if (d.castArt?.key !== key) {
+      const art = (await castArt(ficha, plan, llm)).art;
+      ({ book, d: drawn } = await mutate(store, book, (cur) => ({ ...cur, castArt: art, pagesArt: undefined })));
+    }
+
+    const variant = sheets.length + 1;
+    const made = await newSheetAndCover(store, book, drawn, variant);
+    if (isFail(made)) return made;
+    return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2, fresh: variant === 1, email, title: plan.title, freeLeft };
+  });
+}
+
+/**
+ * Lo que va detrás de la puerta de los gratis. Si se sale sin hoja nueva (el modelo de arte falla, el presupuesto, las
+ * versiones), el libro deja de contar como empezado: si no, tres fallos seguidos agotaban los gratis sin un solo dibujo
+ * (revisión 27 oct).
+ */
+async function afterGate<T extends { ok: boolean }>(store: GenStore, book: BookRecord, claimed: boolean | undefined, run: () => Promise<T>): Promise<T> {
+  if (!claimed) return run();
+  let r: T;
+  try {
+    r = await run();
+  } catch (e) {
+    await store.claimFree(book.id, null).catch(() => null);
+    throw e;
   }
-  if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado las versiones de la hoja de este libro.");
-
-  // hoja + portada tienen que caber en el presupuesto del libro y en el del día
-  const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
-  if (!both.ok) return fail(402, "budget", both.reason);
-
-  let drawn = d;
-  if (d.castArt?.key !== key) {
-    const art = (await castArt(ficha, plan, llm)).art;
-    ({ book, d: drawn } = await mutate(store, book, (cur) => ({ ...cur, castArt: art, pagesArt: undefined })));
-  }
-
-  const variant = sheets.length + 1;
-  const made = await newSheetAndCover(store, book, drawn, variant);
-  if (isFail(made)) return made;
-  return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2, fresh: variant === 1, email, title: plan.title, freeLeft };
+  if (!r.ok) await store.claimFree(book.id, null).catch(() => null);
+  return r;
 }
 
 /** La puerta de los cuentos gratis, solo para un libro que aún no tiene personajes (sin hoja o con todas fallidas). */
-async function freeGate(store: GenStore, email: string, book: BookRecord, sheets: GenJob[]): Promise<{ freeLeft?: number } | FreeLimitFail> {
+async function freeGate(store: GenStore, email: string, book: BookRecord, sheets: GenJob[]): Promise<{ freeLeft?: number; claimed?: boolean } | FreeLimitFail | Fail> {
   if (hasArt(sheets)) return {};
-  const use = await freeUse(store, email, { exceptBookId: book.id });
-  if (use.used >= FREE_BOOKS) return { ok: false, status: 429, error: "free_limit", books: use.books.map((b) => ({ publicId: b.public_id, title: draftV2(b)?.plan.title ?? "Tu cuento" })) };
-  return { freeLeft: use.left };
+  // con el bloqueo del buzón: varias peticiones a la vez con el mismo email no pasan todas (auditoría 26 oct, I7)
+  const gate = await passFreeGate(store, email, book.id);
+  if (gate.ok) {
+    // la marca cambia updated_at: el primer guardado condicional del borrador no choca con ella (revisión 27 oct)
+    if (gate.updatedAt) book.updatedAt = gate.updatedAt;
+    return { freeLeft: gate.left, claimed: true };
+  }
+  if ("busy" in gate) return fail(409, "busy", "Estamos empezando otro cuento con este email. Espera unos segundos y vuelve a intentarlo.");
+  return { ok: false, status: 429, error: "free_limit", books: gate.books.map((b) => ({ publicId: b.publicId, title: b.title ?? "Tu cuento" })) };
 }
 
 async function newSheetAndCover(store: GenStore, book: BookRecord, d: BookDraftV2, variant: number): Promise<{ sheet: GenJob; cover: GenJob } | Fail> {
@@ -383,15 +413,17 @@ export async function retryCast(store: GenStore, input: { bookId?: unknown }, ad
   if (!sheet) return fail(409, "no_sheet");
   const gate = await freeGate(store, book.email, book, sheets);
   if ("error" in gate) return gate;
-  const r = await reviveCast(store, book, d, jobs, sheet, adapter);
-  if (r) return r.ok ? { ...r, freeLeft: gate.freeLeft } : r;
-  // la última hoja ya no tiene intentos: otra versión del mismo reparto
-  if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya no podemos repetir más el dibujo de este libro. Escríbenos y lo miramos.");
-  const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
-  if (!both.ok) return fail(402, "budget", both.reason);
-  const made = await newSheetAndCover(store, book, d, sheets.length + 1);
-  if (isFail(made)) return made;
-  return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2, freeLeft: gate.freeLeft };
+  return afterGate(store, book, gate.claimed, async (): Promise<StartResult | Fail> => {
+    const r = await reviveCast(store, book, d, jobs, sheet, adapter);
+    if (r) return r.ok ? { ...r, freeLeft: gate.freeLeft } : r;
+    // la última hoja ya no tiene intentos: otra versión del mismo reparto
+    if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya no podemos repetir más el dibujo de este libro. Escríbenos y lo miramos.");
+    const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
+    if (!both.ok) return fail(402, "budget", both.reason);
+    const made = await newSheetAndCover(store, book, d, sheets.length + 1);
+    if (isFail(made)) return made;
+    return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2, freeLeft: gate.freeLeft };
+  });
 }
 
 /** Comprueba que `cents` caben en el presupuesto del libro (antes del pago) y en el del día. */
@@ -428,14 +460,17 @@ export async function reviseSheet(
   if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado los dos cambios de la hoja.");
   const gate = await freeGate(store, book.email, book, sheets);
   if ("error" in gate) return gate;
-  const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
-  if (!both.ok) return fail(402, "budget", both.reason);
+  const castNow = d.castArt;
+  return afterGate(store, book, gate.claimed, async (): Promise<StartResult | Fail> => {
+    const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
+    if (!both.ok) return fail(402, "budget", both.reason);
 
-  const art = (await reviseCast(d.ficha, d.plan, d.castArt, instruction, llm)).art;
-  ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, castArt: art, pagesArt: undefined, approvedSheetJobId: undefined })));
-  const made = await newSheetAndCover(store, book, d, sheets.length + 1);
-  if (isFail(made)) return made;
-  return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2 };
+    const art = (await reviseCast(d.ficha, d.plan, castNow, instruction, llm)).art;
+    ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, castArt: art, pagesArt: undefined, approvedSheetJobId: undefined })));
+    const made = await newSheetAndCover(store, book, d, sheets.length + 1);
+    if (isFail(made)) return made;
+    return { ok: true, bookId: book.public_id, sheetJobId: made.sheet.id, coverJobId: made.cover.id, created: 2 };
+  });
 }
 
 /* ------------------------------ aprobar hoja, guardar textos ------------------------------ */
@@ -727,6 +762,20 @@ async function recordUpgrade(
 }
 
 /**
+ * Aviso a soporte de un recibo que el correo rechaza (I28): la dirección del padre, para revisarla, y el libro por su
+ * referencia, sin el enlace que lo abre (I30). Puro, para probarlo; lo manda el webhook.
+ */
+export function receiptNotice(to: string, reason: string, bookUuid: string | null, sessionId: string | null): { subject: string; text: string } {
+  return {
+    subject: "Recibo sin enviar",
+    text: [
+      `No se ha podido mandar el recibo de compra a ${to}: el servicio de correo lo rechaza (${reason}). Revisa la dirección y mándalo a mano.`,
+      bookUuid ? bookLine(bookUuid) : `Sesión de Stripe: ${sessionId ?? "?"} (el libro va en sus metadatos)`,
+    ].join("\n\n"),
+  };
+}
+
+/**
  * Aviso a soporte (`MAIL_FORWARD_TO`) cuando un cobro de Stripe no acaba bien: no se ha podido registrar, es un cobro
  * doble o el importe no cuadra. Puro, para probarlo; lo manda el webhook. Auditoría 26 oct, B7: antes solo se avisaba de
  * las mejoras a tapa dura y el resto de cobros sin pedido pasaban sin que nadie se enterara.
@@ -735,7 +784,8 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
   const s = event.data?.object ?? {};
   const paidSession = (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && s.payment_status === "paid";
   const upgrade = s.metadata?.upgrade === "1";
-  const facts = `Libro: ${s.metadata?.bookId ?? s.client_reference_id ?? "?"}\nSesión: ${s.id ?? "?"}\nImporte: ${typeof s.amount_total === "number" ? (s.amount_total / 100).toFixed(2) : "?"} ${(s.currency ?? "eur").toUpperCase()}`;
+  // el libro, por la sesión (sus metadatos en Stripe, o su pedido): el id público abriría el libro (I30)
+  const facts = `Sesión: ${s.id ?? "?"} (el libro va en sus metadatos de Stripe)\nImporte: ${typeof s.amount_total === "number" ? (s.amount_total / 100).toFixed(2) : "?"} ${(s.currency ?? "eur").toUpperCase()}`;
   if (r.action === "ignored" && paidSession) {
     return {
       subject: upgrade ? "Mejora a tapa dura cobrada sin registrar" : "Cobro sin pedido",
@@ -883,7 +933,6 @@ export async function alertPaidFailures(
   store: GenStore,
   bookId: string,
   notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
-  link: (publicId: string) => string,
 ): Promise<boolean> {
   const book = await store.findBook({ publicId: bookId });
   const d = book ? draftV2(book) : null;
@@ -895,11 +944,11 @@ export async function alertPaidFailures(
   const r = await notify(
     `Imagen pagada que no sale: «${d.plan.title}»`,
     [
-      `En el libro «${d.plan.title}» (${book.public_id}) ya no salen solas: ${stuck.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
+      `En el libro «${d.plan.title}» (${bookRef(book.id)}) ya no salen solas: ${stuck.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
       stuck.some((j) => isBookCapError(j.error))
         ? "Ha llegado al tope de coste por libro (MAX_COST_CENTS_PER_BOOK): hay que mirarlo a mano."
         : "Ya no quedan versiones automáticas. El padre puede avisarnos desde la página; hay que pintarla a mano.",
-      `Libro: ${link(book.public_id)}`,
+      bookLine(book.id),
     ].join("\n\n"),
   ).catch(() => ({ sent: false }));
   if (!r.sent) return false;
@@ -1263,7 +1312,6 @@ export async function reportPage(
   store: GenStore,
   input: { bookId?: unknown; page?: unknown; note?: unknown },
   notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
-  link: (publicId: string) => string,
   env: Env = process.env,
 ): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
@@ -1280,16 +1328,16 @@ export async function reportPage(
   await store.addFeedback({ book_id: book.id, job_id: null, kind: "report", page_n: n, variant: null, reason: "sigue_mal", note, style_id: d.ficha.styleId });
   const redos = prior.filter((f) => f.kind === "redo" && f.page_n === n).map((f) => `- versión ${f.variant ?? "?"}: ${REDO_REASONS[f.reason as RedoReason] ?? f.reason}${f.note ? `: «${f.note}»` : ""}`);
   const text = [
-    `Página ${n} del libro «${d.plan.title}» (${book.public_id}).`,
+    `Página ${n} del libro «${d.plan.title}» (${bookRef(book.id)}).`,
     note ? `Lo que dice: «${note}»` : "No ha escrito nada más.",
     redos.length ? `Versiones que pidió antes:\n${redos.join("\n")}` : "No pidió otras versiones con motivo.",
     `Escena: ${d.plan.pages[n - 1]?.scene ?? ""}`,
-    `Libro: ${link(book.public_id)}`,
+    bookLine(book.id),
   ].join("\n\n");
   // si no ha salido ninguna versión, el asunto lo dice (I3: «Avísanos» también sin ninguna hecha)
   const anyDone = (await store.listJobs(book.id)).some((j) => j.kind === "page" && j.page_n === n && j.status === "done");
   const sent = await notify(`${anyDone ? "Sigue sin estar bien" : "No sale"}: página ${n} de «${d.plan.title}»`, text);
-  if (!sent.sent) console.warn(`[report] aviso sin enviar (${book.public_id}, página ${n})`);
+  if (!sent.sent) console.warn(`[report] aviso sin enviar (${bookRef(book.id)}, página ${n})`);
   return { ok: true };
 }
 
@@ -1406,17 +1454,20 @@ function failReason(error: string | null | undefined): BookJobView["error"] {
   return "error";
 }
 
-export async function bookView(store: GenStore, bookId: unknown, env: Env = process.env): Promise<BookView | Fail> {
+/** `sign: false`: sin firmar las URL de las imágenes (todas null), para quien solo necesita qué va en el libro (el PDF, I10). */
+export async function bookView(store: GenStore, bookId: unknown, env: Env = process.env, { sign = true }: { sign?: boolean } = {}): Promise<BookView | Fail> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
   const jobs = (await store.listJobs(book.id)).filter((j) => v2Of(j));
   const sheets = sheetJobs(jobs);
   const paid = await paidHere(store, book.id, env);
+  // sin pago (o devuelto, I5), las ilustraciones de pago no se enseñan: solo la hoja, la portada y lo gratis (revisión 27 oct)
+  const shown = (j: GenJob) => j.status === "done" && !!j.storage_path && !(j.paid && !paid);
+  // todas en una llamada, y la misma URL que la consulta anterior mientras siga valiendo (I20)
+  const urls = sign ? await store.signedUrls(jobs.filter(shown).map((j) => j.storage_path!), VIEW_URL_SECONDS) : new Map<string, string>();
   const out: BookJobView[] = [];
   for (const j of jobs) {
-    // sin pago (o devuelto, I5), las ilustraciones de pago no se enseñan: solo la hoja, la portada y lo gratis (revisión 27 oct)
-    const hidden = !!j.paid && !paid;
     const sheetId = sheetRefOf(j);
     const current =
       j.kind === "page" && d.castArt && d.pagesArt && sheetId
@@ -1430,7 +1481,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       page: j.page_n,
       variant: j.variant,
       status: j.status,
-      url: j.status === "done" && j.storage_path && !hidden ? await store.signedUrl(j.storage_path, 3600) : null,
+      url: shown(j) ? urls.get(j.storage_path!) ?? null : null,
       placeholder: j.status === "done" && !j.storage_path,
       error: j.status === "failed" ? failReason(j.error) : null,
       current,

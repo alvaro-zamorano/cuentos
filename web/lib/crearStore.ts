@@ -22,9 +22,16 @@ export interface CrearState {
   quickAsked?: boolean;
   /** El libro está pagado: los pasos 1 y 2 se cierran y en el 3 y el 4 solo se cambian los textos (I2). */
   paid?: boolean;
+  /** Cuándo se guardó por última vez (ms). */
+  savedAt?: number;
 }
 
 const KEY = "cuentos:crear:v2";
+/**
+ * La ficha, el cuento y el email no se quedan en el navegador para siempre (menores de la auditoría 26 oct): en un equipo
+ * compartido los vería el siguiente. A los 30 días sin tocarlo, como el libro en el servidor, se olvida.
+ */
+const LOCAL_TTL_MS = 30 * 24 * 3600 * 1000;
 let current: CrearState | null = null;
 const listeners = new Set<() => void>();
 
@@ -32,14 +39,21 @@ function fresh(): CrearState {
   return { v: 2, step: 1, ficha: emptyFicha() };
 }
 
-function read(): CrearState {
+/** Lee lo guardado (exportado para los tests). */
+export function read(): CrearState {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fresh();
     const s = JSON.parse(raw) as Partial<CrearState>;
     if (s?.v !== 2) return fresh();
+    if (typeof s.savedAt === "number" && Date.now() - s.savedAt > LOCAL_TTL_MS) {
+      localStorage.removeItem(KEY);
+      return fresh();
+    }
+    // lo de antes de la caducidad no lleva fecha: cuenta desde hoy, y se apunta ya (si no, sin tocarlo, no caducaría)
+    if (typeof s.savedAt !== "number") localStorage.setItem(KEY, JSON.stringify({ ...s, savedAt: Date.now() }));
     const step = [1, 2, 3, 4, 5].includes(Number(s.step)) ? (Number(s.step) as Step) : 1;
-    return { v: 2, step, ficha: normalizeFicha(s.ficha), record: s.record?.plan?.pages?.length === 12 ? s.record : undefined, bookId: s.bookId, email: s.email, quickAsked: s.quickAsked === true || undefined, paid: (!!s.bookId && s.paid === true) || undefined };
+    return { v: 2, step, ficha: normalizeFicha(s.ficha), record: s.record?.plan?.pages?.length === 12 ? s.record : undefined, bookId: s.bookId, email: s.email, quickAsked: s.quickAsked === true || undefined, paid: (!!s.bookId && s.paid === true) || undefined, savedAt: typeof s.savedAt === "number" ? s.savedAt : undefined };
   } catch {
     return fresh();
   }
@@ -77,7 +91,7 @@ export function setCrear(next: CrearState | ((s: CrearState) => CrearState)) {
   const prev = getSnapshot();
   current = typeof next === "function" ? next(prev) : next;
   try {
-    localStorage.setItem(KEY, JSON.stringify(current));
+    localStorage.setItem(KEY, JSON.stringify({ ...current, savedAt: Date.now() }));
   } catch {
     // sin almacenamiento: el estado vive solo en memoria
   }
