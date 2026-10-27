@@ -24,9 +24,9 @@ import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
 import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
-import { cleanShipping } from "../print/shipping";
+import { cleanShipping, shippingSummary } from "../print/shipping";
 import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
-import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping } from "../print/types";
+import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping, type ShippingSummary } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
 
 type Env = Record<string, string | undefined>;
@@ -546,8 +546,25 @@ export async function prepareUpgrade(
   return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true };
 }
 
+/**
+ * La dirección entera de la tapa dura, solo cuando el padre la pide con un gesto: «Cambiar» (para no tener que escribirla
+ * otra vez ni perder el piso o el teléfono) y la confirmación antes de imprimir (para ver la calle que va a la imprenta).
+ * La vista, que se carga cada vez que se abre el enlace, lleva solo el resumen (I16; revisión 27 oct). Una vez en la
+ * imprenta ya no se da: no hay nada que cambiar.
+ */
+export async function shippingOf(store: GenStore, input: { bookId?: unknown }): Promise<{ ok: true; shipping: Shipping } | Fail> {
+  const loaded = await loadBook(store, input.bookId);
+  if (isFail(loaded)) return loaded;
+  const { book, d } = loaded;
+  const order = await store.getOrder(book.id);
+  if (!order || order.edition !== "hardcover") return fail(409, "not_hardcover");
+  if (order.printStatus && LOCKED_PRINT_STATUSES.includes(order.printStatus)) return lockedFail();
+  const shipping = order.shipping ?? d.shipping;
+  return shipping ? { ok: true, shipping } : fail(404, "no_shipping", "Falta la dirección de envío.");
+}
+
 /** Cambiar la dirección de la tapa dura ya pagada, mientras no haya salido hacia la imprenta. */
-export async function updateShipping(store: GenStore, input: { bookId?: unknown; shipping?: unknown }): Promise<{ ok: true; shipping: Shipping } | Fail> {
+export async function updateShipping(store: GenStore, input: { bookId?: unknown; shipping?: unknown }): Promise<{ ok: true; shipping: ShippingSummary } | Fail> {
   const loaded = await loadBook(store, input.bookId);
   if (isFail(loaded)) return loaded;
   const { book, d } = loaded;
@@ -558,7 +575,8 @@ export async function updateShipping(store: GenStore, input: { bookId?: unknown;
   if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
   await store.updateOrder(order.id, { shipping: s.shipping });
   await save(store, book, { ...d, shipping: s.shipping }, "hardcover");
-  return { ok: true, shipping: s.shipping };
+  // de vuelta, solo el resumen: lo mismo que enseña la vista (I16)
+  return { ok: true, shipping: shippingSummary(s.shipping) };
 }
 
 /* ------------------------------ pago con Stripe (webhook) ------------------------------ */
@@ -1151,7 +1169,8 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       order?.edition === "hardcover" && order.printStatus
         ? {
             status: order.printStatus,
-            shipping: order.shipping ?? d.shipping ?? null,
+            // ni la calle ni el teléfono: el enlace del libro se reenvía (I16)
+            shipping: order.shipping || d.shipping ? shippingSummary((order.shipping ?? d.shipping)!) : null,
             trackingUrl: order.trackingUrl,
             sentAt: order.sentAt,
             trackPath: order.sentAt ? `/seguimiento/${order.id}` : null,
