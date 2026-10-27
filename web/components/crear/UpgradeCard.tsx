@@ -61,8 +61,8 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
         <div className="grid gap-1">
           <h3 className="display text-[24px]">¿Lo quieres en tapa dura?</h3>
           <p className="text-ink-soft">
-            Pagas solo la diferencia, <strong className="text-ink">{price}</strong>. Te lo enviamos a casa (Península y Baleares) y no lo imprimimos hasta que nos lo digas. Puedes pedirlo
-            hasta el {dayMonth(offer.until)}.
+            Pagas solo la diferencia, <strong className="text-ink">{price}</strong>. Te lo enviamos a casa (Península y Baleares) y no lo imprimimos hasta que nos lo digas; desde entonces,
+            suele llegar en una o dos semanas. Puedes pedirlo hasta el {dayMonth(offer.until)}.
           </p>
         </div>
       </div>

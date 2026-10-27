@@ -186,9 +186,18 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
     await expect(page.getByTestId("book3d-step")).toHaveText("Portadilla");
   }
 
+  // cuándo llega, antes de pagar
+  await expect(page.getByTestId("paywall")).toContainText("Suele llegar en una o dos semanas desde que lo mandas a imprimir");
+  // una calle larga no se corta sin aviso: se cuenta y se dice qué hacer
+  await page.getByTestId("ship-line1").fill("Avenida de la Constitución, 21, portal B");
+  await expect(page.getByTestId("ship-line1")).toHaveValue("Avenida de la Constitución, 21, portal B");
+  await expect(page.getByTestId("ship-line1-count")).toHaveText("40/35");
+  await expect(page.getByTestId("ship-line1-long")).toContainText("Pasa el portal, el piso o la puerta a la línea de abajo");
+  await page.getByTestId("shipping-form").screenshot({ path: test.info().outputPath("direccion-larga.png") });
   // dirección: a Canarias todavía no
   await page.getByTestId("ship-name").fill("Ana García López");
   await page.getByTestId("ship-line1").fill("Calle Mayor 12");
+  await expect(page.getByTestId("ship-line1-long")).toHaveCount(0);
   await page.getByTestId("ship-line2").fill("3º B");
   await page.getByTestId("ship-postcode").fill("38001");
   await page.getByTestId("ship-city").fill("Santa Cruz");
