@@ -86,6 +86,11 @@ test("dirección: Península y Baleares, nombre con apellidos y los límites de 
   assert.equal((cleanShipping({ ...ADDRESS, postcode: "99001" }) as { field: string }).field, "postcode");
   assert.equal((cleanShipping({ ...ADDRESS, line1: "Avenida de la Constitución número 1234 esc. dcha" }) as { field: string }).field, "line1");
   assert.equal((cleanShipping({ ...ADDRESS, phone: "llámame" }) as { field: string }).field, "phone");
+  // demasiado larga: el servidor dice lo mismo que el formulario, no «Escribe la población» (revisión 27 oct)
+  const city = cleanShipping({ ...ADDRESS, city: "San Sebastián de los Reyes del Norte" });
+  assert.ok(!city.ok && city.field === "city" && city.message === "La imprenta admite 30 letras en esta línea. Abrevia el nombre de la población.", JSON.stringify(city));
+  assert.equal((cleanShipping({ ...ADDRESS, city: "M" }) as { message: string }).message, "Escribe la población.");
+  assert.match((cleanShipping({ ...ADDRESS, line1: "Avenida de la Constitución, 21, portal B" }) as { message: string }).message, /admite 35 letras en esta línea\. Pasa el portal/);
   assert.deepEqual(splitName("María José Fernández de la Vega Sanz"), { firstName: "María", lastName: "José Fernández de la Vega" });
 });
 

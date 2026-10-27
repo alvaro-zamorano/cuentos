@@ -193,6 +193,8 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   await expect(page.getByTestId("ship-line1")).toHaveValue("Avenida de la Constitución, 21, portal B");
   await expect(page.getByTestId("ship-line1-count")).toHaveText("40/35");
   await expect(page.getByTestId("ship-line1-long")).toContainText("Pasa el portal, el piso o la puerta a la línea de abajo");
+  // el aviso describe el campo, no forma parte de su nombre (revisión 27 oct)
+  await expect(page.getByRole("textbox", { name: "Calle y número", exact: true })).toHaveAccessibleDescription(/40\/35 La imprenta admite 35 letras en esta línea/);
   await page.getByTestId("shipping-form").screenshot({ path: test.info().outputPath("direccion-larga.png") });
   // dirección: a Canarias todavía no
   await page.getByTestId("ship-name").fill("Ana García López");
