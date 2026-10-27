@@ -502,3 +502,48 @@ test("personajes (25 oct): un libro ya enviado a la imprenta sin retratos no los
   assert.ok(v.ok);
   assert.equal(v.portraitsToRequest, false);
 });
+
+test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprenta da por fallido llegan a soporte", async () => {
+  const { store, bookId } = await paidHardcover();
+  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await paintPages(store, bookId);
+  const notices: string[] = [];
+  const notify = async (subject: string, text: string) => (notices.push(`${subject}|${text}`), { sent: true });
+  // a una imprenta de verdad van imágenes con archivo y URL
+  for (const j of await store.listJobs((await store.findBook({ publicId: bookId }))!.id)) if (j.status === "done") await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });
+  const signing = { ...store, signedUrl: async (p: string) => `https://files.example/${p}` };
+  const s = await startPrint(store, bookId, "gelato");
+  assert.ok(s.ok);
+  const broken = fakeDeps({ mode: "gelato", coverGeometry: async () => null, notify });
+  assert.ok(!(await completePrint(signing, s.orderId, broken.deps)).ok);
+  assert.equal(notices.length, 1);
+  assert.match(notices[0], /^Tapa dura que no sale hacia la imprenta: «Vera y la gran idea»\|El pedido .* ha fallado: sin_medidas_de_cubierta/);
+  assert.match(notices[0], new RegExp(`crear\\?b=${bookId}`));
+
+  // se reintenta, sale, y después la imprenta lo cancela
+  const again = await startPrint(store, bookId, "gelato");
+  assert.ok(again.ok);
+  const ok = fakeDeps({ mode: "gelato", notify });
+  assert.ok((await completePrint(signing, again.orderId, ok.deps)).ok);
+  ok.setGelato({ status: "canceled" });
+  assert.equal(await refreshPrint(store, (await store.getOrderById(again.orderId))!, ok.deps), "updated");
+  assert.equal(notices.length, 2);
+  assert.match(notices[1], /^La imprenta ha parado una tapa dura: «Vera y la gran idea»\|[^]*canceled[^]*ya no puede reenviarlo/);
+  assert.equal(await refreshPrint(store, (await store.getOrderById(again.orderId))!, ok.deps), "unchanged", "una vez");
+  assert.equal(notices.length, 2);
+});
+
+test("avisos (I12): un envío a la imprenta que se cortó a medias también avisa a soporte", async () => {
+  const { store, bookId } = await paidHardcover();
+  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await paintPages(store, bookId);
+  const notices: string[] = [];
+  const s = await startPrint(store, bookId, "gelato");
+  assert.ok(s.ok);
+  // la función se cortó: el pedido sigue en `sending` y han pasado 20 minutos
+  const later = new Date(Date.now() + 20 * 60_000);
+  const { deps } = fakeDeps({ mode: "gelato", now: () => later, notify: async (subject, text) => (notices.push(`${subject}|${text}`), { sent: true }) });
+  assert.equal((await printCron(store, deps)).unstuck, 1);
+  assert.equal(notices.length, 1);
+  assert.match(notices[0], /^Tapa dura que no sale hacia la imprenta[^]*interrumpido[^]*volver a pulsar/);
+});

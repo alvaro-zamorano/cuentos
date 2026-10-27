@@ -1,5 +1,6 @@
 import { publicOrigin } from "@/lib/book/background";
-import { notifyBookReady, pendingPageJobs, requestPages } from "@/lib/book/service";
+import { alertPaidFailures, notifyBookReady, pendingPageJobs, requestPages } from "@/lib/book/service";
+import { sendSupportNotice } from "@/lib/mail";
 import { readyMail } from "@/lib/book/readyMail";
 import { bad, paintLater, readJson, withContext } from "../_shared";
 
@@ -21,7 +22,11 @@ export async function POST(req: Request) {
       paintLater("pages", store, adapter, () => pendingPageJobs(store, r.bookId), {
         t0,
         maxDurationS: maxDuration,
-        then: () => notifyBookReady(store, r.bookId, (id) => `${origin}/crear?b=${id}`, readyMail),
+        then: async () => {
+          const link = (id: string) => `${origin}/crear?b=${id}`;
+          await notifyBookReady(store, r.bookId, link, readyMail);
+          await alertPaidFailures(store, r.bookId, sendSupportNotice, link);
+        },
       });
     }
     return r;

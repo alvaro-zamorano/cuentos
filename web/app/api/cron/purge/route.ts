@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { purgeExpired, supabasePurgeDb } from "@/lib/purge";
+import { sendSupportNotice } from "@/lib/mail";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { cronAuthorized } from "@/lib/print/server";
 
@@ -22,7 +23,10 @@ export async function GET(req: Request) {
     console.log(`[cron/purge] ${JSON.stringify(report)}`);
     return NextResponse.json({ ok: true, ...report }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
-    console.error("[cron/purge]", e instanceof Error ? e.message.slice(0, 200) : "error");
+    const msg = e instanceof Error ? e.message.slice(0, 200) : "error";
+    console.error("[cron/purge]", msg);
+    // el borrado a 30 días es una promesa de la política de privacidad: si falla, aviso a soporte (I12)
+    await sendSupportNotice("El borrado de 30 días ha fallado", `La pasada del cron de borrado ha fallado: ${msg}\n\nSe repite mañana. Si sigue fallando, míralo en Supabase (bucket y tablas cuentos_*) y en los logs de Vercel.`).catch(() => null);
     return NextResponse.json({ ok: false, error: "server" }, { status: 500 });
   }
 }
