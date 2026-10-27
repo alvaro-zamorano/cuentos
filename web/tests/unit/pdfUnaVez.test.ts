@@ -8,13 +8,14 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState, type GenStore } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { payDryRun, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
+import { pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
 import { bookPdf, pdfKey, type PdfDeps } from "../../lib/book/pdf";
 import { oneAtATime, QueueBusy } from "../../lib/pdf/queue";
 import { rateLimit } from "../../lib/rateLimit";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -26,7 +27,7 @@ async function paidBook(edition: "illustrated" | "hardcover" = "illustrated") {
   const start = await startBook(store, { email: "vera@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok);
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition, ...(edition === "hardcover" ? { shipping: { name: "Ana García", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid" } } : {}) })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition, ...(edition === "hardcover" ? { shipping: { name: "Ana García", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid" } } : {}) })).ok);
   assert.ok((await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM)).ok);
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, start.bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
   return { state, store, bookId: start.bookId };
@@ -196,7 +197,7 @@ test("I10: sin pagar o con páginas por pintar, no se pinta nada", async () => {
   const unpaid = await bookPdf(store, start.bookId, "full", c.deps);
   assert.ok(!unpaid.ok && unpaid.status === 402);
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition: "illustrated" })).ok);
   const missing = await bookPdf(store, start.bookId, "full", c.deps);
   assert.ok(!missing.ok && missing.status === 409 && missing.error === "pages_missing" && (missing.pages?.length ?? 0) > 0, JSON.stringify(missing));
   assert.equal(c.renders(), 0);

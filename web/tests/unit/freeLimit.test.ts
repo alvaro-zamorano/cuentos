@@ -6,11 +6,12 @@ import { dryRunAdapter } from "../../lib/generation/adapter";
 import { createClient } from "@supabase/supabase-js";
 import { memoryStore, newMemoryState, supabaseStore } from "../../lib/generation/store";
 import type { Database } from "../../lib/supabase/types";
-import { payDryRun, reviseSheet, startBook } from "../../lib/book/service";
+import { reviseSheet, startBook } from "../../lib/book/service";
 import { CLAIM_TTL_MS, FREE_BOOKS, freeLockKey, freeUse, normalizeEmail, passFreeGate } from "../../lib/book/freeLimit";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -67,7 +68,7 @@ test("comprar un libro renueva los gratis", async () => {
   assert.equal(((await start(store, "ana@example.com")) as { error: string }).error, "free_limit");
   // se paga con los personajes dibujados
   await store.updateJob(sheets[0], { status: "done", chosen: "dry-run/sheet.png" });
-  assert.ok((await payDryRun(store, { bookId: ids[0], edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: ids[0], edition: "illustrated" })).ok);
   const r = await start(store, "ana@example.com");
   assert.ok(r.ok, JSON.stringify(r));
   assert.equal(r.freeLeft, FREE_BOOKS - 1);

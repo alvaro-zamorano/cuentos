@@ -9,7 +9,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, choosePage, payDryRun, pendingPageJobs, prepareCheckout, recordStripePayment, requestPages, savePlan, shippingOf, startBook, updateShipping } from "../../lib/book/service";
+import { bookView, choosePage, pendingPageJobs, prepareCheckout, recordStripePayment, requestPages, savePlan, shippingOf, startBook, updateShipping } from "../../lib/book/service";
 import { completePrint, handlePrintWebhook, printCron, refreshPrint, startPrint, type PrintDeps } from "../../lib/book/print";
 import { advances, coverFromApi, estimatedCover, gelatoOrderBody, gelatoOrderType, gelatoPageCount, isLandscapeHardcover, landscapeSizeMm, mapGelatoStatus, pickLandscapeHardcover, printMode, type GelatoOrder } from "../../lib/print/gelato";
 import { cleanShipping, splitName } from "../../lib/print/shipping";
@@ -21,6 +21,7 @@ import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
 import { getStyle } from "../../lib/generation/styles";
+import { approveLast, payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -248,6 +249,7 @@ test("Stripe: la tapa dura va en los metadatos con su nombre y su descripción",
 
 test("pago: la tapa dura pide dirección y el pedido nace esperando a que el padre lo mande a imprimir", async () => {
   const { store, bookId } = await paidHardcover();
+  await approveLast(store, bookId);
   const sinDireccion = await prepareCheckout(store, { bookId, edition: "hardcover" });
   assert.ok(!sinDireccion.ok && sinDireccion.error === "shipping" && sinDireccion.field === "name");
   const canarias = await prepareCheckout(store, { bookId, edition: "hardcover", shipping: { ...ADDRESS, postcode: "38001" } });
@@ -282,7 +284,7 @@ test("pago: la tapa dura pide dirección y el pedido nace esperando a que el pad
 
 test("PDF solo: sin dirección y sin imprenta", async () => {
   const { store, bookId } = await paidHardcover();
-  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "illustrated" })).ok);
   const v = await bookView(store, bookId);
   assert.ok(v.ok && v.edition === "illustrated" && v.print === null);
   assert.equal((await startPrint(store, bookId, "dry-run") as { error: string }).error, "not_hardcover");
@@ -290,7 +292,7 @@ test("PDF solo: sin dirección y sin imprenta", async () => {
 
 test("mandar a imprimir: solo con las 12 páginas, una vez, y después el libro no se puede cambiar", async () => {
   const { store, bookId } = await paidHardcover();
-  assert.ok((await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
   assert.equal((await startPrint(store, bookId, "none") as { status: number }).status, 501, "sin imprenta aquí");
   assert.equal((await startPrint(store, bookId, "dry-run") as { error: string }).error, "pages_missing");
   await paintPages(store, bookId);
@@ -324,7 +326,7 @@ test("mandar a imprimir: solo con las 12 páginas, una vez, y después el libro 
 
 test("imprenta real (doble): pedido con el PDF, aviso, seguimiento y un solo email de envío", async () => {
   const { store, bookId } = await paidHardcover();
-  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS });
   await paintPages(store, bookId);
   const { deps, mails, orders, setGelato } = fakeDeps({ mode: "gelato" });
   const s = await startPrint(store, bookId, "gelato");
@@ -362,7 +364,7 @@ test("imprenta real (doble): pedido con el PDF, aviso, seguimiento y un solo ema
 
 test("imprenta real: sin producto o sin medidas de cubierta no se manda, y se puede reintentar", async () => {
   const { store, bookId } = await paidHardcover();
-  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS });
   await paintPages(store, bookId);
   const s = await startPrint(store, bookId, "gelato");
   assert.ok(s.ok);
@@ -378,7 +380,7 @@ test("imprenta real: sin producto o sin medidas de cubierta no se manda, y se pu
 
 test("cron: recordatorio a los 2 días (y no antes), y libera un envío atascado", async () => {
   const { store, bookId } = await paidHardcover();
-  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS });
   await paintPages(store, bookId);
   const now = Date.now();
   const at = (h: number) => () => new Date(now + h * 3_600_000);
@@ -425,7 +427,7 @@ test("personajes (25 oct): tras el pago, un retrato por personaje con la hoja co
   const before = await bookView(store, bookId);
   assert.ok(before.ok);
   assert.ok(before.jobs.every((j) => j.kind !== "portrait"), "nunca antes del pago");
-  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "illustrated" })).ok);
   await paintPages(store, bookId);
   const view = await bookView(store, bookId);
   assert.ok(view.ok);
@@ -483,7 +485,7 @@ test("personajes (25 oct): con tres retratos, la fila cabe dentro del margen de 
 
 test("personajes (25 oct): cambiar el texto del prompt en un despliegue no invalida los retratos ya pintados", async () => {
   const { store, bookId } = await paidHardcover();
-  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "illustrated" })).ok);
   await paintPages(store, bookId);
   const before = await bookView(store, bookId);
   assert.ok(before.ok && before.chosen.portraits.every((p) => p.job));
@@ -502,7 +504,7 @@ test("personajes (25 oct): cambiar el texto del prompt en un despliegue no inval
 
 test("personajes (25 oct): un libro ya enviado a la imprenta sin retratos no los pide", async () => {
   const { store, bookId } = await paidHardcover();
-  assert.ok((await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
   await paintPages(store, bookId);
   const b = (await store.findBook({ publicId: bookId }))!;
   // como un libro de antes del cambio: sin retratos
@@ -516,7 +518,7 @@ test("personajes (25 oct): un libro ya enviado a la imprenta sin retratos no los
 
 test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprenta da por fallido llegan a soporte", async () => {
   const { store, bookId } = await paidHardcover();
-  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS });
   await paintPages(store, bookId);
   const notices: string[] = [];
   const notify = async (subject: string, text: string) => (notices.push(`${subject}|${text}`), { sent: true });
@@ -546,7 +548,7 @@ test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprent
 
 test("avisos (I12): un envío a la imprenta que se cortó a medias también avisa a soporte", async () => {
   const { store, bookId } = await paidHardcover();
-  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS });
   await paintPages(store, bookId);
   const notices: string[] = [];
   const s = await startPrint(store, bookId, "gelato");

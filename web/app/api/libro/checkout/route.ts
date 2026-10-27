@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
-import { prepareCheckout, prepareUpgrade, rememberCheckoutShipping } from "@/lib/book/service";
+import { prepareCheckout, prepareUpgrade, rememberCheckout } from "@/lib/book/service";
 import type { Fail } from "@/lib/generation/service";
 import { printMode } from "@/lib/print/gelato";
 import { clientIp, envInt, rateLimit } from "@/lib/rateLimit";
@@ -31,9 +31,15 @@ export async function POST(req: Request) {
       console.error("[libro/checkout]", r.error);
       return { ok: false, status: 502, error: "stripe" } satisfies Fail;
     }
-    // la dirección con la que se abre esta sesión: el pedido llevará esa, aunque otra pestaña escriba otra (menores de la
-    // auditoría 26 oct). Si no se puede apuntar, el pedido usa la última escrita, como antes
-    if (info.shipping) await rememberCheckoutShipping(store, info.bookId, r.id, info.shipping).catch((e: unknown) => console.warn("[libro/checkout] dirección de la sesión sin apuntar", e instanceof Error ? e.message.slice(0, 120) : ""));
+    // con qué se abre esta sesión (la dirección y los personajes): el pedido y las páginas llevarán eso, aunque otra
+    // pestaña lo cambie (menores de la auditoría 26 oct). Si no se puede apuntar, no se manda a pagar: la sesión de
+    // Stripe caduca sola y el padre lo vuelve a intentar
+    try {
+      await rememberCheckout(store, info.bookId, r.id, { shipping: info.shipping, castJobId: "castJobId" in info ? info.castJobId : undefined });
+    } catch (e) {
+      console.error("[libro/checkout] sesión sin apuntar", e instanceof Error ? e.message.slice(0, 120) : "");
+      return { ok: false, status: 502, error: "server" } satisfies Fail;
+    }
     return { ok: true as const, url: r.url };
   });
 }

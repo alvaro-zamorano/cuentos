@@ -89,6 +89,12 @@ export interface BookDraftV2 {
    * abría (menores de la auditoría 26 oct). Se vacía al registrar el pago; el borrado diario quita las abandonadas.
    */
   checkoutShipping?: Record<string, Shipping>;
+  /**
+   * Los personajes aprobados con los que se abrió cada sesión de pago, por id de sesión (las últimas). Al pagar, esos
+   * quedan como aprobados: si entretanto se cambiaron en otra pestaña, las páginas salen con los que se vieron al pagar
+   * (revisión 27 oct). Se vacía al registrar el pago.
+   */
+  checkoutCast?: Record<string, string>;
   updatedAt: number;
 }
 
@@ -294,6 +300,7 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
     edition: prev?.edition,
     shipping: prev?.shipping,
     checkoutShipping: prev?.checkoutShipping,
+    checkoutCast: prev?.checkoutCast,
     updatedAt: Date.now(),
   };
   book = await store.saveBook({ publicId: book?.public_id, email, draft: d, edition: "illustrated" });
@@ -584,8 +591,10 @@ export interface CheckoutPrep {
   amountCents: number;
   /** Pasar a tapa dura un libro ya pagado en PDF: se cobra solo la diferencia. */
   upgrade?: boolean;
-  /** La dirección de la tapa dura con la que se abre este pago (`rememberCheckoutShipping`). */
+  /** La dirección de la tapa dura con la que se abre este pago (`rememberCheckout`). */
   shipping?: Shipping;
+  /** Los personajes aprobados que se pagan (`rememberCheckout`). La mejora no los lleva: las páginas ya están pintadas. */
+  castJobId?: string;
 }
 
 /**
@@ -604,12 +613,13 @@ export async function prepareCheckout(store: GenStore, input: { bookId?: unknown
   // (solo cuenta la última: una anterior que se quedó en cola sin pintar no puede bloquear el pago)
   const last = sheets[sheets.length - 1];
   if (last && drawing(last) && sheets.some((j) => j.status === "done")) return fail(409, "sheet_not_ready", "Espera a que terminen de dibujarse los personajes y vuelve a intentarlo.");
-  // sin personajes dibujados no se paga: las páginas no tendrían hoja de la que salir (menores de la auditoría 26 oct; la
-  // pantalla no lleva aquí, pero un enlace con `pagado=1` sí). Los que se pagan quedan fijados: los aprobados o, si el
-  // pago llega por otro camino sin aprobarlos, los últimos dibujados, que son los que se ven
+  // sin personajes dibujados y aprobados no se paga (menores de la auditoría 26 oct): la pantalla no deja llegar aquí sin
+  // aprobarlos, pero otra pestaña puede haberlos cambiado (cambiar los personajes quita la aprobación) o llegar un enlace
+  // con `pagado=1`. El paso 5 lleva entonces al 4
   const done = sheets.filter((j) => j.status === "done");
   if (done.length === 0) return fail(409, "cast_not_ready", "Antes de pagar tienen que estar dibujados los personajes.");
-  const cast = done.find((j) => j.id === d.approvedSheetJobId) ?? done[done.length - 1];
+  const cast = done.find((j) => j.id === d.approvedSheetJobId);
+  if (!cast) return fail(409, "cast_not_approved", "Antes de pagar, revisa y aprueba los personajes.");
   const edition = paidEdition(input.edition) ?? "illustrated";
   let shipping: Shipping | undefined;
   if (edition === "hardcover") {
@@ -617,32 +627,46 @@ export async function prepareCheckout(store: GenStore, input: { bookId?: unknown
     if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
     shipping = s.shipping;
   }
-  ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, edition, approvedSheetJobId: cast.id, ...(shipping ? { shipping } : {}) })));
-  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition, amountCents: PRICES[edition], ...(shipping ? { shipping } : {}) };
+  ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, edition, ...(shipping ? { shipping } : {}) })));
+  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition, amountCents: PRICES[edition], castJobId: cast.id, ...(shipping ? { shipping } : {}) };
 }
 
-/** Cuántas sesiones de pago abiertas guardan su dirección (dos pestañas, un reintento): las más recientes. */
-const CHECKOUT_SHIPPING_KEEP = 4;
+/** Cuántas sesiones de pago abiertas se recuerdan (dos pestañas, un reintento): las más recientes. */
+const CHECKOUT_KEEP = 4;
+
+/** Añade la sesión a un mapa por sesión, sin pasar de las `CHECKOUT_KEEP` más recientes. */
+function withSession<T>(map: Record<string, T> | undefined, sessionId: string, value: T): Record<string, T> {
+  return Object.fromEntries([...Object.entries(map ?? {}).filter(([id]) => id !== sessionId), [sessionId, value]].slice(-CHECKOUT_KEEP));
+}
 
 /**
- * Abierta la sesión de pago de una tapa dura (la ruta, con el id que da Stripe), apunta con qué dirección se abrió: el
- * pedido llevará esa cuando llegue el pago de esa sesión. Si falla, el pedido usa la última dirección escrita, como antes.
+ * Abierta la sesión de pago (la ruta, con el id que da Stripe), apunta con qué se abrió: la dirección de la tapa dura y
+ * los personajes aprobados. El pedido y las páginas llevarán esos cuando llegue el pago de esa sesión. Si no se puede
+ * apuntar, lanza: la ruta responde 502 y el padre lo vuelve a intentar (revisión 27 oct).
  */
-export async function rememberCheckoutShipping(store: GenStore, bookId: string, sessionId: string, shipping: Shipping): Promise<void> {
+export async function rememberCheckout(store: GenStore, bookId: string, sessionId: string, opened: { shipping?: Shipping; castJobId?: string }): Promise<void> {
+  if (!opened.shipping && !opened.castJobId) return;
   const loaded = await loadBook(store, bookId);
-  if (isFail(loaded)) return;
+  if (isFail(loaded)) throw new Error(`books: ${loaded.error}`);
   await mutate(store, loaded.book, (cur) => ({
     ...cur,
-    checkoutShipping: Object.fromEntries([...Object.entries(cur.checkoutShipping ?? {}).filter(([id]) => id !== sessionId), [sessionId, shipping]].slice(-CHECKOUT_SHIPPING_KEEP)),
+    ...(opened.shipping ? { checkoutShipping: withSession(cur.checkoutShipping, sessionId, opened.shipping) } : {}),
+    ...(opened.castJobId ? { checkoutCast: withSession(cur.checkoutCast, sessionId, opened.castJobId) } : {}),
   }));
 }
 
-/** Pagado: las direcciones de las sesiones abiertas ya no hacen falta (la buena va en el pedido). Si falla, las quita el borrado. */
-async function forgetCheckoutShipping(store: GenStore, book: BookRecord): Promise<void> {
+/**
+ * Pagado: los personajes de la sesión que se paga quedan como aprobados, y lo apuntado de las sesiones abiertas ya no hace
+ * falta (la dirección buena va en el pedido). Sin nada que cambiar, no escribe. Si falla, las direcciones las quita el
+ * borrado.
+ */
+async function settleCheckout(store: GenStore, book: BookRecord, sessionId: string | null | undefined): Promise<void> {
   await mutate(store, book, (cur) => {
-    if (!cur.checkoutShipping) return cur;
-    const next = { ...cur };
+    if (!cur.checkoutShipping && !cur.checkoutCast) return null;
+    const cast = sessionId ? cur.checkoutCast?.[sessionId] : undefined;
+    const next = { ...cur, ...(cast ? { approvedSheetJobId: cast } : {}) };
     delete next.checkoutShipping;
+    delete next.checkoutCast;
     return next;
   }).catch(() => null);
 }
@@ -825,7 +849,7 @@ async function recordCharge(
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
   await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, shippingFor(loaded.d, s.id)));
-  await forgetCheckoutShipping(store, loaded.book);
+  await settleCheckout(store, loaded.book, s.id);
   await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
   const mismatch = paymentMismatch(PRICES[edition], s);
   return { action: "paid", bookId: publicId, ...(mismatch ? { mismatch } : {}) };
@@ -850,7 +874,7 @@ async function recordUpgrade(
   const expected = upgradeCents(order.amountCents);
   const amount = typeof s.amount_total === "number" ? s.amount_total : (expected ?? 0);
   await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, shippingFor(d, s.id)));
-  await forgetCheckoutShipping(store, book);
+  await settleCheckout(store, book, null);
   // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
   // caducara al pedir la mejora
   await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());

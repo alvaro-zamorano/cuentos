@@ -81,6 +81,7 @@ export function StepBook({
   upgrading = false,
   onPlan,
   onPaid,
+  onCast,
 }: {
   bookId: string;
   confirming?: boolean;
@@ -88,6 +89,8 @@ export function StepBook({
   onPlan: (p: Plan) => void;
   /** El libro está pagado: el flujo cierra los pasos que repintarían (I2). */
   onPaid?: () => void;
+  /** Volver al paso 4: el pago pide los personajes aprobados y en otra pestaña se han cambiado. */
+  onCast?: () => void;
 }) {
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -358,7 +361,7 @@ export function StepBook({
       ) : (
         <>
           <LockedPages pages={plan.pages} onText={setText} />
-          {!busy && (payPending ? <PayPending contact={view.contact ?? null} offline={payOffline} /> : <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} />)}
+          {!busy && (payPending ? <PayPending contact={view.contact ?? null} offline={payOffline} /> : <Paywall bookId={bookId} name={name} payment={view.payment ?? "none"} print={view.printMode ?? "none"} onPaid={() => void paintPages()} onCast={onCast} />)}
         </>
       )}
 
@@ -473,9 +476,25 @@ function PayPending({ contact, offline }: { contact: string | null; offline: boo
   );
 }
 
-function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; name: string; payment: NonNullable<BookView["payment"]>; print: NonNullable<BookView["printMode"]>; onPaid: () => void }) {
+function Paywall({
+  bookId,
+  name,
+  payment,
+  print,
+  onPaid,
+  onCast,
+}: {
+  bookId: string;
+  name: string;
+  payment: NonNullable<BookView["payment"]>;
+  print: NonNullable<BookView["printMode"]>;
+  onPaid: () => void;
+  onCast?: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // el servidor pide los personajes aprobados (cast_not_approved) o dibujados (cast_not_ready): se lleva al paso 4
+  const [castFirst, setCastFirst] = useState(false);
   const [field, setField] = useState<string | null>(null);
   // la tapa dura solo si hay imprenta aquí (real o simulada en la preview)
   const [edition, setEdition] = useState<PaidEdition>(print !== "none" ? "hardcover" : "illustrated");
@@ -487,6 +506,7 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
   const failed = (json: { field?: string } & Parameters<typeof errorMessage>[0]) => {
     setBusy(false);
     setField(json?.field ?? null);
+    setCastFirst(json?.error === "cast_not_approved" || json?.error === "cast_not_ready");
     setErr(errorMessage(json));
   };
   // si algo lanza, el botón se suelta y se dice (I9); si va bien, el pago real navega a Stripe y el botón sigue ocupado
@@ -608,7 +628,16 @@ function Paywall({ bookId, name, payment, print, onPaid }: { bookId: string; nam
         </button>
       )}
       {payment === "none" && <p className="mt-6 text-sm text-moon-soft">El pago estará disponible muy pronto. Tu libro queda guardado 30 días en tu enlace.</p>}
-      {err && <p className="mt-3 rounded-xl bg-[#f6ded6] px-3 py-2 text-sm text-danger">{err}</p>}
+      {err && (
+        <div className="mt-3 rounded-xl bg-[#f6ded6] px-3 py-2 text-sm text-danger" role="alert">
+          <p>{err}</p>
+          {castFirst && onCast && (
+            <button type="button" className="mt-2 font-semibold underline underline-offset-2" onClick={onCast} data-testid="pay-cast">
+              Ver los personajes
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

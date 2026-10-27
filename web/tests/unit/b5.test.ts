@@ -9,12 +9,13 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll, publicOrigin } from "../../lib/book/background";
-import { bookView, prepareCheckout, notifyBookReady, payDryRun, pendingPageJobs, recordStripePayment, requestPages, startBook, PRICE_CENTS } from "../../lib/book/service";
+import { bookView, prepareCheckout, notifyBookReady, pendingPageJobs, recordStripePayment, requestPages, startBook, PRICE_CENTS } from "../../lib/book/service";
 import { checkoutBody, dryRunPaymentAllowed, eventModeAllowed, paymentMode, verifyWebhook, waiverAccepted, WAIVER_VERSION } from "../../lib/stripe";
 import { mailEnabled } from "../../lib/mail";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { approveLast, payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -127,6 +128,7 @@ test("webhook: el pedido se registra una vez; lo que no es un cobro se ignora", 
   // sin personajes dibujados no se paga (menores de la auditoría 26 oct)
   assert.equal(((await prepareCheckout(store, { bookId: start.bookId })) as { error: string }).error, "cast_not_ready");
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
+  await approveLast(store, start.bookId);
   assert.equal((await prepareCheckout(store, { bookId: start.bookId })).ok, true, "antes del pago se puede abrir el checkout");
 
   assert.deepEqual(await recordStripePayment(store, ev("checkout.session.completed", paid)), { action: "paid", bookId: start.bookId });
@@ -149,7 +151,7 @@ test("tras el pago: 12 páginas en segundo plano y el email de «listo» una sol
 
   // sin pagar: ni páginas ni email
   assert.equal(await notifyBookReady(store, start.bookId, link, send), false);
-  assert.ok(await payDryRun(store, { bookId: start.bookId }));
+  assert.ok(await payApproved(store, { bookId: start.bookId }));
   const r = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(r.ok && r.created === 12);
   const ids = await pendingPageJobs(store, start.bookId);
@@ -175,7 +177,7 @@ test("tras el pago: 12 páginas en segundo plano y el email de «listo» una sol
 test("el email que falla no se da por mandado", async () => {
   const { store, start } = await newBook();
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
-  await payDryRun(store, { bookId: start.bookId });
+  await payApproved(store, { bookId: start.bookId });
   await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, start.bookId), { deadline: Date.now() + 30_000 });
   const link = (id: string) => id;

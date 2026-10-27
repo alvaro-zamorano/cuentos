@@ -14,7 +14,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, payDryRun, pendingPageJobs, requestPages, startBook, unsignedImages } from "../../lib/book/service";
+import { bookView, pendingPageJobs, requestPages, startBook, unsignedImages } from "../../lib/book/service";
 import { completePrint, startPrint, type PrintDeps } from "../../lib/book/print";
 import { estimatedCover } from "../../lib/print/gelato";
 import { pdfBookHtml, type PrintBookInput } from "../../lib/pdf/printHtml";
@@ -22,6 +22,7 @@ import { readyToPrint } from "../../lib/pdf/ready";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -33,7 +34,7 @@ async function paidHardcoverPainted() {
   const start = await startBook(store, { email: "vera@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok);
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "hardcover", shipping: ADDRESS })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition: "hardcover", shipping: ADDRESS })).ok);
   assert.ok((await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM)).ok);
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, start.bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
   return { state, store, bookId: start.bookId };

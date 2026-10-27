@@ -4,12 +4,13 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { runJob, v2Of } from "../../lib/generation/service";
-import { approveSheet, bookView, payDryRun, reportPage, requestPages, reviseSheet, savePlan, startBook, MAX_SHEETS } from "../../lib/book/service";
+import { approveSheet, bookView, reportPage, requestPages, reviseSheet, savePlan, startBook, MAX_SHEETS } from "../../lib/book/service";
 import { coverPrompt, pagePrompt, sheetPrompt, castArt } from "../../lib/plan/art";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
 import { getStyle } from "../../lib/generation/styles";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -71,7 +72,7 @@ test("flujo nuevo en memoria: hoja + portada tras el email, cambios con palabras
   // sin pagar no hay páginas
   const unpaid = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.equal(!unpaid.ok && unpaid.error, "not_paid");
-  assert.ok((await payDryRun(store, { bookId: start.bookId })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId })).ok);
   const pages = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(pages.ok && pages.created === 12);
   if (!pages.ok) return;
