@@ -1,6 +1,6 @@
 -- 27 oct (auditoría 26 oct, I7): el límite de cuentos gratis por buzón, con una consulta pequeña y sin carreras.
--- La aplica Álvaro en Supabase ANTES de desplegar el código que la usa (web/lib/book/freeLimit.ts). Solo añade: el
--- código de ahora no la nota.
+-- Aplicada en Supabase el 27 oct como `cuentos_13_email_norm` (versión 20261027131519, visto bueno de Álvaro), antes de
+-- desplegar el código que la usa (web/lib/book/freeLimit.ts). Solo añade: el código de antes no la nota.
 --
 -- 1. cuentos_books.email_norm: el email escrito como lo cuenta el límite (minúsculas, sin `+algo`, sin los puntos de
 --    Gmail, googlemail.com = gmail.com). Columna generada: se rellena sola en las filas que ya hay y en las nuevas,

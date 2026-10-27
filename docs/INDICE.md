@@ -39,7 +39,7 @@ Estado: vigente · histórico (sigue siendo cierto, pero de una etapa anterior) 
 - `README.md` — portada del repo; apunta aquí
 - `CLAUDE.md` — instrucciones para hilos de Claude Code en el repo · vigente
 - `docs/supabase.md` — proyecto de Supabase, tablas `cuentos_*`, bucket, convención · vigente
-- `supabase/migrations/*.sql` — esquema de la base, de la 0001 a la 0013 (la 0013, por aplicar); reconstruyen la base real (lo comprueba `web/tests/unit/migraciones.test.ts`) · vigente
+- `supabase/migrations/*.sql` — esquema de la base, de la 0001 a la 0013, todas aplicadas; reconstruyen la base real (lo comprueba `web/tests/unit/migraciones.test.ts`) · vigente
 - `docs/GENERATION.md`, `docs/STORY-ENGINE.md`, `docs/PDF.md` — imágenes, motor de historia y PDF del flujo antiguo (Clásico) · histórico
 - `docs/AGENT-BRIEF*.md`, `docs/hermes-mision-assets.md` — encargos a agentes del 8–9 oct · histórico
 

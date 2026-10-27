@@ -4,7 +4,7 @@ Proyecto compartido con otros productos de Álvaro (`https://bcicjjkgjgajxbrwmey
 
 ## Migraciones
 
-Aplicadas en la base real (vía MCP `apply_migration`, con el visto bueno de Álvaro) todas menos la 0013, que está por aplicar. Aplicadas en orden sobre una base vacía, la reconstruyen igual: `web/tests/unit/migraciones.test.ts` las pasa por un Postgres en memoria (PGlite) y compara columnas, restricciones, índices, triggers y RLS con `web/tests/unit/fixtures/esquema-cuentos.json`, leído de la base real el 27 oct. Una migración nueva se añade aquí con el número siguiente, se aplica en Supabase y se actualizan ese archivo y `web/lib/supabase/types.ts`. Hasta el 27 oct, cuatro vivían sueltas en `docs/sql/` y `cuentos_stories` no estaba en el repo (auditoría 26 oct, I14).
+Aplicadas en la base real (vía MCP `apply_migration`, con el visto bueno de Álvaro) todas, la 0013 el 27 oct. Aplicadas en orden sobre una base vacía, la reconstruyen igual: `web/tests/unit/migraciones.test.ts` las pasa por un Postgres en memoria (PGlite) y compara columnas, restricciones, índices, triggers y RLS con `web/tests/unit/fixtures/esquema-cuentos.json`, leído de la base real el 27 oct. Una migración nueva se añade aquí con el número siguiente, se aplica en Supabase y se actualizan ese archivo y `web/lib/supabase/types.ts`. Hasta el 27 oct, cuatro vivían sueltas en `docs/sql/` y `cuentos_stories` no estaba en el repo (auditoría 26 oct, I14).
 
 | Archivo | Nombre en Supabase | Aplicada | Qué hace |
 |---|---|---|---|
@@ -20,9 +20,9 @@ Aplicadas en la base real (vía MCP `apply_migration`, con el visto bueno de Ál
 | `0010_cuentos_10_jobs_b3.sql` | `cuentos_generation_jobs_b3` | 11 oct | Trabajos `sample`, `page` y `cover`; estado `failed`; `paid`, `storage_path`, `variant` y `job_key` único por libro |
 | `0011_cuentos_11_jobs_portrait.sql` | `cuentos_generation_jobs_portrait` | 25 oct | Trabajos `portrait` |
 | `0012_cuentos_12_variant_hasta_4.sql` | `cuentos_8_variant_hasta_4` | 25 oct | Hasta 4 versiones por página |
-| `0013_cuentos_13_email_norm.sql` | — | **Pendiente (Álvaro)** | Límite de cuentos gratis (I7): `cuentos_books.email_norm` (generada, con índice), `free_claimed_at`, la tabla `cuentos_locks` y la función `cuentos_email_norm` |
+| `0013_cuentos_13_email_norm.sql` | `cuentos_13_email_norm` | 27 oct | Límite de cuentos gratis (I7): `cuentos_books.email_norm` (generada, con índice), `free_claimed_at`, la tabla `cuentos_locks` y la función `cuentos_email_norm` |
 
-**La 0013 se aplica antes de desplegar el código que la usa** (también la preview: la base es la misma). Solo añade, así que el código de antes no la nota. Al aplicarla, volver a leer el esquema de la base real y comprobar que coincide con `esquema-cuentos.json`, que ya la incluye.
+La 0013 se aplicó antes de desplegar el código que la usa (también la preview: la base es la misma). Solo añade, así que el código de antes no la nota. Después de aplicarla, el esquema leído de la base real coincide con `esquema-cuentos.json` (columnas, restricciones, funciones, índices, políticas, RLS y triggers) y marcó como empezados los 22 libros que ya tenían hoja.
 
 Las 0008 a 0010 se aplicaron antes que la 0005 (el orden de los números es el del repo, no el de la base). No dependen de ella, así que en una base nueva el resultado es el mismo.
 
