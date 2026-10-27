@@ -1,4 +1,4 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
 import { chargeNotice, isChargeEvent, recordChargeEvent, type ChargeEvent } from "@/lib/book/refunds";
 import { mailReceipt, notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
@@ -14,7 +14,8 @@ import { paintLater } from "../../libro/_shared";
  * `checkout.session.completed` (idempotente) y, después de responder a Stripe, encola y pinta las 12 páginas y manda el
  * email de «tu libro está listo». Si el padre sigue en la página, su navegador también pinta los mismos jobs.
  * Si la base falla al leer o al escribir, 500: Stripe reintenta. Un cobro que no se puede registrar, doble o con un importe
- * que no cuadra manda un aviso a soporte (`paymentNotice`). Al registrar el pago manda el recibo (I28).
+ * que no cuadra manda un aviso a soporte (`paymentNotice`). Al registrar el pago manda el recibo (I28) antes de responder:
+ * si no sale por un fallo pasajero, 500 para que Stripe reintente.
  * Devoluciones y disputas (`charge.refunded`, `charge.dispute.*`, I5): marcan el pedido, paran la tapa dura y avisan.
  */
 export const maxDuration = 300;
@@ -54,15 +55,6 @@ export async function POST(req: Request) {
       console.error(`[stripe] ${notice.subject}: ${notice.text.split("\n")[0]} · sesión ${event.data.object.id ?? "?"}`);
       await sendSupportNotice(notice.subject, notice.text).catch(() => null);
     }
-    // el recibo, después de responder a Stripe (una vez por sesión, también si Stripe reintenta)
-    if (r.action === "paid" || r.action === "upgraded" || r.action === "duplicate") {
-      const t = titular();
-      after(() =>
-        mailReceipt(store, r, event, { send: sendOrderConfirmed, link, conditionsLink: `${origin}/condiciones`, seller: holderLine(t), contact: t.email ?? null }).catch((e) =>
-          console.warn(`[stripe] recibo sin enviar: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`),
-        ),
-      );
-    }
     // también con «duplicate»: si Stripe reintenta porque la vez anterior falló después de guardar el pedido, las páginas
     // no se habían pedido (revisión 26 oct). Pedirlas otra vez no repite nada
     if (r.action === "paid" || r.action === "duplicate") {
@@ -77,6 +69,25 @@ export async function POST(req: Request) {
         },
         { t0, maxDurationS: maxDuration, then: () => notifyBookReady(store, r.bookId, (id) => `${origin}/crear?b=${id}`, readyMail) },
       );
+    }
+    // el recibo, antes de responder (revisión 27 oct): si falla por algo pasajero, 500 y Stripe reintenta el evento; el
+    // pedido ya está y no se repite (`duplicate`), y el recibo sale una sola vez por sesión
+    if (r.action === "paid" || r.action === "upgraded" || r.action === "duplicate") {
+      const t = titular();
+      const receipt = await mailReceipt(store, r, event, { send: sendOrderConfirmed, link, conditionsLink: `${origin}/condiciones`, seller: holderLine(t), contact: t.email ?? null }).catch(
+        () => ({ status: "retry" }) as const,
+      );
+      if (receipt.status === "retry") {
+        console.warn("[stripe] recibo sin enviar: Stripe reintentará");
+        return NextResponse.json({ ok: false, error: "receipt" }, { status: 500 });
+      }
+      if (receipt.status === "rejected") {
+        console.error(`[stripe] recibo rechazado (${receipt.reason})`);
+        await sendSupportNotice(
+          "Recibo sin enviar",
+          `No se ha podido mandar el recibo de compra a ${receipt.to}: el servicio de correo lo rechaza (${receipt.reason}). Revisa la dirección y mándalo a mano.\n\nLibro: ${link(r.bookId)}`,
+        ).catch(() => null);
+      }
     }
     return NextResponse.json({ received: true });
   } catch (e) {

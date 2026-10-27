@@ -29,8 +29,19 @@ export type PrintStatus = "awaiting_approval" | "sending" | "sent" | "in_product
 
 export const OPEN_PRINT_STATUSES: PrintStatus[] = ["awaiting_approval", "sending", "sent", "in_production", "shipped"];
 
-/** Ya en la imprenta: el libro no admite cambios. */
-export const LOCKED_PRINT_STATUSES: PrintStatus[] = ["sending", "sent", "in_production", "shipped", "delivered", "returned"];
+/**
+ * Ya en la imprenta, o parada por una devolución o una disputa (`canceled`, revisión 27 oct): el libro no admite cambios.
+ * Durante una disputa no se piden versiones nuevas.
+ */
+export const LOCKED_PRINT_STATUSES: PrintStatus[] = ["sending", "sent", "in_production", "shipped", "delivered", "returned", "canceled"];
+
+/**
+ * Marca (print_error) de la tapa dura parada por una disputa de Stripe (I5): al ganarla se sabe que la paramos nosotros, y
+ * mientras dura el libro se conserva (una disputa tarda de 60 a 75 días).
+ */
+export const DISPUTE_HOLD = "disputa abierta";
+/** Marca de la tapa dura cancelada porque se devolvió el cobro (I5). */
+export const REFUND_HOLD = "devuelto";
 
 /** Los hitos que se fechan en la página de seguimiento. */
 export type PrintStep = "sent" | "in_production" | "shipped" | "delivered";

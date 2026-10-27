@@ -8,9 +8,13 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, mailReceipt, recordStripePayment, startBook, type PaidEvent } from "../../lib/book/service";
+import { bookView, mailReceipt, payDryRun, pendingPageJobs, recordStripePayment, requestPages, startBook, type PaidEvent } from "../../lib/book/service";
 import { chargeNotice, DISPUTE_HOLD, recordChargeEvent, type ChargeEvent } from "../../lib/book/refunds";
-import { startPrint } from "../../lib/book/print";
+import { completePrint, printCron, startPrint, type PrintDeps } from "../../lib/book/print";
+import { supabasePurgeDb } from "../../lib/purge";
+import { estimatedCover } from "../../lib/print/gelato";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../../lib/supabase/types";
 import { receiptLines, type Receipt } from "../../lib/mail";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -100,7 +104,7 @@ test("devolución de una tapa dura que ya está en la imprenta: el aviso pide pa
   const ev = refund({ amount: 3990, amount_refunded: 3990 });
   const r = await recordChargeEvent(store, ev, stripe);
   assert.ok(r.action === "refunded" && r.print === "at_printer");
-  assert.match(chargeNotice(r, ev, link)!.text, /Cancélala en Gelato/);
+  assert.match(chargeNotice(r, ev, link)!.text, /Compruébalo en Gelato y cancélala/);
 });
 
 test("disputa: la tapa dura que no ha salido se para con plazo para responder; ganada, vuelve a esperar al padre", async () => {
@@ -152,6 +156,102 @@ test("cada entorno solo toca sus pedidos: la preview no marca un cobro real", as
   assert.deepEqual(r, { action: "ignored", reason: "otro entorno" });
 });
 
+/** PDF pagado y después la mejora a tapa dura: dos pedidos del mismo libro (pi_1 → cs_test_1, pi_2 → cs_up). */
+async function upgradedBook() {
+  const base = await paidBook();
+  (base.state.books.get(base.bookId)!.raw as { shipping?: unknown }).shipping = SHIPPING;
+  const up: PaidEvent = {
+    type: "checkout.session.completed",
+    data: { object: { id: "cs_up", payment_status: "paid", amount_total: 2500, currency: "eur", metadata: { bookId: base.bookId, upgrade: "1", edition: "hardcover" } } },
+  };
+  const r = await recordStripePayment(base.store, up, {});
+  assert.equal(r.action, "upgraded", JSON.stringify(r));
+  const both = { sessionOf: async (pi: string) => ({ id: pi === "pi_1" ? "cs_test_1" : pi === "pi_2" ? "cs_up" : null }) };
+  return { ...base, both, hardcover: (await base.store.getOrderBySession("cs_up"))! };
+}
+
+test("mejora a tapa dura: devuelto el PDF, la tapa dura de la mejora también se para y el aviso lo cuenta bien (revisión 27 oct)", async () => {
+  const { store, bookId, both, hardcover } = await upgradedBook();
+  assert.equal(hardcover.printStatus, "awaiting_approval");
+  const ev = refund();
+  const r = await recordChargeEvent(store, ev, both);
+  assert.ok(r.action === "refunded" && r.linked?.print === "held" && r.stillPaid, JSON.stringify(r));
+  assert.equal((await store.getOrderById(hardcover.id))!.printStatus, "canceled");
+  assert.ok(!(await startPrint(store, bookId, "dry-run")).ok, "la tapa dura no sale habiendo cobrado solo la diferencia");
+  const text = chargeNotice(r, ev, link)!.text;
+  assert.doesNotMatch(text, /ya no se descarga/);
+  assert.match(text, /la mejora a tapa dura \(pedido .*25,00 €\), que sigue pagada\. Su tapa dura no había salido y queda parada/);
+});
+
+test("mejora a tapa dura: devuelta la diferencia, la tapa dura se cancela y el PDF se sigue descargando", async () => {
+  const { store, bookId, both, hardcover } = await upgradedBook();
+  const ev = refund({ payment_intent: "pi_2", amount: 2500, amount_refunded: 2500 });
+  const r = await recordChargeEvent(store, ev, both);
+  assert.ok(r.action === "refunded" && r.print === "held" && r.stillPaid && r.linked?.edition === "illustrated", JSON.stringify(r));
+  assert.equal((await store.getOrderById(hardcover.id))!.status, "refunded");
+  const v = await bookView(store, bookId);
+  assert.ok(v.ok && v.paid && v.edition === "illustrated");
+  assert.match(chargeNotice(r, ev, link)!.text, /El libro se sigue descargando: el PDF está pagado/);
+});
+
+test("mejora a tapa dura: una disputa del cobro del PDF para la tapa dura; ganada, vuelve a esperar al padre", async () => {
+  const { store, both, hardcover } = await upgradedBook();
+  const opened = dispute("charge.dispute.created", { amount: 1490 });
+  const r = await recordChargeEvent(store, opened, both);
+  assert.ok(r.action === "disputed" && r.print === "none" && r.linked?.print === "held", JSON.stringify(r));
+  assert.equal((await store.getOrderById(hardcover.id))!.printError, DISPUTE_HOLD);
+  const won = await recordChargeEvent(store, dispute("charge.dispute.closed", { status: "won" }), both);
+  assert.ok(won.action === "dispute_won" && won.linked?.print === "reopened", JSON.stringify(won));
+  assert.equal((await store.getOrderById(hardcover.id))!.printStatus, "awaiting_approval");
+  assert.match(chargeNotice(won, opened, link)!.text, /La tapa dura de la mejora \(pedido .*\) vuelve a esperar/);
+});
+
+test("consulta cerrada después de devolver el cobro: no reabre la tapa dura ni dice «a favor» sin más", async () => {
+  const { store } = await paidBook("hardcover");
+  await recordChargeEvent(store, dispute("charge.dispute.created", { status: "warning_needs_response" }), stripe);
+  await recordChargeEvent(store, refund({ amount: 3990, amount_refunded: 3990 }), stripe);
+  const ev = dispute("charge.dispute.closed", { status: "warning_closed" });
+  const r = await recordChargeEvent(store, ev, stripe);
+  assert.ok(r.action === "dispute_won" && r.print === "already_refunded", JSON.stringify(r));
+  const order = (await store.getOrderBySession("cs_test_1"))!;
+  assert.equal(order.status, "refunded");
+  assert.equal(order.printStatus, "canceled");
+  assert.match(chargeNotice(r, ev, link)!.text, /ya se había devuelto/);
+  // un estado que Stripe no manda al cerrar no se toma como ganada
+  assert.equal((await recordChargeEvent(store, dispute("charge.dispute.closed", { status: "under_review" }), stripe)).action, "ignored");
+});
+
+test("devolver un cobro sin pedido (el cobro doble que devuelve soporte) no manda aviso", async () => {
+  const { store } = await paidBook();
+  const r = await recordChargeEvent(store, refund({ payment_intent: "pi_doble" }), { sessionOf: async () => ({ id: "cs_doble" }) });
+  assert.equal(r.action, "ignored");
+  assert.equal(chargeNotice(r, refund(), link), null);
+  // una disputa sin pedido sí: hay que responderla
+  const d = await recordChargeEvent(store, dispute("charge.dispute.created", { payment_intent: "pi_doble" }), { sessionOf: async () => ({ id: "cs_doble" }) });
+  assert.equal(d.action, "unmatched");
+});
+
+test("devuelto el cobro, las ilustraciones de pago dejan de verse; la hoja de personajes, que es gratis, sí", async () => {
+  const { store, bookId } = await paidBook();
+  const { requestPages } = await import("../../lib/book/service");
+  assert.ok((await requestPages(store, { bookId }, dryRunAdapter, { dryRunPayment: false })).ok);
+  const all = await store.listJobs((await store.findBook({ publicId: bookId }))!.id);
+  const pages = all.filter((j) => j.kind === "page");
+  await paintAll(store, dryRunAdapter, pages.map((j) => j.id), { concurrency: 2, deadline: Date.now() + 30_000 });
+  // dry-run no guarda archivos ni firma: se les da uno y una firma de mentira
+  for (const j of all) await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });
+  const signing = { ...store, signedUrl: async (path: string) => `signed:${path}` };
+  const before = await bookView(signing, bookId);
+  const donePages = before.ok ? before.jobs.filter((j) => j.kind === "page" && j.status === "done") : [];
+  assert.equal(donePages.length, 12);
+  assert.ok(donePages.every((j) => j.url));
+  await recordChargeEvent(store, refund(), stripe);
+  const after = await bookView(signing, bookId);
+  assert.ok(after.ok && !after.paid);
+  assert.ok(after.jobs.filter((j) => j.kind === "page").every((j) => j.url === null), "sin pago no se firman las páginas");
+  assert.ok(after.jobs.some((j) => j.kind === "sheet" && j.url), "la hoja es gratis");
+});
+
 test("recibo (I28): edición, total con IVA, renuncia con su fecha, condiciones y quién vende; una vez por sesión", async () => {
   const { store, bookId, ev, r } = await paidBook("hardcover");
   const sent: { to: string; receipt: Receipt }[] = [];
@@ -162,7 +262,7 @@ test("recibo (I28): edición, total con IVA, renuncia con su fecha, condiciones 
     seller: "Érase su vez",
     contact: "hola@erasesuvez.com",
   };
-  assert.equal(await mailReceipt(store, r, ev, deps), true);
+  assert.deepEqual(await mailReceipt(store, r, ev, deps), { status: "sent" });
   assert.equal(sent[0].to, "pago@example.com", "al email con el que se pagó");
   const { facts, notes } = receiptLines(sent[0].receipt);
   const f = Object.fromEntries(facts);
@@ -176,21 +276,31 @@ test("recibo (I28): edición, total con IVA, renuncia con su fecha, condiciones 
   // Stripe reintenta: «duplicate», pero el recibo ya salió
   const again = await recordStripePayment(store, ev);
   assert.equal(again.action, "duplicate");
-  assert.equal(await mailReceipt(store, again, ev, deps), false);
+  assert.deepEqual(await mailReceipt(store, again, ev, deps), { status: "skipped" });
   assert.equal(sent.length, 1);
   void bookId;
 });
 
-test("recibo: si el correo falla, se manda cuando Stripe reintenta; un pedido devuelto no lleva recibo", async () => {
+test("recibo: un fallo pasajero pide reintento (el webhook responde 500) y sale cuando Stripe reintenta; un pedido devuelto no lleva recibo", async () => {
   const { store, ev, r } = await paidBook();
-  let ok = false;
-  const deps = { send: async () => ({ sent: ok }), link, conditionsLink: "c", seller: "Érase su vez", contact: null };
-  assert.equal(await mailReceipt(store, r, ev, deps), false);
-  ok = true;
-  assert.equal(await mailReceipt(store, { action: "duplicate", bookId: r.action === "paid" ? r.bookId : "" }, ev, deps), true);
+  let answer: { sent: boolean; reason?: string } = { sent: false, reason: "resend_503" };
+  const deps = { send: async () => answer, link, conditionsLink: "c", seller: "Érase su vez", contact: null };
+  assert.deepEqual(await mailReceipt(store, r, ev, deps), { status: "retry" });
+  answer = { sent: false, reason: "red" };
+  assert.deepEqual(await mailReceipt(store, r, ev, deps), { status: "retry" });
+  answer = { sent: true };
+  assert.deepEqual(await mailReceipt(store, { action: "duplicate", bookId: r.action === "paid" ? r.bookId : "" }, ev, deps), { status: "sent" });
   const other = await paidBook();
   await recordChargeEvent(other.store, refund(), stripe);
-  assert.equal(await mailReceipt(other.store, other.r, other.ev, deps), false);
+  assert.deepEqual(await mailReceipt(other.store, other.r, other.ev, deps), { status: "skipped" });
+});
+
+test("recibo: una dirección que el correo rechaza no se reintenta (se avisa); sin correo configurado no pasa nada", async () => {
+  const { store, ev, r } = await paidBook();
+  const deps = (answer: { sent: boolean; reason?: string }) => ({ send: async () => answer, link, conditionsLink: "c", seller: "Érase su vez", contact: null });
+  assert.deepEqual(await mailReceipt(store, r, ev, deps({ sent: false, reason: "resend_422" })), { status: "rejected", to: "pago@example.com", reason: "resend_422" });
+  assert.deepEqual(await mailReceipt(store, r, ev, deps({ sent: false, reason: "resend_429" })), { status: "retry" });
+  assert.deepEqual(await mailReceipt(store, r, ev, deps({ sent: false, reason: "sin_configurar" })), { status: "skipped" });
 });
 
 test("recibo del PDF sin renuncia en los metadatos: sin esa línea y sin envío", async () => {
@@ -211,4 +321,77 @@ test("recibo del PDF sin renuncia en los metadatos: sin esa línea y sin envío"
   assert.equal(f["Envío a"], undefined);
   assert.ok(!lines.notes.some((n) => /desistir/.test(n)));
   assert.equal(lines.notes.at(-1), "Vende: Érase su vez.");
+});
+
+/** Supabase de mentira para el borrado: devuelve estas filas a cualquier consulta. */
+function fakeClient(rows: Record<string, unknown>[]) {
+  const q: Record<string, unknown> = {};
+  for (const m of ["select", "eq", "in", "order", "limit"]) q[m] = () => q;
+  q.then = (ok: (x: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(ok);
+  return { from: () => q } as unknown as SupabaseClient<Database>;
+}
+
+function printDeps(over: Partial<PrintDeps> = {}): PrintDeps {
+  return {
+    mode: "dry-run",
+    orderType: "draft",
+    pageCount: 30,
+    resolveProductUid: async () => "photobooks-hardcover_x",
+    productSize: async () => ({ trimWidth: 280, trimHeight: 210, bleed: 4 }),
+    coverGeometry: async () => estimatedCover(),
+    estimatedCover,
+    render: async () => new Uint8Array([37, 80, 68, 70]),
+    createOrder: async () => ({ id: "gel-1", status: "created", orderReferenceId: null, trackingUrl: null, trackingCode: null, method: null, etaFrom: null, etaTo: null }),
+    getOrder: async () => null,
+    mail: { sentToPrint: async () => ({ sent: true }), shipped: async () => ({ sent: true }), reminder: async () => ({ sent: true }) },
+    link,
+    trackLink: (id) => `https://www.erasesuvez.com/seguimiento/${id}`,
+    ...over,
+  };
+}
+
+test("disputa abierta: el libro no se borra al caducar y el cron lo alarga (una disputa dura de 60 a 75 días)", async () => {
+  const held = { stripe_session_id: "cs_test_1", print_status: "canceled", print_error: DISPUTE_HOLD };
+  assert.equal(await supabasePurgeDb(fakeClient([held]), {}).printPending!("b"), true);
+  assert.equal(await supabasePurgeDb(fakeClient([{ ...held, print_error: "devuelto" }]), {}).printPending!("b"), false, "cancelada por otra cosa, no");
+
+  const { state, store, bookId } = await paidBook("hardcover");
+  await recordChargeEvent(store, dispute("charge.dispute.created"), stripe);
+  state.books.get(bookId)!.expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+  assert.equal((await printCron(store, printDeps())).kept, 1);
+  assert.ok(Date.parse(state.books.get(bookId)!.expiresAt!) - Date.now() > 20 * 24 * 3600 * 1000);
+});
+
+test("durante la disputa no se piden versiones nuevas de las páginas", async () => {
+  const { store, bookId } = await paidBook("hardcover");
+  await recordChargeEvent(store, dispute("charge.dispute.created"), stripe);
+  const r = await requestPages(store, { bookId, page: 1 }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
+  assert.equal((r as { error?: string }).error, "printed");
+});
+
+test("devuelto mientras se maquetaba para la imprenta: no se crea el pedido en Gelato", async () => {
+  const state = newMemoryState();
+  const store = memoryStore(state);
+  const start = await startBook(store, { email: "vera@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
+  assert.ok(start.ok);
+  await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
+  await payDryRun(store, { bookId: start.bookId, edition: "hardcover", shipping: SHIPPING });
+  assert.ok((await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM)).ok);
+  await paintAll(store, dryRunAdapter, await pendingPageJobs(store, start.bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
+  const s = await startPrint(store, start.bookId, "gelato", {});
+  assert.ok(s.ok, JSON.stringify(s));
+  const created: string[] = [];
+  // la devolución llega mientras se maqueta el PDF
+  const deps = printDeps({
+    mode: "gelato",
+    render: async () => {
+      await store.updateOrder(s.orderId, { status: "refunded" });
+      return new Uint8Array([37, 80, 68, 70]);
+    },
+    createOrder: async (i) => (created.push(i.orderReferenceId), { error: "no debería llegar" }),
+  });
+  const r = await completePrint(store, s.orderId, deps);
+  assert.equal((r as { error?: string }).error, "refunded");
+  assert.deepEqual(created, []);
+  assert.equal((await store.getOrderById(s.orderId))!.printStatus, "canceled");
 });
