@@ -8,7 +8,7 @@
  *
  * Todo lo externo (maquetar el PDF, la API de Gelato, los emails) se inyecta en `PrintDeps`, para probarlo sin red.
  */
-import { advances, DEFAULT_PRINT_SIZE, mapGelatoStatus, type CoverGeometry, type GelatoOrder, type GelatoOrderInput, type PrintMode, type PrintSize } from "../print/gelato";
+import { advances, DEFAULT_PRINT_SIZE, liveGelatoOrder, mapGelatoStatus, type CoverGeometry, type GelatoOrder, type GelatoOrderInput, type PrintMode, type PrintSize } from "../print/gelato";
 import { shippingLine } from "../print/shipping";
 import { DISPUTE_HOLD, REFUND_HOLD, type PaidOrder, type PrintInfo, type PrintStatus, type PrintStep } from "../print/types";
 import type { GenStore } from "../generation/store";
@@ -31,6 +31,11 @@ export interface PrintDeps {
   render(input: PrintBookInput, size: PrintSize, cover: CoverGeometry): Promise<Uint8Array>;
   createOrder(i: GelatoOrderInput): Promise<GelatoOrder | { error: string }>;
   getOrder(id: string): Promise<GelatoOrder | null>;
+  /**
+   * Pedidos de la imprenta con nuestra referencia (I4). Con la imprenta de verdad, antes de crear un pedido se mira si ya
+   * existe; sin esta dependencia (pruebas en dry-run), no se mira.
+   */
+  findOrders?(reference: string): Promise<GelatoOrder[] | { error: string }>;
   mail: {
     /** `link`: nuestra página de seguimiento. */
     sentToPrint(to: string, title: string, link: string, address: string): Promise<{ sent: boolean }>;
@@ -119,6 +124,8 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
   const now = deps.now?.() ?? new Date();
   const order = await store.getOrderById(orderId);
   if (!order || order.printStatus !== "sending") return fail(409, "not_sending");
+  /** El id de la imprenta, en cuanto existe: desde ahí ya no se marca como fallido. */
+  let created: string | null = null;
   const failWith = async (error: string): Promise<Fail> => {
     console.error("[imprenta]", order.id, error);
     await store.updateOrder(order.id, { printStatus: "failed", printError: error.slice(0, 300) });
@@ -174,19 +181,44 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
 
     let printOrderId = `dry-run:${book.public_id}`;
     if (deps.mode === "gelato") {
-      const r = await deps.createOrder({ orderReferenceId: order.id, customerReferenceId: book.public_id, productUid, pageCount: deps.pageCount, fileUrl, shipping: order.shipping, email: book.email, orderType: deps.orderType, shipmentMethodUid: deps.shipmentMethod });
-      if ("error" in r) return await failWith(r.error);
-      printOrderId = r.id;
+      // un intento anterior pudo crear el pedido y fallar después (al guardar, o la función cortada): se reutiliza en vez
+      // de crear otro, que serían dos libros impresos por un cobro (I4). Si no se puede preguntar, no se crea
+      const existing = deps.findOrders ? await deps.findOrders(order.id) : [];
+      if ("error" in existing) return await failWith(existing.error);
+      const live = liveGelatoOrder(existing);
+      if (live) {
+        console.warn("[imprenta]", order.id, "ya estaba en la imprenta:", live.id);
+        printOrderId = live.id;
+      } else {
+        const r = await deps.createOrder({ orderReferenceId: order.id, customerReferenceId: book.public_id, productUid, pageCount: deps.pageCount, fileUrl, shipping: order.shipping, email: book.email, orderType: deps.orderType, shipmentMethodUid: deps.shipmentMethod });
+        if ("error" in r) return await failWith(r.error);
+        printOrderId = r.id;
+      }
+      created = printOrderId;
+      // el id de la imprenta, guardado nada más tenerlo
+      await store.updateOrder(order.id, { printOrderId }).catch(() => null);
     }
-    // un reintento tras «failed» es un pedido nuevo en la imprenta: nada del anterior (hitos, seguimiento, entrega)
-    const info: PrintInfo = { steps: { sent: now.toISOString() } };
-    await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null, trackingUrl: null, info });
-    await deps.mail.sentToPrint(book.email, d.plan.title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false }));
+    await markSent(store, deps, order, book.email, d.plan.title, printOrderId, now);
     console.log(`[imprenta] ${book.public_id} → ${printOrderId} (${deps.mode}, ${deps.orderType}, ${pdf.length} bytes)`);
     return { ok: true, printOrderId };
   } catch (e) {
-    return failWith(e instanceof Error ? e.message : "error");
+    const msg = e instanceof Error ? e.message : "error";
+    // ya está en la imprenta: no se marca como fallido (el padre lo reintentaría). Se queda en `sending` con su id y el cron
+    // lo concilia preguntando a la imprenta
+    if (created) {
+      console.error("[imprenta]", order.id, "en la imprenta, pero sin guardar el estado:", msg.slice(0, 200));
+      return fail(502, "print_saved_partially", msg);
+    }
+    return failWith(msg);
   }
+}
+
+/** En la imprenta: estado, id, hitos de cero y el email de «ya está en la imprenta». */
+async function markSent(store: GenStore, deps: PrintDeps, order: PaidOrder, email: string, title: string, printOrderId: string, now: Date): Promise<void> {
+  // un reintento tras «failed» es un pedido nuevo en la imprenta: nada del anterior (hitos, seguimiento, entrega)
+  const info: PrintInfo = { steps: { sent: now.toISOString() } };
+  await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null, trackingUrl: null, info });
+  if (order.shipping && email) await deps.mail.sentToPrint(email, title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false }));
 }
 
 export type RefreshOutcome = "updated" | "unchanged" | "not_found" | "skipped";
@@ -261,6 +293,8 @@ export interface PrintCronReport {
   unstuck: number;
   /** Tapas duras sin mandar a imprimir cuyo libro se ha alargado para que siga abriéndose. */
   kept: number;
+  /** Envíos cortados a medias que sí llegaron a la imprenta: se dan por enviados en vez de liberarlos (I4). */
+  reconciled: number;
 }
 
 const HOUR = 3_600_000;
@@ -274,7 +308,7 @@ const KEEP_FOR_PRINT_MS = 30 * 24 * HOUR;
  */
 export async function printCron(store: GenStore, deps: PrintDeps): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
-  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0 };
+  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0 };
   // cada entorno, solo sus pedidos: la preview no escribe a clientes reales ni toca sus pedidos; producción no recuerda
   // los de prueba (auditoría 26 oct, B1)
   const env = deps.env ?? process.env;
@@ -310,8 +344,24 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
   for (const o of await store.listPrintOrders(["sending"], 50, live)) {
     if (o.sentAt || !mine(o)) continue;
     const book = await store.getBookById(o.bookId);
-    // `sending` sin terminar: la función se cortó. Se libera para que el padre lo reintente.
-    if (book && now.getTime() - Date.parse(o.updatedAt ?? o.createdAt) > 15 * 60_000 && (await store.claimPrint(o.id, ["sending"], "failed"))) {
+    if (!book || now.getTime() - Date.parse(o.updatedAt ?? o.createdAt) <= 15 * 60_000) continue;
+    // `sending` sin terminar: la función se cortó. Antes de liberarlo se pregunta a la imprenta: si el pedido llegó, se da
+    // por enviado; liberarlo haría que el padre lo mandara otra vez (I4). Si no se puede preguntar, se espera
+    if (deps.mode === "gelato" && deps.findOrders) {
+      const found = await deps.findOrders(o.id);
+      if ("error" in found) continue;
+      const alive = liveGelatoOrder(found);
+      if (alive) {
+        if (await store.claimPrint(o.id, ["sending"], "sent")) {
+          const d = draftV2(book);
+          await markSent(store, deps, o, book.email ?? "", d?.plan.title ?? "Tu libro", alive.id, now);
+          report.reconciled++;
+        }
+        continue;
+      }
+    }
+    // no llegó: se libera para que el padre lo reintente
+    if (await store.claimPrint(o.id, ["sending"], "failed")) {
       await store.updateOrder(o.id, { printError: "interrumpido" });
       // también es un pedido que no ha salido hacia la imprenta (revisión 27 oct)
       await printAlert(store, deps, o, "interrumpido: la función se cortó mientras lo mandaba", "send");
