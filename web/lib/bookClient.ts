@@ -24,6 +24,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const LONG_ROUTES = ["/api/generate/run", "/api/libro/pages", "/api/libro/print", "/api/libro/retry", "/api/libro/sheet", "/api/libro/start", "/api/plan"];
 export function timeoutFor(url: string): number {
   if (url === "/api/plan/page") return 135_000;
+  // el PDF puede esperar su turno y pintarse (maxDuration 120 s, I10)
+  if (url === "/api/libro/pdf") return 130_000;
   return LONG_ROUTES.includes(url) ? 310_000 : 45_000;
 }
 

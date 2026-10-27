@@ -10,6 +10,7 @@ import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
+import { PdfLink } from "./PdfLink";
 import { WaitCard } from "./Waiting";
 import { ErrorNote, LoadError, Status, Taped } from "./ui";
 
@@ -235,15 +236,19 @@ export function StepCast({
           <h3 className="display text-[26px]">La portada</h3>
           <p className="text-ink-soft">Pintada con estos personajes. El título lo componemos encima, como en el libro.</p>
           {cover?.status === "done" && (
-            <a className="rise flex items-center gap-3 rounded-[18px] bg-sage p-4 text-sage-ink transition-transform hover:-translate-y-0.5" href={`/api/libro/pdf?b=${bookId}&kind=free`} data-testid="free-pdf">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-card">
-                <Icon.download />
-              </span>
-              <span className="grid">
-                <span className="font-bold">Tu cuento gratis en PDF</span>
-                <span className="text-sm">Portada y texto, para imprimir en A4 apaisado</span>
-              </span>
-            </a>
+            <PdfLink bookId={bookId} kind="free" className="rise flex items-center gap-3 rounded-[18px] bg-sage p-4 text-sage-ink transition-transform hover:-translate-y-0.5" testId="free-pdf">
+              {(preparing) => (
+                <>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-card">
+                    <Icon.download />
+                  </span>
+                  <span className="grid">
+                    <span className="font-bold">{preparing ? "Preparando el PDF…" : "Tu cuento gratis en PDF"}</span>
+                    <span className="text-sm">Portada y texto, para imprimir en A4 apaisado</span>
+                  </span>
+                </>
+              )}
+            </PdfLink>
           )}
         </div>
       </section>

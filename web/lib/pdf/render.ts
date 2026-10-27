@@ -4,6 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import puppeteer, { type Browser } from "puppeteer-core";
 import { DRAFT_STORAGE_KEY } from "../draftKey";
 import type { Draft, Edition } from "../types";
+import { oneAtATime } from "./queue";
 
 /**
  * PDF en servidor: abre /libro en un Chromium sin cabeza con el borrador sembrado en localStorage (la página lee de ahí),
@@ -24,12 +25,22 @@ const LOCAL_CANDIDATES = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 ].filter((p): p is string => !!p);
 
+/**
+ * La descarga y extracción del paquete, una vez por instancia: con dos arranques en frío a la vez, el segundo daba el
+ * binario por listo sin haberlo escrito entero (auditoría 26 oct, I10).
+ */
+let packPath: Promise<string> | null = null;
+
 export async function launch(): Promise<Browser> {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const t = Date.now();
     const chromium = (await import("@sparticuz/chromium-min")).default;
     chromium.setGraphicsMode = false; // sin WebGL: menos memoria y arranque más rápido
-    const executablePath = await chromium.executablePath(PACK_URL);
+    packPath ??= chromium.executablePath(PACK_URL).catch((e: unknown) => {
+      packPath = null;
+      throw e;
+    });
+    const executablePath = await packPath;
     console.log(`[pdf] chromium listo en ${Date.now() - t}ms`);
     // el paquete de Sparticuz es el «headless shell»: puppeteer tiene que lanzarlo como tal (no --headless=new)
     const browser = await puppeteer.launch({ args: chromium.args, executablePath, headless: "shell", timeout: 20_000 });
@@ -39,6 +50,22 @@ export async function launch(): Promise<Browser> {
   const local = LOCAL_CANDIDATES.find((p) => fs.existsSync(p));
   if (!local) throw new Error("no_chromium");
   return puppeteer.launch({ executablePath: local, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"] });
+}
+
+/**
+ * Abre un Chromium, hace `fn` con él y lo cierra, de uno en uno por instancia (lib/pdf/queue.ts). `fn` recibe cuándo le
+ * tocó el turno (antes de arrancar Chromium): su plazo cuenta desde ahí. `maxWaitMs`: lo que espera el turno como mucho.
+ */
+export function withBrowser<T>(fn: (browser: Browser, startedAt: number) => Promise<T>, opts: { maxWaitMs?: number } = {}): Promise<T> {
+  return oneAtATime(async () => {
+    const startedAt = Date.now();
+    const browser = await launch();
+    try {
+      return await fn(browser, startedAt);
+    } finally {
+      await browser.close().catch(() => undefined);
+    }
+  }, opts);
 }
 
 export interface RenderPdfOptions {
@@ -52,7 +79,11 @@ export interface RenderPdfOptions {
 
 const A4_LANDSCAPE: [number, number] = [841.89, 595.28];
 
-export async function renderBookPdf({ draft, edition, origin, timeoutMs = 45_000 }: RenderPdfOptions): Promise<Uint8Array> {
+export function renderBookPdf(opts: RenderPdfOptions): Promise<Uint8Array> {
+  return oneAtATime(() => renderBookPdfNow(opts));
+}
+
+async function renderBookPdfNow({ draft, edition, origin, timeoutMs = 45_000 }: RenderPdfOptions): Promise<Uint8Array> {
   const started = Date.now();
   const left = () => Math.max(1_000, timeoutMs - (Date.now() - started));
   const t0 = Date.now();

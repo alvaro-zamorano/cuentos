@@ -1,3 +1,5 @@
+-- Aplicada en Supabase el 11 oct como `cuentos_spend` (versión 20261011123108). Hasta el 27 oct vivía en
+-- docs/sql/cuentos_spend.sql (auditoría 26 oct, I14).
 -- Gasto de generación por lead y por día (B3). Lo lee y escribe web/lib/generation/budget.ts con service role.
 -- lead_id: email del lead antes del pago, o id del libro (cuentos_books.id) cuando ya está pagado.
 -- kind: story (texto) | sheet (hoja de personaje) | sample (página de muestra) | page (página del libro pagado).
