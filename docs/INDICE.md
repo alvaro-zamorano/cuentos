@@ -146,6 +146,9 @@ Sin claves en local se usan la memoria del proceso, imágenes `dry-run` y el cue
 - Playwright: un localizador que encuentra dos elementos falla al instante (modo estricto). Hay que buscar por nombre o por `data-testid`.
 - La preview se puede pedir con `curl` directamente. La herramienta de Vercel para leer URLs va de una en una y no sirve para binarios.
 - Los modelos 5.x de Anthropic no aceptan `temperature`; el razonamiento se controla con `thinking` y `effort` (`lib/llm.ts`).
+- Playwright contra un servidor ya arrancado (`next start -p 3017`): arrancarlo sin claves y con los límites por IP abiertos, o las pruebas chocan con el 429 de `/api/plan` y de `/api/libro/start` (`START_RATE_PER_HOUR=100 PLAN_MIN_GAP_MS=0 PLAN_RATE_PER_HOUR=100 REPORT_MIN_GAP_MS=0 NEXT_PUBLIC_DRY_RUN_PAYMENT=1 STORY_PROVIDER=mock GENERATION_PROVIDER=dry-run` y las claves de Stripe, Resend y Gelato vacías). La CI va más rápida que en local: un límite de «uno por segundo» que en local no salta puede saltar allí. Para los PDF de verdad, `CHROME_PATH` al Chromium de Playwright. El almacén en memoria se acumula: tres libros por email, así que hay que reiniciar el servidor entre pasadas.
+- Las pruebas unitarias de PDF (`pdfCompleto.test.ts`) necesitan Chromium (`PLAYWRIGHT_BROWSERS_PATH`) y `pdffonts` (poppler); sin ellos se saltan.
+- Con el reloj falso de Playwright, `clock.runFor` pinta cada fotograma del libro en 3D: para saltar minutos, `clock.fastForward`.
 
 **Reglas de Álvaro**
 
