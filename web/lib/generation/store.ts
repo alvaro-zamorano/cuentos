@@ -118,12 +118,17 @@ export interface GenStore {
    */
   findBook(q: { publicId?: string; includeExpired?: boolean }): Promise<BookRecord | null>;
   /**
-   * Libros de ese buzón (`email_norm`, ver normalizeEmail) creados desde `since`, los más recientes primero, con lo justo
-   * para el límite de cuentos gratis: sin el borrador (auditoría 26 oct, I7).
+   * Libros de ese buzón (`email_norm`, ver normalizeEmail) creados desde `since` que han pasado la puerta de los gratis
+   * (`free_claimed_at`; la migración 0013 la pone en los que ya tenían hoja), los más recientes primero, con lo justo para
+   * el límite: sin el borrador (auditoría 26 oct, I7). Los intentos rechazados no entran: con cien, ya no tapaban a los
+   * que cuentan (revisión 27 oct).
    */
   listFreeBooks(emailNorm: string, since: string): Promise<FreeBook[]>;
-  /** Marca que el libro ha pasado la puerta de los cuentos gratis (cuentos_books.free_claimed_at). */
-  claimFree(bookId: string, at: string): Promise<void>;
+  /**
+   * Marca que el libro ha pasado la puerta de los cuentos gratis (cuentos_books.free_claimed_at), o la quita con null.
+   * Devuelve el updated_at nuevo de la fila.
+   */
+  claimFree(bookId: string, at: string | null): Promise<string | null>;
   /**
    * Bloqueo corto con caducidad (cuentos_locks): devuelve una marca si lo consigue, null si lo tiene otro. Si quien lo
    * tiene no lo suelta, a los `ms` lo puede coger otro.
@@ -297,6 +302,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
         .from("cuentos_books")
         .select("id, public_id, created_at, free_claimed_at, title:draft->plan->>title")
         .eq("email_norm", emailNorm)
+        .not("free_claimed_at", "is", null)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(FREE_BOOKS_SCAN);
@@ -321,8 +327,9 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       }));
     },
     async claimFree(bookId, at) {
-      const { error } = await db.from("cuentos_books").update({ free_claimed_at: at }).eq("id", bookId);
+      const { data, error } = await db.from("cuentos_books").update({ free_claimed_at: at }).eq("id", bookId).select("updated_at").maybeSingle();
       if (error) throw new Error(`books: ${error.message}`);
+      return data?.updated_at ?? null;
     },
     async lock(key, ms) {
       const holder = crypto.randomUUID();
@@ -544,8 +551,10 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
         const t = (b.raw as { plan?: { title?: unknown } } | null)?.plan?.title;
         return typeof t === "string" ? t : null;
       };
+      // como la base: los que pasaron la puerta, y los de antes que ya tenían hoja (lo que rellena la migración 0013)
+      const passed = (b: BookRecord) => state.freeClaims?.has(b.id) || [...state.jobs.values()].some((j) => j.book_id === b.id && j.kind === "sheet");
       return [...state.books.values()]
-        .filter((b) => !!b.email && normalizeEmail(b.email) === emailNorm && created(b) >= since)
+        .filter((b) => !!b.email && normalizeEmail(b.email) === emailNorm && created(b) >= since && passed(b))
         .sort((a, b) => created(b).localeCompare(created(a)))
         .slice(0, FREE_BOOKS_SCAN)
         .map((b) => ({
@@ -558,11 +567,14 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
           sheets: [...state.jobs.values()].filter((j) => j.book_id === b.id && j.kind === "sheet").map((j) => ({ status: j.status, updatedAt: j.updated_at })),
         }));
     },
-    async claimFree(bookId) {
+    async claimFree(bookId, at) {
       // con el reloj del almacén, como el updated_at de los jobs (en Supabase, la hora del servidor contra now() de la base)
-      (state.freeClaims ??= new Map()).set(bookId, stamp());
+      if (at) (state.freeClaims ??= new Map()).set(bookId, stamp());
+      else state.freeClaims?.delete(bookId);
       const b = state.books.get(bookId);
-      if (b) b.updatedAt = stamp();
+      if (!b) return null;
+      b.updatedAt = stamp();
+      return b.updatedAt;
     },
     async lock(key, ms) {
       const locks = (state.locks ??= new Map());

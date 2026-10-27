@@ -7,7 +7,8 @@
 --    también las que escriba el código de antes. Tiene que dar lo mismo que normalizeEmail() en
 --    web/lib/book/freeLimit.ts (lo comprueba web/tests/unit/migraciones.test.ts).
 -- 2. cuentos_books.free_claimed_at: cuándo pasó el libro la puerta de los gratis. Cuenta como empezado mientras se
---    preparan sus personajes, antes de que exista su primera imagen.
+--    preparan sus personajes, antes de que exista su primera imagen. Se rellena con la fecha de creación en los libros
+--    que ya tenían hoja (el límite solo lee los marcados).
 -- 3. cuentos_locks: un bloqueo con caducidad por buzón (la clave es un hash, no el email). Dos peticiones a la vez con
 --    el mismo email se cuentan una detrás de otra.
 
@@ -37,6 +38,11 @@ grant execute on function public.cuentos_email_norm(text) to service_role;
 alter table public.cuentos_books
   add column if not exists email_norm text generated always as (public.cuentos_email_norm(email)) stored;
 alter table public.cuentos_books add column if not exists free_claimed_at timestamptz;
+-- los libros de antes que ya tenían hoja de personajes ya pasaron la puerta: el límite solo lee los marcados
+update public.cuentos_books b
+   set free_claimed_at = b.created_at
+ where b.free_claimed_at is null
+   and exists (select 1 from public.cuentos_generation_jobs j where j.book_id = b.id and j.kind = 'sheet' and j.job_key is not null);
 create index if not exists cuentos_books_email_norm_idx on public.cuentos_books (email_norm, created_at desc) where email_norm is not null;
 
 create table if not exists public.cuentos_locks (

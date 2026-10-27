@@ -95,10 +95,14 @@ test("en la base reconstruida se escribe como lo hace el código: libro, trabajo
 test("0013 (I7): email_norm es normalizeEmail, también en las filas que ya había; solo el service role usa la función", async () => {
   const db = await rebuilt({ before: "0013" });
   // un libro de antes de la migración: la columna generada lo rellena al añadirse
-  await db.query(`insert into cuentos_books (public_id, draft, edition, email) values ('antes2345', '{}', 'illustrated', 'Vera.Lopez+cuentos@GoogleMail.com')`);
+  const drawn = (await db.query<{ id: string }>(`insert into cuentos_books (public_id, draft, edition, email) values ('antes2345', '{}', 'illustrated', 'Vera.Lopez+cuentos@GoogleMail.com') returning id`)).rows[0].id;
+  await db.query(`insert into cuentos_generation_jobs (book_id, kind, style_id, prompt, job_key, status) values ($1, 'sheet', 'g', 'p', 'sheet:0:1:x', 'done')`, [drawn]);
+  await db.query(`insert into cuentos_books (public_id, draft, edition, email) values ('sinhoja23', '{}', 'illustrated', 'vera@gmail.com')`);
   for (const f of migrations().filter((f) => f >= "0013")) await apply(db, f);
-  const old = (await db.query<{ email_norm: string }>(`select email_norm from cuentos_books where public_id = 'antes2345'`)).rows[0];
+  const old = (await db.query<{ email_norm: string; free_claimed_at: Date | null; created_at: Date }>(`select email_norm, free_claimed_at, created_at from cuentos_books where public_id = 'antes2345'`)).rows[0];
   assert.equal(old.email_norm, "veralopez@gmail.com");
+  assert.equal(old.free_claimed_at?.getTime(), old.created_at.getTime(), "con hoja: ya pasó la puerta");
+  assert.equal((await db.query<{ c: Date | null }>(`select free_claimed_at as c from cuentos_books where public_id = 'sinhoja23'`)).rows[0].c, null, "sin hoja: no cuenta");
 
   const cases = [
     " Ana.Garcia+cuentos@Gmail.com ",
@@ -115,6 +119,10 @@ test("0013 (I7): email_norm es normalizeEmail, también en las filas que ya hab�
     "\tana@empresa.es\n",
     "a.@googlemail.com",
     "",
+    // ya limpios (cleanEmail: sin espacios y en minúsculas), como se guardan, también con letras de fuera del ASCII
+    "josé.garcía+cole@gmail.com",
+    "müller@ejemplo.de",
+    "ñandú@ejemplo.es",
   ];
   for (const e of cases) {
     const got = (await db.query<{ n: string }>(`select public.cuentos_email_norm($1) as n`, [e])).rows[0].n;

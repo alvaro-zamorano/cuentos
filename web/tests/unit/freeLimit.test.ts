@@ -1,7 +1,7 @@
 /** Cuentos con dibujos gratis por persona (26 oct): 3 cada 30 días, se renuevan al comprar, se mira antes de dibujar. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MOCK_LLM } from "../../lib/llm";
+import { MOCK_LLM, type Llm } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { createClient } from "@supabase/supabase-js";
 import { memoryStore, newMemoryState, supabaseStore } from "../../lib/generation/store";
@@ -178,6 +178,7 @@ test("I7: en Supabase, el límite se cuenta con tres consultas pequeñas por ema
   const [q] = calls;
   assert.equal(q.url.searchParams.get("select"), "id,public_id,created_at,free_claimed_at,title:draft->plan->>title", "del borrador, solo el título");
   assert.equal(q.url.searchParams.get("email_norm"), "eq.vera@gmail.com");
+  assert.equal(q.url.searchParams.get("free_claimed_at"), "not.is.null", "solo los que pasaron la puerta");
   assert.equal(q.url.searchParams.get("created_at"), "gte.2026-09-27T00:00:00Z");
   assert.equal(q.url.searchParams.get("limit"), "100");
   assert.equal(calls[1].url.searchParams.get("book_id"), "in.(b1)");
@@ -200,4 +201,25 @@ test("I7: en Supabase, el límite se cuenta con tres consultas pequeñas por ema
   await store.unlock("free:abc", holder!);
   assert.equal(calls[0].method, "DELETE");
   assert.equal(calls[0].url.searchParams.get("holder"), `eq.${holder}`);
+});
+
+test("revisión: si el dibujo no llega a empezar (el modelo de arte falla), el intento no gasta un cuento gratis", async () => {
+  const store = memoryStore(newMemoryState());
+  // un modelo que no es el de prueba y siempre falla (529)
+  const down: Llm = { ...MOCK_LLM, name: "anthropic", async complete() {
+    throw new Error("anthropic 529 overloaded");
+  } };
+  for (let i = 0; i < 3; i++) await assert.rejects(startBook(store, { email: "ana@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, down));
+  assert.equal((await freeUse(store, "ana@example.com")).used, 0, "ninguno empezado");
+  const r = await start(store, "ana@example.com");
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal(r.freeLeft, FREE_BOOKS - 1);
+});
+
+test("revisión: los intentos rechazados no llenan la lista del buzón (los que cuentan siguen contando)", async () => {
+  const store = memoryStore(newMemoryState());
+  for (let i = 0; i < 3; i++) assert.ok((await start(store, "ana@example.com")).ok);
+  for (let i = 0; i < 5; i++) assert.equal(((await start(store, "ana@example.com")) as { error?: string }).error, "free_limit");
+  const listed = await store.listFreeBooks("ana@example.com", "2000-01-01");
+  assert.equal(listed.length, 3, "solo los que pasaron la puerta");
 });

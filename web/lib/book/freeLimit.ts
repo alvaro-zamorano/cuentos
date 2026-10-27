@@ -85,7 +85,8 @@ export function freeLockKey(email: string): string {
   return `free:${createHash("sha256").update(normalizeEmail(email)).digest("hex").slice(0, 32)}`;
 }
 
-export type FreeGate = { ok: true; left: number } | { ok: false; used: number; books: FreeUse["books"] } | { ok: false; busy: true };
+/** `updatedAt`: el de la fila tras marcarla (para el guardado condicional que venga después). */
+export type FreeGate = { ok: true; left: number; updatedAt?: string | null } | { ok: false; used: number; books: FreeUse["books"] } | { ok: false; busy: true };
 
 /**
  * La puerta de los gratis con el bloqueo del buzón (I7): cuenta y, si cabe, marca el libro como empezado. Seis
@@ -104,8 +105,8 @@ export async function passFreeGate(store: GenStore, email: string, bookId: strin
   try {
     const use = await freeUse(store, email, { exceptBookId: bookId, now: clock(), env: opts.env });
     if (use.used >= FREE_BOOKS) return { ok: false, used: use.used, books: use.books };
-    await store.claimFree(bookId, new Date(clock()).toISOString());
-    return { ok: true, left: use.left };
+    const updatedAt = await store.claimFree(bookId, new Date(clock()).toISOString());
+    return { ok: true, left: use.left, updatedAt };
   } finally {
     await store.unlock(key, holder).catch(() => null);
   }
