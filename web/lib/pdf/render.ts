@@ -15,7 +15,8 @@ import { oneAtATime } from "./queue";
  * Chromium: en Vercel, @sparticuz/chromium-min descarga el paquete de `CHROMIUM_PACK_URL` en el primer arranque;
  * en local, `CHROME_PATH` o el Chromium de Playwright.
  */
-const PACK_URL = process.env.CHROMIUM_PACK_URL ?? "https://github.com/Sparticuz/chromium/releases/download/v140.0.0/chromium-v140.0.0-pack.x64.tar";
+// la versión del paquete va con la de @sparticuz/chromium-min en package.json: si se sube una, se sube la otra
+const PACK_URL = process.env.CHROMIUM_PACK_URL ?? "https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar";
 const LOCAL_CANDIDATES = [
   process.env.CHROME_PATH,
   "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
