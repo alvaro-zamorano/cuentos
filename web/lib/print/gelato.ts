@@ -330,6 +330,22 @@ export async function createGelatoOrder(i: GelatoOrderInput, env: Env = process.
   return parseOrder(r.json) ?? { error: "gelato_respuesta" };
 }
 
+/**
+ * Pedidos de Gelato con nuestra referencia (cuentos_orders.id), para no crear dos (auditoría 26 oct, I4): si Gelato aceptó
+ * el pedido y después falló algo nuestro (guardar el estado, la función cortada), el reintento lo reutiliza.
+ * `{ error }` si no se puede preguntar: entonces no se crea nada.
+ */
+export async function findGelatoOrders(reference: string, env: Env = process.env, f: Fetch = fetch): Promise<GelatoOrder[] | { error: string }> {
+  const r = await call<{ orders?: RawOrder[] }>(`${ORDER_API}/orders:search`, { method: "POST", body: JSON.stringify({ orderReferenceIds: [reference], limit: 20 }) }, env, f);
+  if (!r.ok) return { error: `gelato_busqueda_${r.status}${r.message ? `: ${r.message}` : ""}` };
+  return (r.json.orders ?? []).map(parseOrder).filter((o): o is GelatoOrder => !!o && o.orderReferenceId === reference);
+}
+
+/** Un pedido de Gelato que sigue vivo: ni fallido ni cancelado. Ese se reutiliza en vez de crear otro. */
+export function liveGelatoOrder(orders: GelatoOrder[]): GelatoOrder | null {
+  return orders.find((o) => !["failed", "canceled", "cancelled"].includes(o.status)) ?? null;
+}
+
 export async function getGelatoOrder(id: string, env: Env = process.env, f: Fetch = fetch): Promise<GelatoOrder | null> {
   if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return null;
   const r = await call<RawOrder>(`${ORDER_API}/orders/${encodeURIComponent(id)}`, { method: "GET" }, env, f);
