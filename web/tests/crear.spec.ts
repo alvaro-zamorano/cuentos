@@ -167,6 +167,23 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await expect(p4.getByText("Nos has avisado")).toBeVisible();
   await page.unroute(/\/api\/libro\/view\?/);
 
+  // pagado, volver atrás no repinta nada (I2): el paso 4 enseña los personajes sin cambios ni otras versiones, el 3
+  // solo deja corregir textos y los pasos 1 y 2 ya no se abren
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("approve")).toHaveText(/Volver al libro/);
+  await expect(page.getByText("¿Cambiamos algo?")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Versiones de los personajes" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Paso anterior" }).click();
+  await expect(page.getByTestId("paid-text-only")).toBeVisible();
+  await expect(page.getByTestId("rewrite")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cambiar esta página" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Paso anterior" })).toHaveCount(0);
+  await expect(page.getByTestId("next-3")).toHaveText("Volver al libro");
+  await page.getByTestId("next-3").click();
+  await expect(page.getByTestId("full-pdf")).toBeVisible();
+  const after = await (await page.request.get(`/api/libro/view?b=${bookId}`)).json();
+  expect(after.jobs.length).toBe(view.jobs.length + 2);
+
   // sin claves de Stripe: ni checkout ni webhook
   expect((await page.request.post("/api/libro/checkout", { data: { bookId } })).status()).toBe(501);
   expect((await page.request.post("/api/stripe/webhook", { data: "{}", headers: { "stripe-signature": "t=1,v1=00" } })).status()).toBe(501);
@@ -252,8 +269,15 @@ test("Tapa dura: dirección, pago de prueba, mandar a imprimir (imprenta simulad
   await page.getByTestId("ship-save").click();
   await expect(page.getByTestId("print-address")).toContainText("Ana García López · 28014 Madrid");
 
-  // un texto retocado antes de mandarlo viaja con el libro
+  // un texto retocado antes de mandarlo viaja con el libro. Se guarda solo; si el guardado falla, se dice y se
+  // reintenta, y no se da por guardado hasta que el servidor lo confirma (I13)
+  await page.route("**/api/libro/plan", (r) => r.abort(), { times: 1 });
   await page.getByLabel("Texto de la página 1", { exact: true }).fill("Aquella noche, Vera no tenía nada de sueño.");
+  await expect(page.getByTestId("save-error")).toContainText("Sin conexión");
+  errors.splice(0, errors.length); // el fallo de red provocado
+  await page.getByTestId("save-retry").click();
+  await expect(page.getByTestId("save-state")).toHaveText("Guardado");
+  await expect(page.getByTestId("save-error")).toHaveCount(0);
   await page.getByTestId("print-send").click();
   // antes de mandarlo se ve la dirección entera, con la calle y el piso
   await expect(panel.getByRole("alertdialog")).toContainText("Lo enviaremos a Ana García López, Calle Mayor 12, 4º A, 28014 Madrid.");

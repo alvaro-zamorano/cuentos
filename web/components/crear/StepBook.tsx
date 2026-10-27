@@ -74,7 +74,20 @@ const UPGRADE_PENDING = "El pago de la tapa dura aún no nos ha llegado. Si ya s
  * revisión página a página (otra versión con motivo, hasta dos por página; después, «Sigue sin estar bien»), y el PDF.
  * `confirming`: se vuelve de Stripe (?pagado=1) y el webhook puede tardar unos segundos en registrar el pago.
  */
-export function StepBook({ bookId, confirming = false, upgrading = false, onPlan }: { bookId: string; confirming?: boolean; upgrading?: boolean; onPlan: (p: Plan) => void }) {
+export function StepBook({
+  bookId,
+  confirming = false,
+  upgrading = false,
+  onPlan,
+  onPaid,
+}: {
+  bookId: string;
+  confirming?: boolean;
+  upgrading?: boolean;
+  onPlan: (p: Plan) => void;
+  /** El libro está pagado: el flujo cierra los pasos que repintarían (I2). */
+  onPaid?: () => void;
+}) {
   const [view, setView] = useState<BookView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +108,10 @@ export function StepBook({ bookId, confirming = false, upgrading = false, onPlan
     if (v) setView(v);
     return v;
   }, [bookId]);
+  const paid = !!view?.paid;
+  useEffect(() => {
+    if (paid) onPaid?.();
+  }, [paid, onPaid]);
 
   /** Tira de las páginas en cola o pintándose hasta que terminan. */
   const drive = useCallback(
