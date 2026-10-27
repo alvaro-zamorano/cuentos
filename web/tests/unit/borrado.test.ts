@@ -84,7 +84,8 @@ test("I11: un libro que no se deja borrar no para la pasada; se apunta y se sigu
   const { db, books } = fakeDb([book("a", 5, { stuck: true }), book("b", 4), book("c", 3, { paid: true })]);
   const r = await purgeExpired(db, { now: NOW, deadline: Date.now() + 5_000 });
   assert.equal(r.failed, 1);
-  assert.match(r.errors[0], /^ref\. axxxxx: storage\.remove/, "con la referencia corta, no el id que abre el libro");
+  assert.match(r.errors[0], /^ref\. a: storage\.remove/, "con la referencia del id interno, no el público que abre el libro");
+  assert.ok(!r.errors[0].includes("axxxxxxx"));
   assert.equal(books.get("a")!.gone, undefined, "sigue ahí para mañana");
   assert.equal(books.get("b")!.gone, "deleted");
   assert.equal(books.get("c")!.gone, "scrubbed");
@@ -223,7 +224,7 @@ test("revisión: un paso que falla no se salta los demás, y un libro colgado no
   const r = await purgeExpired(db, { now: NOW, deadline: Date.now() + 5_000, bookTimeoutMs: 200 });
   assert.ok(Date.now() - t0 < 3_000);
   assert.equal(r.failed, 2);
-  assert.match(r.errors.join("\n"), /hxxxxx: sin respuesta/);
+  assert.match(r.errors.join("\n"), /ref\. h: sin respuesta/);
   assert.match(r.errors.join("\n"), /^cuentos: stories: timeout/m);
   assert.equal(r.deleted, 2, "el segundo libro se borra igual");
   assert.equal(leads, 1, "los leads se miran aunque fallen los cuentos");

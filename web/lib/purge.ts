@@ -135,8 +135,8 @@ export async function purgeExpired(
         await withTimeout(purgeBook(db, b, report, dryRun, now), bookTimeoutMs);
       } catch (e) {
         // un libro que falla (un archivo que Storage no deja borrar) no para la pasada: se reintenta mañana. En el aviso,
-        // la referencia corta: el id entero abre el libro (I30)
-        failed(report, `ref. ${b.publicId.slice(0, 6)}`, e);
+        // la referencia del id interno: el público abre el libro (I30)
+        failed(report, `ref. ${b.id.slice(0, 8)}`, e);
       }
     }
     if (dryRun) {
