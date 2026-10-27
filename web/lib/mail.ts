@@ -127,15 +127,18 @@ export function sendBookLink(to: string, bookTitle: string, link: string): Promi
  */
 export function sendYourBooks(to: string, books: { title: string; link: string }[]): Promise<MailResult> {
   const list = books.map((b) => `<li style="margin:0 0 10px"><a href="${esc(b.link)}" style="color:#c8492c;font-weight:bold">${esc(b.title)}</a></li>`).join("");
+  // cada libro va al email guardado en él (auditoría 26 oct, menores): a una dirección le puede tocar uno solo
+  const one = books.length === 1;
+  const intro = one ? "Ya tienes un cuento con sus personajes dibujados. Termínalo" : `Ya tienes ${books.length} cuentos con sus personajes dibujados. Elige el que más te guste y termínalo`;
   const html = `<!doctype html><html lang="es"><body style="margin:0;background:#fbf5ea;font-family:Georgia,serif;color:#232036">
 <div style="max-width:520px;margin:0 auto;padding:32px 24px">
 <p style="font-style:italic;font-size:22px;margin:0 0 24px"><span style="color:#f2b84b">&#10022;</span> Érase su vez</p>
 <h1 style="font-size:26px;font-weight:500;margin:0 0 16px">Tus cuentos te esperan</h1>
-<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">Ya tienes ${books.length} cuentos con sus personajes dibujados. Elige el que más te guste y termínalo: en cuanto tengas uno, puedes empezar otro.</p>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">${intro}: en cuanto ${one ? "lo tengas" : "tengas uno"}, puedes empezar otro.</p>
 <ul style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;padding-left:18px;margin:20px 0">${list}</ul>
 <p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6f6457">Guardamos cada libro 30 días. Si no lo has pedido tú, ignora este mensaje.</p>
 </div></body></html>`;
-  const text = `Tus cuentos te esperan\n\nYa tienes ${books.length} cuentos con sus personajes dibujados. Elige el que más te guste y termínalo:\n\n${books.map((b) => `${b.title}: ${b.link}`).join("\n")}\n\nGuardamos cada libro 30 días.`;
+  const text = `Tus cuentos te esperan\n\n${intro}:\n\n${books.map((b) => `${b.title}: ${b.link}`).join("\n")}\n\nGuardamos cada libro 30 días.`;
   return send(to, "Tus cuentos te esperan", html, text);
 }
 

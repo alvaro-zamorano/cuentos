@@ -237,10 +237,13 @@ export interface StartResult {
   title?: string;
 }
 
-/** El buzón ya tiene sus cuentos gratis del periodo: no se dibuja; la ruta le manda por email los que tiene empezados. */
+/**
+ * El buzón ya tiene sus cuentos gratis del periodo: no se dibuja; la ruta le manda por email los que tiene empezados,
+ * cada uno al email guardado en él (`mailYourBooks`).
+ */
 export interface FreeLimitFail extends Fail {
   error: "free_limit";
-  books: { publicId: string; title: string }[];
+  books: { publicId: string; title: string; email: string | null }[];
 }
 
 /**
@@ -358,7 +361,7 @@ async function freeGate(store: GenStore, email: string, book: BookRecord, sheets
     return { freeLeft: gate.left, claimed: true };
   }
   if ("busy" in gate) return fail(409, "busy", "Estamos empezando otro cuento con este email. Espera unos segundos y vuelve a intentarlo.");
-  return { ok: false, status: 429, error: "free_limit", books: gate.books.map((b) => ({ publicId: b.publicId, title: b.title ?? "Tu cuento" })) };
+  return { ok: false, status: 429, error: "free_limit", books: gate.books.map((b) => ({ publicId: b.publicId, title: b.title ?? "Tu cuento", email: b.email })) };
 }
 
 async function newSheetAndCover(store: GenStore, book: BookRecord, d: BookDraftV2, variant: number): Promise<{ sheet: GenJob; cover: GenJob } | Fail> {

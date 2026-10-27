@@ -84,6 +84,11 @@ export interface FreeBook {
   freeClaimedAt: string | null;
   /** El título del cuento, para el email con los que tiene empezados. */
   title: string | null;
+  /**
+   * El email guardado en el libro, tal como se escribió. Su enlace va solo ahí, nunca a otro alias del mismo buzón
+   * (auditoría 26 oct, menores).
+   */
+  email: string | null;
   /** Sus pedidos pagados (estado `paid`). */
   paid: { sessionId: string | null; createdAt: string }[];
   /** Sus hojas de personajes. */
@@ -346,14 +351,14 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       // del borrador, solo el título (PostgREST lo saca en la base): nada de leer los borradores enteros (I7)
       const { data, error } = await db
         .from("cuentos_books")
-        .select("id, public_id, created_at, free_claimed_at, title:draft->plan->>title")
+        .select("id, public_id, email, created_at, free_claimed_at, title:draft->plan->>title")
         .eq("email_norm", emailNorm)
         .not("free_claimed_at", "is", null)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(FREE_BOOKS_SCAN);
       if (error) throw new Error(`books: ${error.message}`);
-      const books = (data ?? []) as unknown as { id: string; public_id: string; created_at: string; free_claimed_at: string | null; title: string | null }[];
+      const books = (data ?? []) as unknown as { id: string; public_id: string; email: string | null; created_at: string; free_claimed_at: string | null; title: string | null }[];
       if (books.length === 0) return [];
       const ids = books.map((b) => b.id);
       const [orders, sheets] = await Promise.all([
@@ -368,6 +373,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
         createdAt: b.created_at,
         freeClaimedAt: b.free_claimed_at ?? null,
         title: typeof b.title === "string" ? b.title : null,
+        email: b.email ?? null,
         paid: (orders.data ?? []).filter((o) => o.book_id === b.id).map((o) => ({ sessionId: o.stripe_session_id ?? null, createdAt: o.created_at })),
         sheets: (sheets.data ?? []).filter((j) => j.book_id === b.id).map((j) => ({ status: asJob(j as Record<string, unknown>).status, updatedAt: j.updated_at })),
       }));
@@ -618,6 +624,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
           createdAt: created(b),
           freeClaimedAt: state.freeClaims?.get(b.id) ?? null,
           title: title(b),
+          email: b.email,
           paid: [...(state.orders?.values() ?? [])].filter((o) => o.bookId === b.id && paidRow(o)).map((o) => ({ sessionId: o.sessionId ?? null, createdAt: o.createdAt })),
           sheets: [...state.jobs.values()].filter((j) => j.book_id === b.id && j.kind === "sheet").map((j) => ({ status: j.status, updatedAt: j.updated_at })),
         }));

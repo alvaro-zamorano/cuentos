@@ -36,8 +36,8 @@ export interface FreeUse {
   left: number;
   /** Desde cuándo se cuenta: hace 30 días o la última compra, lo más reciente. */
   since: string;
-  /** Los libros que cuentan, para mandarlos por email (nunca a la pantalla). */
-  books: { publicId: string; title: string | null }[];
+  /** Los libros que cuentan, para mandarlos por email (nunca a la pantalla), cada uno con el email guardado en él. */
+  books: { publicId: string; title: string | null; email: string | null }[];
 }
 
 /**
@@ -76,8 +76,47 @@ export async function freeUse(store: GenStore, email: string, opts: { exceptBook
     if (b.id === opts.exceptBookId || b.publicId === opts.exceptBookId) continue;
     if (counts(b, now)) unpaid.push(b);
   }
-  const books = unpaid.filter((b) => Date.parse(b.createdAt) >= since).map((b) => ({ publicId: b.publicId, title: b.title }));
+  const books = unpaid.filter((b) => Date.parse(b.createdAt) >= since).map((b) => ({ publicId: b.publicId, title: b.title, email: b.email }));
   return { used: books.length, left: Math.max(0, FREE_BOOKS - books.length - 1), since: new Date(since).toISOString(), books };
+}
+
+/** Cuánto se espera al correo de «Tus cuentos te esperan» antes de responder (el envío corta a los 15 s por su cuenta). */
+export const YOUR_BOOKS_MAIL_MS = 8_000;
+
+type MailOutcome = { sent: boolean; reason?: string };
+
+/**
+ * «Tus cuentos te esperan» se manda antes de responder, para que la pantalla no diga que se han mandado si no han
+ * salido. Cada enlace va solo al email guardado en su libro, nunca al que se acaba de escribir: el límite cuenta por
+ * buzón (ana+x@gmail.com es ana@gmail.com) y, con el alias escrito, los cuentos de un buzón podían llegar a otra
+ * dirección (auditoría 26 oct, menores). Si hay varios emails, uno por cada uno.
+ *
+ * true si han salido todos; false si alguno no ha salido o no ha contestado a tiempo; null sin el correo configurado
+ * (local, pruebas), y entonces la pantalla dice lo de siempre.
+ */
+export async function mailYourBooks(
+  books: { publicId: string; title: string; email: string | null }[],
+  origin: string,
+  send: (to: string, books: { title: string; link: string }[]) => Promise<MailOutcome>,
+  timeoutMs = YOUR_BOOKS_MAIL_MS,
+): Promise<boolean | null> {
+  const byEmail = new Map<string, { title: string; link: string }[]>();
+  for (const b of books) {
+    if (!b.email) continue;
+    const list = byEmail.get(b.email) ?? [];
+    list.push({ title: b.title, link: `${origin}/crear?b=${b.publicId}` });
+    byEmail.set(b.email, list);
+  }
+  if (byEmail.size === 0) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<MailOutcome>((r) => {
+    timer = setTimeout(() => r({ sent: false, reason: "sin_respuesta" }), timeoutMs);
+  });
+  const results = await Promise.all([...byEmail].map(([to, list]) => Promise.race([send(to, list).catch(() => ({ sent: false, reason: "error" })), late])));
+  clearTimeout(timer);
+  if (results.every((m) => m.reason === "sin_configurar")) return null;
+  for (const m of results) if (!m.sent && m.reason !== "sin_configurar") console.error("[libro/start] email de cuentos", m.reason);
+  return results.every((m) => m.sent);
 }
 
 /** La clave del bloqueo: un hash del buzón, para no guardar el email en otra tabla. */

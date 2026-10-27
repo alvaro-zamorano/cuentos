@@ -375,8 +375,9 @@ function EmailGate({
   const [marketing, setMarketing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // 26 oct: el buzón ya tiene sus cuentos gratis del periodo; no es un error, se le mandan por email
-  const [limit, setLimit] = useState(false);
+  // 26 oct: el buzón ya tiene sus cuentos gratis del periodo; no es un error, se le mandan por email. «unsent»: el correo
+  // no ha salido y la pantalla no puede decir que se han mandado (auditoría 26 oct, menores)
+  const [limit, setLimit] = useState<false | "sent" | "unsent">(false);
   // auditoría 26 oct, menores: con una errata en el dominio, el enlace del libro le llega a otra persona. Sin segundo
   // campo (Álvaro): al salir del campo se ofrece la corrección. Mientras se escribe no se dice nada, para no molestar
   const emailId = useId();
@@ -405,8 +406,9 @@ function EmailGate({
         }
         setBusy(true);
         setErr(null);
+        setLimit(false);
         try {
-          const r = await postJson<{ bookId?: string; sheetJobId?: string; coverJobId?: string; freeLeft?: number; error?: string }>("/api/libro/start", {
+          const r = await postJson<{ bookId?: string; sheetJobId?: string; coverJobId?: string; freeLeft?: number; error?: string; mailed?: boolean }>("/api/libro/start", {
             email,
             consent,
             marketing,
@@ -415,7 +417,7 @@ function EmailGate({
             planMeta: { provider: record.provider, model: record.model },
           });
           if (r.json.error === "free_limit") {
-            setLimit(true);
+            setLimit(r.json.mailed === false ? "unsent" : "sent");
             setBusy(false);
             return;
           }
@@ -523,15 +525,23 @@ function EmailGate({
           <p className="m-0 flex items-center gap-2 font-display text-[20px]">
             <Sparkle size={14} color="currentColor" /> Tus cuentos te esperan
           </p>
-          <p className="m-0 text-[15px] leading-relaxed">
-            Con este email ya tienes tres cuentos con sus personajes dibujados. Te los acabamos de mandar para que elijas el que más te guste y lo termines.
-            En cuanto tengas uno, puedes empezar otro.
-          </p>
+          {limit === "unsent" ? (
+            <p className="m-0 text-[15px] leading-relaxed">
+              Con este email ya tienes tres cuentos con sus personajes dibujados. No hemos podido mandártelos ahora. Vuelve a intentarlo en un rato o
+              escríbenos a hola@erasesuvez.com.
+            </p>
+          ) : (
+            <p className="m-0 text-[15px] leading-relaxed">
+              Con este email ya tienes tres cuentos con sus personajes dibujados. Te los acabamos de mandar para que elijas el que más te guste y lo termines.
+              En cuanto tengas uno, puedes empezar otro.
+            </p>
+          )}
           <p className="m-0 text-[13px]">Este cuento escrito no se pierde: se queda guardado en este navegador.</p>
         </div>
       )}
       <div className="actionbar">
-        <button type="submit" className="btn-primary btn-lg w-full sm:w-auto" disabled={busy || limit} data-testid="start">
+        {/* si no han salido, se puede volver a intentar */}
+        <button type="submit" className="btn-primary btn-lg w-full sm:w-auto" disabled={busy || limit === "sent"} data-testid="start">
           {busy ? <Sparkle className="twinkle" size={16} color="#fff" /> : <Icon.brush />}
           {busy ? "Preparando…" : `Dibujar a ${name}`}
         </button>
