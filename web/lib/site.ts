@@ -18,3 +18,16 @@ export const PUBLIC_PATHS = ["/", "/crear", "/privacidad", "/condiciones", "/avi
 export function sitemapPaths(open: boolean): string[] {
   return PUBLIC_PATHS.filter((p) => open || p !== "/crear");
 }
+
+/**
+ * Los alias de producción en vercel.app (`cuentos-pi.vercel.app` y los de cada despliegue) llevan al dominio de la marca
+ * (auditoría 26 oct, I21): si no, Google reparte la portada entre varios dominios. Solo en producción y con SITE_URL; la
+ * API se queda donde está (los webhooks y el cron no siguen redirecciones). Devuelve adónde, o null.
+ */
+export function brandRedirect(host: string | null, path: string, search: string, env: Record<string, string | undefined> = process.env): string | null {
+  const base = siteUrl(env);
+  if (env.VERCEL_ENV !== "production" || !base || !host) return null;
+  if (!host.toLowerCase().split(":")[0].endsWith(".vercel.app")) return null;
+  if (path === "/api" || path.startsWith("/api/")) return null;
+  return `${base}${path}${search}`;
+}

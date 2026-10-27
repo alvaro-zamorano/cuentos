@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { appOpen, closedAction, openAction } from "./lib/appOpen";
 import { OCASIONES, OCASIONES_PATH } from "./lib/ocasiones";
+import { brandRedirect } from "./lib/site";
 
 const SLUGS = new Set(OCASIONES.map((o) => o.slug));
 
@@ -9,9 +10,12 @@ const SLUGS = new Set(OCASIONES.map((o) => o.slug));
  * responden 404. No basta con esconder los botones: las rutas seguirían respondiendo y gastando.
  * Con la app abierta, la API del flujo antiguo también responde 404 (auditoría del 26 oct, B5).
  * Una página de ocasión que no existe da 404 de verdad (con Cache Components, notFound() dentro de la página llega con 200).
+ * En producción, los alias de vercel.app llevan al dominio de la marca, salvo la API (lib/site.ts, I21).
  */
 export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const brand = brandRedirect(request.headers.get("host"), path, request.nextUrl.search);
+  if (brand) return NextResponse.redirect(brand, 308);
   if (path.startsWith(`${OCASIONES_PATH}/`) && !SLUGS.has(path.slice(OCASIONES_PATH.length + 1).replace(/\/$/, ""))) {
     return NextResponse.rewrite(new URL("/_no-existe", request.url));
   }
@@ -26,5 +30,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/crear", "/crear/:path*", "/api/:path*", "/cuento-personalizado/:path+"],
+  // todo menos los archivos de Next: la redirección de los alias de vercel.app mira cualquier página
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
