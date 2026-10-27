@@ -473,8 +473,8 @@ function EmailGate({
         <div aria-live="polite">
           {typo && typoShown && (
             <div className="rise flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-butter/70 px-4 py-3 text-[15px] leading-snug text-ink" data-testid="email-typo">
-              <p className="m-0 min-w-0 flex-1">
-                ¿Quisiste decir <strong className="break-all">{typo}</strong>?
+              <p className="m-0 w-full min-w-0 [overflow-wrap:anywhere]">
+                ¿Quisiste decir <strong>{typo}</strong>?
               </p>
               <button
                 ref={fixRef}
