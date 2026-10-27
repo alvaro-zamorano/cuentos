@@ -15,6 +15,7 @@ import { Book3D } from "@/components/book3d/Book3D";
 import type { Book3DData } from "@/lib/book3d/scene";
 import { BookImage } from "./BookImage";
 import { BookLink } from "./BookLink";
+import { PdfLink } from "./PdfLink";
 import { PrintPanel } from "./PrintPanel";
 import { UpgradeCard } from "./UpgradeCard";
 import { ShippingForm, type ShippingDraft } from "./ShippingForm";
@@ -365,16 +366,20 @@ export function StepBook({
 
       {view.paid && allDone ? (
         <div className="actionbar">
-          <a className="btn-primary btn-lg w-full sm:w-auto" href={`/api/libro/pdf?b=${bookId}&kind=full`} data-testid="full-pdf">
-            <Icon.download />
-            Descargar el libro en PDF
-          </a>
+          <PdfLink bookId={bookId} kind="full" className="btn-primary btn-lg w-full sm:w-auto" testId="full-pdf">
+            {(preparing) => (
+              <>
+                <Icon.download />
+                {preparing ? "Preparando el PDF…" : "Descargar el libro en PDF"}
+              </>
+            )}
+          </PdfLink>
           <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{hardcover ? "A4 apaisado, para leerlo mientras llega el impreso" : "A4 apaisado, listo para imprimir en casa"}</p>
         </div>
       ) : (
-        <a className="link justify-self-center text-sm font-semibold" href={`/api/libro/pdf?b=${bookId}&kind=free`}>
-          Prefiero el PDF gratis, con la portada y el texto
-        </a>
+        <PdfLink bookId={bookId} kind="free" className="link justify-self-center text-sm font-semibold">
+          {(preparing) => (preparing ? "Preparando el PDF…" : "Prefiero el PDF gratis, con la portada y el texto")}
+        </PdfLink>
       )}
     </div>
   );

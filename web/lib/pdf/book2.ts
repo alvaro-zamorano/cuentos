@@ -1,5 +1,5 @@
 import "server-only";
-import { launch } from "./render";
+import { withBrowser } from "./render";
 import { readyToPrint } from "./ready";
 import { PDF_PAGE, pdfBookHtml, type PrintBookInput } from "./printHtml";
 
@@ -19,10 +19,10 @@ export function book2Html(input: Book2PdfInput): string {
   return pdfBookHtml(input, input.kind).html;
 }
 
-export async function renderBook2Pdf(input: Book2PdfInput, timeoutMs = 90_000): Promise<Uint8Array> {
-  const t0 = Date.now();
-  const browser = await launch();
-  try {
+export function renderBook2Pdf(input: Book2PdfInput, timeoutMs = 90_000): Promise<Uint8Array> {
+  // el plazo empieza al tocarle el turno (lib/pdf/queue.ts)
+  return withBrowser(async (browser) => {
+    const t0 = Date.now();
     const page = await browser.newPage();
     await page.setContent(book2Html(input), { waitUntil: "load", timeout: timeoutMs });
     // las letras y las ilustraciones (URLs firmadas) tienen que estar antes de imprimir; si falta algo, falla (I8)
@@ -30,7 +30,5 @@ export async function renderBook2Pdf(input: Book2PdfInput, timeoutMs = 90_000): 
     const pdf = await page.pdf({ width: `${PDF_PAGE.widthMm}mm`, height: `${PDF_PAGE.heightMm}mm`, printBackground: true, preferCSSPageSize: true, timeout: Math.max(5_000, timeoutMs - (Date.now() - t0)) });
     console.log(`[pdf2] ${input.kind} ${pdf.length} bytes en ${Date.now() - t0} ms`);
     return pdf;
-  } finally {
-    await browser.close().catch(() => undefined);
-  }
+  });
 }
