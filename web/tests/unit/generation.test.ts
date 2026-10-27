@@ -18,7 +18,7 @@ import {
   parseGeminiImageResponse,
   resolveRefPath,
 } from "../../lib/generation/adapter";
-import { canSpend, freeSpendToday, leadCapCents, recordSpend, utcDayStart } from "../../lib/generation/budget";
+import { canSpend, capDay, capDayStart, freeSpendToday, leadCapCents, recordSpend } from "../../lib/generation/budget";
 import { TEXT_ESTIMATE_CENTS, recordText, textRoom } from "../../lib/plan/textBudget";
 import { MOCK_LLM } from "../../lib/llm";
 import { DEFAULT_TRAITS } from "../../lib/traits";
@@ -268,7 +268,8 @@ function fakeDb(rows: Row[], opts: { failRead?: boolean; orders?: Order[] } = {}
 
 const NOW = new Date("2026-10-11T15:00:00Z");
 const TODAY = "2026-10-11T09:00:00.000Z";
-const YESTERDAY = "2026-10-10T23:59:00.000Z";
+// las 23:59 del día 10 en Madrid (UTC+2 en octubre, hasta el cambio de hora del 25)
+const YESTERDAY = "2026-10-10T21:59:00.000Z";
 
 test("canSpend: sin cliente nunca gasta", async () => {
   assert.deepEqual(await canSpend(null, { leadId: "a@b.c", cents: 4 }), { ok: false, reason: "sin presupuesto configurado" });
@@ -326,7 +327,13 @@ test("canSpend: respeta el tope diario UTC (500 c por defecto), salvo libros cob
     assert.equal((await canSpend(db, { leadId: "nuevo", cents: 20, now: NOW })).ok, true);
     assert.equal((await canSpend(db, { leadId: "nuevo", cents: 21, now: NOW })).ok, false);
   });
-  assert.equal(utcDayStart(NOW), "2026-10-11T00:00:00.000Z");
+  // el día del tope es el de Madrid
+  assert.equal(capDayStart(NOW), "2026-10-10T22:00:00.000Z");
+  assert.equal(capDay(new Date("2026-10-10T22:30:00Z")), "2026-10-11", "las 00:30 en Madrid ya son otro día");
+  // con el cambio de hora (25 oct, a las 3 vuelven a ser las 2): medianoche era UTC+2, por la tarde ya es UTC+1
+  assert.equal(capDayStart(new Date("2026-10-25T18:00:00Z")), "2026-10-24T22:00:00.000Z");
+  assert.equal(capDayStart(new Date("2026-10-26T10:00:00Z")), "2026-10-25T23:00:00.000Z");
+  assert.equal(capDayStart(new Date("2026-03-29T12:00:00Z")), "2026-03-28T23:00:00.000Z", "en marzo, medianoche aún era UTC+1");
 });
 
 test("tope diario: lo pintado para libros cobrados tras el cobro no cuenta; lo de antes del pago y lo de prueba, sí (B2)", async () => {

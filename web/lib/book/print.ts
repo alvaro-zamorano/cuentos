@@ -16,6 +16,7 @@ import type { Fail } from "../generation/service";
 import type { PrintBookInput } from "../pdf/printHtml";
 import { isLiveSession, orderBelongsToEnv, printableInEnv } from "../stripe";
 import { bookView, draftV2, loadBook, unsignedImages } from "./service";
+import { bookLine } from "../support";
 
 export interface PrintDeps {
   mode: PrintMode;
@@ -87,7 +88,7 @@ async function printAlert(store: GenStore, deps: PrintDeps, order: Pick<PaidOrde
       [
         `El pedido ${order.id}${["send", "printer_failed", "printer_stopped"].includes(kind) ? " ha fallado" : ""}: ${error.slice(0, 300)}`,
         advice[kind],
-        book ? `Libro: ${deps.link(book.public_id)}` : "El libro ya no está.",
+        book ? bookLine(book.id) : "El libro ya no está.",
       ].join("\n\n"),
     );
   } catch (e) {

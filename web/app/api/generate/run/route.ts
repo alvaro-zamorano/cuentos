@@ -1,5 +1,4 @@
 import { after, NextResponse } from "next/server";
-import { publicOrigin } from "@/lib/book/background";
 import { alertPaidFailures, paidFailure } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { runJob } from "@/lib/generation/service";
@@ -30,10 +29,9 @@ export async function POST(req: Request) {
     // una imagen pagada que ya no va a salir sola: aviso a soporte, una vez por libro (I3)
     if (paidFailure(r.job)) {
       const { store } = ctx;
-      const origin = publicOrigin(req);
       after(async () => {
         const book = await store.getBookById(r.job.book_id).catch(() => null);
-        if (book) await alertPaidFailures(store, book.public_id, sendSupportNotice, (id) => `${origin}/crear?b=${id}`).catch(() => null);
+        if (book) await alertPaidFailures(store, book.public_id, sendSupportNotice).catch(() => null);
       });
     }
     return NextResponse.json({ ok: true, ran: r.ran, job: { id: r.job.id, status: r.job.status } });

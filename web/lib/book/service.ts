@@ -14,6 +14,7 @@ import { getStyle } from "../generation/styles";
 import { MAX_ATTEMPTS, STALE_RUNNING_MS, gateSpend, v2Of, type Fail, type V2Spec } from "../generation/service";
 import { jobKey } from "../generation/keys";
 import { VIEW_URL_SECONDS } from "../signing";
+import { bookLine, bookRef } from "../support";
 import type { BookRecord, GenJob, GenStore, NewJob } from "../generation/store";
 import { estimatedCostCents, type GenerationAdapter } from "../generation/adapter";
 import { canSpend, freeBookCapCents } from "../generation/budget";
@@ -761,6 +762,20 @@ async function recordUpgrade(
 }
 
 /**
+ * Aviso a soporte de un recibo que el correo rechaza (I28): la dirección del padre, para revisarla, y el libro por su
+ * referencia, sin el enlace que lo abre (I30). Puro, para probarlo; lo manda el webhook.
+ */
+export function receiptNotice(to: string, reason: string, bookUuid: string | null, sessionId: string | null): { subject: string; text: string } {
+  return {
+    subject: "Recibo sin enviar",
+    text: [
+      `No se ha podido mandar el recibo de compra a ${to}: el servicio de correo lo rechaza (${reason}). Revisa la dirección y mándalo a mano.`,
+      bookUuid ? bookLine(bookUuid) : `Sesión de Stripe: ${sessionId ?? "?"} (el libro va en sus metadatos)`,
+    ].join("\n\n"),
+  };
+}
+
+/**
  * Aviso a soporte (`MAIL_FORWARD_TO`) cuando un cobro de Stripe no acaba bien: no se ha podido registrar, es un cobro
  * doble o el importe no cuadra. Puro, para probarlo; lo manda el webhook. Auditoría 26 oct, B7: antes solo se avisaba de
  * las mejoras a tapa dura y el resto de cobros sin pedido pasaban sin que nadie se enterara.
@@ -769,7 +784,8 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
   const s = event.data?.object ?? {};
   const paidSession = (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && s.payment_status === "paid";
   const upgrade = s.metadata?.upgrade === "1";
-  const facts = `Libro: ${s.metadata?.bookId ?? s.client_reference_id ?? "?"}\nSesión: ${s.id ?? "?"}\nImporte: ${typeof s.amount_total === "number" ? (s.amount_total / 100).toFixed(2) : "?"} ${(s.currency ?? "eur").toUpperCase()}`;
+  // el libro, por la sesión (sus metadatos en Stripe, o su pedido): el id público abriría el libro (I30)
+  const facts = `Sesión: ${s.id ?? "?"} (el libro va en sus metadatos de Stripe)\nImporte: ${typeof s.amount_total === "number" ? (s.amount_total / 100).toFixed(2) : "?"} ${(s.currency ?? "eur").toUpperCase()}`;
   if (r.action === "ignored" && paidSession) {
     return {
       subject: upgrade ? "Mejora a tapa dura cobrada sin registrar" : "Cobro sin pedido",
@@ -917,7 +933,6 @@ export async function alertPaidFailures(
   store: GenStore,
   bookId: string,
   notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
-  link: (publicId: string) => string,
 ): Promise<boolean> {
   const book = await store.findBook({ publicId: bookId });
   const d = book ? draftV2(book) : null;
@@ -929,11 +944,11 @@ export async function alertPaidFailures(
   const r = await notify(
     `Imagen pagada que no sale: «${d.plan.title}»`,
     [
-      `En el libro «${d.plan.title}» (${book.public_id}) ya no salen solas: ${stuck.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
+      `En el libro «${d.plan.title}» (${bookRef(book.id)}) ya no salen solas: ${stuck.map((j) => `${what(j)} (versión ${j.variant}: ${(j.error ?? "error").slice(0, 120)})`).join("; ")}.`,
       stuck.some((j) => isBookCapError(j.error))
         ? "Ha llegado al tope de coste por libro (MAX_COST_CENTS_PER_BOOK): hay que mirarlo a mano."
         : "Ya no quedan versiones automáticas. El padre puede avisarnos desde la página; hay que pintarla a mano.",
-      `Libro: ${link(book.public_id)}`,
+      bookLine(book.id),
     ].join("\n\n"),
   ).catch(() => ({ sent: false }));
   if (!r.sent) return false;
@@ -1297,7 +1312,6 @@ export async function reportPage(
   store: GenStore,
   input: { bookId?: unknown; page?: unknown; note?: unknown },
   notify: (subject: string, text: string) => Promise<{ sent: boolean }>,
-  link: (publicId: string) => string,
   env: Env = process.env,
 ): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
@@ -1314,16 +1328,16 @@ export async function reportPage(
   await store.addFeedback({ book_id: book.id, job_id: null, kind: "report", page_n: n, variant: null, reason: "sigue_mal", note, style_id: d.ficha.styleId });
   const redos = prior.filter((f) => f.kind === "redo" && f.page_n === n).map((f) => `- versión ${f.variant ?? "?"}: ${REDO_REASONS[f.reason as RedoReason] ?? f.reason}${f.note ? `: «${f.note}»` : ""}`);
   const text = [
-    `Página ${n} del libro «${d.plan.title}» (${book.public_id}).`,
+    `Página ${n} del libro «${d.plan.title}» (${bookRef(book.id)}).`,
     note ? `Lo que dice: «${note}»` : "No ha escrito nada más.",
     redos.length ? `Versiones que pidió antes:\n${redos.join("\n")}` : "No pidió otras versiones con motivo.",
     `Escena: ${d.plan.pages[n - 1]?.scene ?? ""}`,
-    `Libro: ${link(book.public_id)}`,
+    bookLine(book.id),
   ].join("\n\n");
   // si no ha salido ninguna versión, el asunto lo dice (I3: «Avísanos» también sin ninguna hecha)
   const anyDone = (await store.listJobs(book.id)).some((j) => j.kind === "page" && j.page_n === n && j.status === "done");
   const sent = await notify(`${anyDone ? "Sigue sin estar bien" : "No sale"}: página ${n} de «${d.plan.title}»`, text);
-  if (!sent.sent) console.warn(`[report] aviso sin enviar (${book.public_id}, página ${n})`);
+  if (!sent.sent) console.warn(`[report] aviso sin enviar (${bookRef(book.id)}, página ${n})`);
   return { ok: true };
 }
 

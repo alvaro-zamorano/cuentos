@@ -21,6 +21,16 @@ const WORD_SET = new Set(WORDS);
 const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]{2,}/;
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/i;
 const PHONE_RE = /(?:\+?\d[\s.-]?){9,}/;
+/**
+ * Un dominio suelto («premios.es», «bit.ly/regalo»), con las terminaciones más comunes: lo que va en el asunto de un email
+ * (el título) no puede llevar a otra web (revisión 27 oct). Sin lista, «Sr.García» o «la 3.ª» saltarían.
+ */
+const DOMAIN_RE = /\b[a-z0-9][a-z0-9-]*\.(?:es|com|net|org|eu|info|io|me|co|ly|app|link|site|online|shop|store|xyz|tv|gg|cat|gal|eus)\b/i;
+
+/** Datos de contacto o dominios en un texto que va en el asunto de un email (el título del cuento). */
+export function contactOrDomain(text: string): string | null {
+  return contactData(text) ?? (DOMAIN_RE.test(text) ? "web" : null);
+}
 
 export interface Moderation {
   ok: boolean;

@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   return withContext("checkout", async (store) => {
     const info = upgrade ? await prepareUpgrade(store, body) : await prepareCheckout(store, body);
     if (!info.ok) return info;
-    const r = await createCheckout({ bookId: info.bookId, email: info.email, title: info.title, amountCents: info.amountCents, edition: info.edition, origin, waiverAt, upgrade });
+    const r = await createCheckout({ bookId: info.bookId, email: info.email, amountCents: info.amountCents, edition: info.edition, origin, waiverAt, upgrade });
     if ("error" in r) {
       console.error("[libro/checkout]", r.error);
       return { ok: false, status: 502, error: "stripe" } satisfies Fail;

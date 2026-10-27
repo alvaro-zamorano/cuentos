@@ -16,7 +16,6 @@ import { EVAL_CASES } from "../../lib/plan/evalCases";
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
 const soon = () => Date.now() + 60_000;
-const link = (id: string) => `https://www.erasesuvez.com/crear?b=${id}`;
 
 /** Gemini rechaza la imagen (no es pasajero). */
 const refuses: GenerationAdapter = { ...dryRunAdapter, generateImage: async () => Promise.reject(new Error("gemini sin imagen (IMAGE_SAFETY)")) };
@@ -50,12 +49,12 @@ test("aviso a soporte solo de lo que ya no va a salir solo: una página sin vers
   const pages = { dryRunPayment: false };
   // pasajero: no avisa
   await paintAll(store, unavailable, [jobs[0]], { concurrency: 1, deadline: soon() });
-  assert.equal(await alertPaidFailures(store, bookId, notify, link), false);
+  assert.equal(await alertPaidFailures(store, bookId, notify), false);
   // la página 2 falla dos veces: aún queda otra versión automática (la pide el siguiente requestPages), no avisa
   await paintAll(store, refuses, [jobs[1]], { concurrency: 1, deadline: soon() });
   assert.ok((await requestPages(store, { bookId }, dryRunAdapter, pages, MOCK_LLM)).ok);
   await paintAll(store, refuses, [jobs[1]], { concurrency: 1, deadline: soon() });
-  assert.equal(await alertPaidFailures(store, bookId, notify, link), false, "con hueco para otra versión, no");
+  assert.equal(await alertPaidFailures(store, bookId, notify), false, "con hueco para otra versión, no");
   // sigue fallando hasta agotar las versiones de la página: ahora sí
   for (let round = 0; round < 6; round++) {
     const r = await requestPages(store, { bookId }, dryRunAdapter, pages, MOCK_LLM);
@@ -64,11 +63,11 @@ test("aviso a soporte solo de lo que ya no va a salir solo: una página sin vers
   }
   const p2 = (await store.listJobs(bookId)).filter((j) => j.kind === "page" && j.page_n === 2);
   assert.equal(p2.length, MAX_PAGE_JOBS);
-  assert.equal(await alertPaidFailures(store, bookId, notify, link), true);
+  assert.equal(await alertPaidFailures(store, bookId, notify), true);
   assert.equal(notices.length, 1);
   assert.match(notices[0], /^Imagen pagada que no sale: «Vera y la gran idea»\|.*página 2 \(versión 4: gemini sin imagen/);
   assert.doesNotMatch(notices[0], /retrato/, "los retratos no cuentan: el libro usa la hoja");
-  assert.equal(await alertPaidFailures(store, bookId, notify, link), false, "el mismo job, una vez");
+  assert.equal(await alertPaidFailures(store, bookId, notify), false, "el mismo job, una vez");
 });
 
 test("tope de coste por libro: no se reabre en cada recarga, «Avísanos» queda a la vista y soporte lo sabe", async () => {
@@ -81,7 +80,7 @@ test("tope de coste por libro: no se reabre en cada recarga, «Avísanos» queda
   assert.ok(again.ok && !again.jobs.includes(p5.id), "no se reabre");
   assert.equal((await store.getJob(p5.id))!.status, "failed");
   const notices: string[] = [];
-  assert.equal(await alertPaidFailures(store, bookId, async (s, t) => (notices.push(`${s}|${t}`), { sent: true }), link), true);
+  assert.equal(await alertPaidFailures(store, bookId, async (s, t) => (notices.push(`${s}|${t}`), { sent: true })), true);
   assert.match(notices[0], /página 5[^]*tope de coste por libro/);
 });
 
@@ -89,7 +88,7 @@ test("«Avísanos» de una página que no ha salido nunca: el aviso lo dice en e
   const { store, bookId, jobs } = await paidBook();
   await paintAll(store, refuses, [jobs[2]], { concurrency: 1, deadline: soon() });
   const mails: string[] = [];
-  const r = await reportPage(store, { bookId, page: 3, note: "no carga" }, async (subject) => (mails.push(subject), { sent: true }), link);
+  const r = await reportPage(store, { bookId, page: 3, note: "no carga" }, async (subject) => (mails.push(subject), { sent: true }));
   assert.deepEqual(r, { ok: true });
   assert.equal(mails[0], "No sale: página 3 de «Vera y la gran idea»");
 });

@@ -101,15 +101,15 @@ test("mejora pagada a última hora (25 oct): el libro no caduca antes de poder m
 });
 
 test("Stripe: la mejora lleva su marca, su nombre, la diferencia y la vuelta con ?mejora=1", () => {
-  const p = checkoutBody({ bookId: "abc12345", email, title: "Vera y Toby", amountCents: UPGRADE_CENTS, origin: "https://x", edition: "hardcover", upgrade: true });
+  const p = checkoutBody({ bookId: "abc12345", email, amountCents: UPGRADE_CENTS, origin: "https://x", edition: "hardcover", upgrade: true });
   assert.equal(p.get("metadata[upgrade]"), "1");
   assert.equal(p.get("payment_intent_data[metadata][upgrade]"), "1");
   assert.equal(p.get("metadata[edition]"), "hardcover");
   assert.equal(p.get("line_items[0][price_data][unit_amount]"), "2000");
-  assert.match(p.get("line_items[0][price_data][product_data][name]")!, /^Pasar a tapa dura · Vera y Toby/);
+  assert.equal(p.get("line_items[0][price_data][product_data][name]"), "Pasar a tapa dura");
   assert.match(p.get("line_items[0][price_data][product_data][description]")!, /El PDF ya lo tienes/);
   assert.equal(p.get("success_url"), "https://x/crear?b=abc12345&pagado=1&mejora=1");
-  const normal = checkoutBody({ bookId: "abc12345", email, title: "Vera y Toby", amountCents: 3490, origin: "https://x", edition: "hardcover" });
+  const normal = checkoutBody({ bookId: "abc12345", email, amountCents: 3490, origin: "https://x", edition: "hardcover" });
   assert.equal(normal.get("metadata[upgrade]"), null);
   assert.equal(normal.get("success_url"), "https://x/crear?b=abc12345&pagado=1");
 });

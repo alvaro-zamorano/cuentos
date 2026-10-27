@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
 import { chargeNotice, isChargeEvent, recordChargeEvent, type ChargeEvent } from "@/lib/book/refunds";
-import { alertPaidFailures, mailReceipt, notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
+import { alertPaidFailures, mailReceipt, notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages, receiptNotice } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { readyMail } from "@/lib/book/readyMail";
 import { holderLine, titular } from "@/lib/legal";
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     if (isChargeEvent(event.type)) {
       const c = await recordChargeEvent(store, event as unknown as ChargeEvent, { sessionOf: (pi) => sessionForPaymentIntent(pi) });
       console.log(`[stripe] ${event.type} → ${c.action}${c.action === "unmatched" || c.action === "ignored" ? ` (${c.reason})` : ""}`);
-      const notice = chargeNotice(c, event as unknown as ChargeEvent, link);
+      const notice = chargeNotice(c, event as unknown as ChargeEvent);
       if (notice) await sendSupportNotice(notice.subject, notice.text).catch(() => null);
       return NextResponse.json({ received: true });
     }
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
           maxDurationS: maxDuration,
           then: async () => {
             await notifyBookReady(store, r.bookId, link, readyMail);
-            await alertPaidFailures(store, r.bookId, sendSupportNotice, link);
+            await alertPaidFailures(store, r.bookId, sendSupportNotice);
           },
         },
       );
@@ -90,10 +90,9 @@ export async function POST(req: Request) {
       }
       if (receipt.status === "rejected") {
         console.error(`[stripe] recibo rechazado (${receipt.reason})`);
-        await sendSupportNotice(
-          "Recibo sin enviar",
-          `No se ha podido mandar el recibo de compra a ${receipt.to}: el servicio de correo lo rechaza (${receipt.reason}). Revisa la dirección y mándalo a mano.\n\nLibro: ${link(r.bookId)}`,
-        ).catch(() => null);
+        const book = await store.findBook({ publicId: r.bookId, includeExpired: true }).catch(() => null);
+        const n = receiptNotice(receipt.to, receipt.reason, book?.id ?? null, event.data.object.id ?? null);
+        await sendSupportNotice(n.subject, n.text).catch(() => null);
       }
     }
     return NextResponse.json({ received: true });

@@ -108,11 +108,12 @@ test("flujo nuevo en memoria: hoja + portada tras el email, cambios con palabras
   // «Sigue sin estar bien»: un aviso por página, con lo que pidió antes
   const mails: string[] = [];
   const notify = async (subject: string, text: string) => (mails.push(`${subject}\n${text}`), { sent: true });
-  assert.ok((await reportPage(store, { bookId: start.bookId, page: 3, note: "sigue raro" }, notify, (id) => `https://x/crear?b=${id}`)).ok);
+  assert.ok((await reportPage(store, { bookId: start.bookId, page: 3, note: "sigue raro" }, notify)).ok);
   assert.match(mails[0], /^Sigue sin estar bien: página 3/);
   assert.match(mails[0], /versión 2: Postura o cuerpo raro: «el perro atraviesa el sofá»/);
-  assert.match(mails[0], /https:\/\/x\/crear\?b=/);
-  const twiceReported = await reportPage(store, { bookId: start.bookId, page: 3 }, notify, (id) => id);
+  // con la referencia corta, sin el enlace que abre el libro (I30)
+  assert.ok(mails[0].includes(`ref. ${start.bookId.slice(0, 6)}`) && !mails[0].includes("crear?b="));
+  const twiceReported = await reportPage(store, { bookId: start.bookId, page: 3 }, notify);
   assert.equal(!twiceReported.ok && twiceReported.error, "already_reported");
   const fv = await bookView(store, start.bookId);
   assert.ok(fv.ok && fv.reported.includes(3) && fv.redosLeft === 6);

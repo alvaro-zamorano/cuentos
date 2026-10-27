@@ -39,7 +39,6 @@ export function waiverAccepted(body: Record<string, unknown> | null | undefined)
 export interface CheckoutInput {
   bookId: string;
   email: string | null;
-  title: string;
   amountCents: number;
   /** Tapa dura (con envío y el PDF) o solo el PDF. Va en los metadatos: el webhook crea el pedido de esa edición. */
   edition?: "hardcover" | "illustrated";
@@ -54,7 +53,7 @@ export interface CheckoutInput {
 export const CHECKOUT_TTL_S = 35 * 60;
 
 /** Cuerpo form-encoded de /v1/checkout/sessions (exportado para los tests). */
-export function checkoutBody({ bookId, email, title, amountCents, origin, waiverAt, edition = "illustrated", upgrade = false }: CheckoutInput, now = Date.now()): URLSearchParams {
+export function checkoutBody({ bookId, email, amountCents, origin, waiverAt, edition = "illustrated", upgrade = false }: CheckoutInput, now = Date.now()): URLSearchParams {
   const p = new URLSearchParams();
   p.set("mode", "payment");
   // la sesión caduca a los 35 min (Stripe admite de 30 min a 24 h; por defecto, 24 h): menos tiempo con dos pagos
@@ -82,8 +81,10 @@ export function checkoutBody({ bookId, email, title, amountCents, origin, waiver
   p.set("line_items[0][price_data][currency]", "eur");
   p.set("line_items[0][price_data][unit_amount]", String(amountCents));
   const hard = edition === "hardcover";
-  const name = upgrade ? "Pasar a tapa dura" : hard ? "Libro de tapa dura" : "Libro ilustrado";
-  p.set("line_items[0][price_data][product_data][name]", `${name} · ${title}`.slice(0, 120));
+  // sin el título del cuento, que suele llevar el nombre del niño: Stripe guarda el nombre del producto años (menores de
+  // la auditoría 26 oct)
+  const name = upgrade ? "Pasar a tapa dura" : hard ? "Libro de tapa dura personalizado" : "Libro ilustrado personalizado";
+  p.set("line_items[0][price_data][product_data][name]", name);
   p.set(
     "line_items[0][price_data][product_data][description]",
     upgrade

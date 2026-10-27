@@ -238,7 +238,7 @@ test("maqueta: solo caracteres que tienen Lora y Figtree (en Vercel no hay fuent
 });
 
 test("Stripe: la tapa dura va en los metadatos con su nombre y su descripción", () => {
-  const p = checkoutBody({ bookId: "abc12345", email, title: "Vera y Toby", amountCents: 3490, origin: "https://x", edition: "hardcover" });
+  const p = checkoutBody({ bookId: "abc12345", email, amountCents: 3490, origin: "https://x", edition: "hardcover" });
   assert.equal(p.get("metadata[edition]"), "hardcover");
   assert.equal(p.get("payment_intent_data[metadata][edition]"), "hardcover");
   assert.equal(p.get("line_items[0][price_data][unit_amount]"), "3490");
@@ -529,7 +529,7 @@ test("avisos (I12): un pedido que no sale hacia la imprenta y uno que la imprent
   assert.ok(!(await completePrint(signing, s.orderId, broken.deps)).ok);
   assert.equal(notices.length, 1);
   assert.match(notices[0], /^Tapa dura que no sale hacia la imprenta: «Vera y la gran idea»\|El pedido .* ha fallado: sin_medidas_de_cubierta/);
-  assert.match(notices[0], new RegExp(`crear\\?b=${bookId}`));
+  assert.ok(notices[0].includes("Libro: ref. ") && !notices[0].includes("crear?b=") && !notices[0].includes(bookId), "sin el enlace ni el id público (I30)");
 
   // se reintenta, sale, y después la imprenta lo cancela
   const again = await startPrint(store, bookId, "gelato");

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
         then: async () => {
           const link = (id: string) => `${origin}/crear?b=${id}`;
           await notifyBookReady(store, r.bookId, link, readyMail);
-          await alertPaidFailures(store, r.bookId, sendSupportNotice, link);
+          await alertPaidFailures(store, r.bookId, sendSupportNotice);
         },
       });
     }
