@@ -13,7 +13,8 @@ const nextConfig: NextConfig = {
     "/api/stripe/**": ["./public/styles/*.jpg"],
     "/api/dev": ["./public/styles/*.jpg"],
     // el Chromium comprimido (unos 70 MB) viaja solo con las dos rutas que maquetan PDF, para no bajarlo de GitHub en cada
-    // arranque en frío (auditoría 26 oct). El paquete lo busca en su propia carpeta bin/ (lib/pdf/render.ts)
+    // arranque en frío (auditoría 26 oct). El paquete lo busca en su propia carpeta bin/ (lib/pdf/render.ts). Una ruta
+    // nueva que maquete PDF (que llame a launch() o withBrowser()) necesita aquí su clave
     "/api/libro/pdf": ["./node_modules/@sparticuz/chromium/bin/*"],
     "/api/libro/print": ["./node_modules/@sparticuz/chromium/bin/*"],
   },

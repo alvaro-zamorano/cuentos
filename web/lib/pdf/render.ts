@@ -13,11 +13,13 @@ import { oneAtATime } from "./queue";
  * por separado a 300 ppp: 80 bitmaps y 86 MB por libro. Con una foto por hoja el libro pesa unos pocos MB.
  *
  * Chromium: en Vercel, el de @sparticuz/chromium, que viaja dentro de la función (next.config.ts) y se descomprime en
- * /tmp en el primer arranque, sin bajar nada (auditoría 26 oct). Si la función no lo trae, se baja el paquete de
- * `CHROMIUM_PACK_URL`, como antes. En local, `CHROME_PATH` o el Chromium de Playwright.
+ * /tmp en el primer arranque, sin bajar nada (auditoría 26 oct). Si la función no lo trae, se baja el paquete de la
+ * misma versión de GitHub, como se hacía antes, y queda un error en los logs. En local, `CHROME_PATH` o el Chromium de
+ * Playwright.
  */
-// la release va con la versión de @sparticuz/chromium en package.json: si se sube una, se sube la otra
-const PACK_URL = process.env.CHROMIUM_PACK_URL ?? "https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar";
+// la release va con las versiones exactas de @sparticuz/chromium y de puppeteer-core en package.json: si se sube una, se
+// suben las tres. Ya no se lee `CHROMIUM_PACK_URL`: una que se quedara en Vercel con otra versión bajaría otro Chromium
+const PACK_URL = "https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar";
 const LOCAL_CANDIDATES = [
   process.env.CHROME_PATH,
   "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
@@ -43,7 +45,9 @@ async function chromiumPath(chromium: Sparticuz): Promise<string> {
     const msg = e instanceof Error ? e.message : String(e);
     // solo cuando falta la carpeta: cualquier otro fallo (sin sitio en /tmp, archivo roto) se cuenta tal cual
     if (!/does not exist/.test(msg)) throw e;
-    console.warn(`[pdf] la función no trae Chromium; se baja de ${PACK_URL}`);
+    // no debería pasar: la ruta que maqueta no está en `outputFileTracingIncludes` (next.config.ts). Funciona, pero cada
+    // arranque en frío baja unos 60 MB
+    console.error(`[pdf] la función no trae Chromium; se baja de ${PACK_URL}. Añade su ruta a outputFileTracingIncludes`);
     return chromium.executablePath(PACK_URL);
   }
 }
