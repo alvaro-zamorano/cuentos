@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/brand";
 import { EYES, GLASSES, HAIR_COLORS, SKINS } from "@/lib/traits";
@@ -167,6 +168,7 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
             Otro detalle
           </button>
         )}
+        <HealthNote />
       </section>
 
       <div className="grid gap-3">
@@ -176,6 +178,7 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
 
         <Row icon={<Icon.star />} tint="bg-butter" title={unique} summary={look.unique?.trim() || "Pecas, un diente menos, su capa roja…"} done={!!look.unique?.trim()}>
           <input className="input" aria-label={unique} value={look.unique ?? ""} maxLength={LIMITS.unique} onChange={(e) => setLook({ unique: e.target.value })} placeholder="pecas en la nariz, le falta un diente, su capa roja" />
+          <HealthNote />
         </Row>
 
         <Row icon={<Icon.shirt />} tint="bg-peach" title="Ropa de siempre" summary={hero.outfit?.trim() || "La que lleva en casi todas las páginas"} done={!!hero.outfit?.trim()}>
@@ -258,14 +261,38 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
         </Row>
       </div>
 
+      {/* lo que pasa con estos datos, antes de mandarlos (auditoría 26 oct, I26 e I27): antes se sabía en el paso 4 */}
+      <p className="m-0 rounded-2xl bg-paper-deep px-4 py-3 text-[13px] leading-snug text-ink-soft" data-testid="before-write">
+        Para escribir el cuento, lo que has puesto, también lo de su salud si lo hay, va a un proveedor de IA que no lo usa para entrenar sus
+        modelos. Lo guardamos 30 días y después se borra.
+      </p>
+
       <div className="actionbar">
         <button type="submit" className="btn-primary btn-lg w-full sm:w-auto" data-testid="next-2">
           <Icon.pencil />
           Escribir el cuento
         </button>
-        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">Tarda medio minuto. Lo lees antes de seguir.</p>
+        <p className="m-0 w-full text-center text-[12.5px] leading-snug text-mute sm:w-auto sm:flex-1 sm:text-left" data-testid="write-consent">
+          Tarda medio minuto. Al pulsar, declaras ser su madre, padre o tutor (o tener su permiso) y aceptas cómo usamos estos datos:{" "}
+          <Link href="/privacidad" target="_blank" className="underline underline-offset-2">
+            privacidad
+          </Link>
+          .
+        </p>
       </div>
     </form>
+  );
+}
+
+/**
+ * Bajo los campos libres (auditoría 26 oct, I27): un audífono o una silla de ruedas son datos de salud de un menor. No
+ * se piden ni se prohíben; se dice para qué se usan.
+ */
+function HealthNote() {
+  return (
+    <p className="m-0 text-[12.5px] leading-snug text-mute" data-testid="health-note">
+      Si cuentas algo de su salud (un audífono, una silla de ruedas…), lo usamos solo para este cuento y se borra con él.
+    </p>
   );
 }
 

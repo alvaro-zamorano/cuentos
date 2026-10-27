@@ -43,6 +43,11 @@ async function writeStory(page: Page) {
   await page.getByTestId("cast-0").getByPlaceholder("su perro").fill("su perro");
   // «Lo que solo tú sabes» está a la vista; con un detalle no salen las tres preguntas
   await page.getByTestId("detail-0").fill("le encantan los dinosaurios");
+  // antes de mandar la ficha se dice qué pasa con ella, y qué con los datos de salud (I26, I27)
+  await expect(page.getByTestId("before-write")).toContainText("proveedor de IA");
+  await expect(page.getByTestId("write-consent")).toContainText("declaras ser su madre, padre o tutor");
+  await expect(page.getByTestId("write-consent").getByRole("link", { name: "privacidad" })).toHaveAttribute("href", "/privacidad");
+  await expect(page.getByTestId("health-note").first()).toContainText("solo para este cuento");
   await page.getByTestId("next-2").click();
   await expect(page.getByTestId("plan-pages").locator("li")).toHaveCount(12, { timeout: 20_000 });
 }

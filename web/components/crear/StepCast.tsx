@@ -423,7 +423,8 @@ function EmailGate({
         <label className={check}>
           <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--ink)]" data-testid="consent" />
           <span>
-            Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Acepto que el cuento se guarde 30 días para poder recuperarlo con un enlace; después se borra. He leído la{" "}
+            Declaro ser madre, padre o tutor legal del menor, o contar con su autorización. Acepto que el cuento se guarde 30 días para poder recuperarlo con un enlace; después se borra. Si he
+            contado algo de su salud, consiento que se use solo para hacer este libro. He leído la{" "}
             <Link href="/privacidad" target="_blank" className="link">
               política de privacidad
             </Link>{" "}
