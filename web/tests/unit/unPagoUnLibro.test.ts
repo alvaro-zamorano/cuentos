@@ -79,6 +79,39 @@ test("si otro cobro del mismo libro tiene el bloqueo, no se registra a ciegas: l
   assert.equal(paidOrders(state).length, 0);
 });
 
+test("si registrar el cobro falla, el bloqueo se suelta y el reintento de Stripe entra", async () => {
+  const { state, store, bookId } = await book();
+  const broken: GenStore = { ...store, addPaidOrder: async () => Promise.reject(new Error("orders: timeout")) };
+  await assert.rejects(recordStripePayment(broken, hardcover("cs_1", bookId), {}, { lockWaitMs: 300 }), /timeout/);
+  assert.equal((await recordStripePayment(store, hardcover("cs_1", bookId), {}, { lockWaitMs: 300 })).action, "paid");
+  assert.equal(paidOrders(state).length, 1);
+});
+
+test("el reintento de Stripe de una sesión ya devuelta no es un pago nuevo ni un cobro doble", async () => {
+  const { state, store, bookId } = await book();
+  assert.equal((await recordStripePayment(store, hardcover("cs_1", bookId), {})).action, "paid");
+  assert.equal((await recordChargeEvent(store, ...refundOf("cs_1"))).action, "refunded");
+  const again = await recordStripePayment(store, hardcover("cs_1", bookId), {});
+  assert.deepEqual(again, { action: "duplicate", bookId });
+  assert.equal(paymentNotice(again, hardcover("cs_1", bookId)), null, "nada que avisar");
+  assert.equal(paidOrders(state).length, 0, "sigue devuelto: ni se descarga ni se imprime");
+});
+
+test("cobro doble de otra edición (PDF y tapa dura en dos pestañas): el aviso dice las dos y pide preguntar antes de devolver", async () => {
+  const { store, bookId } = await book();
+  assert.equal((await recordStripePayment(store, pdf("cs_pdf", bookId), {})).action, "paid");
+  const ev = hardcover("cs_tapa", bookId);
+  const r = await recordStripePayment(store, ev, {});
+  assert.deepEqual(r, { action: "double_charge", bookId, already: "illustrated" });
+  const n = paymentNotice(r, ev)!;
+  assert.match(n.text, /ya estaba pagado \(Libro ilustrado en PDF\).*\(Libro de tapa dura\)/);
+  assert.match(n.text, /pregunta al cliente cuál quiere/);
+  assert.doesNotMatch(n.text, /Devuelve este segundo cobro/);
+  // la misma edición dos veces: devolver el segundo
+  const ev2 = pdf("cs_pdf2", bookId);
+  assert.match(paymentNotice(await recordStripePayment(store, ev2, {}), ev2)!.text, /Devuelve este segundo cobro/);
+});
+
 test("pagada la tapa dura, «Mandar a imprimir» dos veces a la vez y otra vez después crean un solo pedido en la imprenta", async () => {
   const { store, bookId } = await book();
   assert.equal((await recordStripePayment(store, hardcover("cs_1", bookId), {})).action, "paid");
