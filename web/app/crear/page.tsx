@@ -68,6 +68,8 @@ function Crear() {
         record: { plan: v.plan, provider: "guardado", model: "", fichaHash: fichaHash(v.ficha), createdAt: Date.now() },
         bookId: v.bookId,
         email: prev.email,
+        // pagado: los pasos 1 y 2 se cierran también al volver con el enlace (revisión 27 oct)
+        paid: v.paid || undefined,
       }));
       setNotice(pagado ? null : { text: "Libro recuperado.", ok: true });
     });
@@ -105,6 +107,10 @@ function Crear() {
   // «Guardando…» y «Guardado» junto al texto; «Reintentar» vuelve a mandar lo último (auditoría 26 oct, I13)
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [retry, setRetry] = useState(0);
+  // «Reintentar» manda ya, una vez; después vuelve la espera entre teclas (revisión 27 oct)
+  const saveNow = useRef(false);
+  // un guardado detrás de otro, en orden: dos a la vez podían llegar al revés y dejar el texto viejo
+  const saveChain = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
     if (!bookId || !plan) return;
     const json = JSON.stringify(plan);
@@ -117,10 +123,14 @@ function Crear() {
       const t = setTimeout(() => setSaveError(null), 0);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(
-      async () => {
-        const seq = ++saveSeq.current;
-        setSaveState("saving");
+    const delay = saveNow.current ? 0 : 1200;
+    saveNow.current = false;
+    const t = setTimeout(() => {
+      const seq = ++saveSeq.current;
+      setSaveState("saving");
+      saveChain.current = saveChain.current.then(async () => {
+        // si mientras esperaba ha salido otro cambio, este ya no hace falta: lo manda el siguiente
+        if (seq !== saveSeq.current) return;
         let r: Awaited<ReturnType<typeof postJson>> | null = null;
         try {
           r = await postJson("/api/libro/plan", { bookId, plan });
@@ -133,13 +143,21 @@ function Crear() {
           saved.current = json;
           setSaveError(null);
           setSaveState("saved");
+        } else if (r?.json.error === "already_paid") {
+          // otra pestaña o un cuento reescrito tras pagar: las escenas ya están pintadas. Se vuelve al cuento guardado
+          setSaveState("idle");
+          const v = await fetchView(bookId);
+          if (v) {
+            saved.current = JSON.stringify(v.plan);
+            setCrear((x) => ({ ...x, paid: true, ...(x.record ? { record: { ...x.record, plan: v.plan } } : {}) }));
+          }
+          setNotice({ text: `${errorMessage(r.json)} Hemos vuelto a cargar el cuento tal como está guardado.`, ok: false });
         } else {
           setSaveState("idle");
           setSaveError(r ? errorMessage(r.json, "Inténtalo de nuevo en un momento.") : "Sin conexión.");
         }
-      },
-      retry ? 0 : 1200,
-    );
+      });
+    }, delay);
     return () => clearTimeout(t);
   }, [bookId, plan, retry]);
   useEffect(() => {
@@ -189,6 +207,7 @@ function Crear() {
                   className="rounded-full px-3 py-1 text-sm font-semibold underline-offset-2 hover:underline"
                   onClick={() => {
                     setSaveError(null);
+                    saveNow.current = true;
                     setRetry((x) => x + 1);
                   }}
                   data-testid="save-retry"

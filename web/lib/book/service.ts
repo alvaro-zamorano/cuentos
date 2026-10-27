@@ -453,6 +453,9 @@ async function printLocked(store: GenStore, bookUuid: string): Promise<boolean> 
 }
 const lockedFail = () => fail(409, "printed", "El libro ya está en la imprenta y no se puede cambiar.");
 
+/** Lo que se pinta de una página (todo menos el texto). */
+const sceneOf = (p: Plan["pages"][number] | undefined) => (p ? JSON.stringify([p.scene, p.who, p.extras, p.place, p.objects, p.outfit, p.shot, p.time]) : "");
+
 /** Guarda el plan editado por el padre (textos, o una página reescrita). Las imágenes no se tocan aquí. */
 export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?: unknown }, env: Env = process.env): Promise<{ ok: true } | Fail> {
   const loaded = await loadBook(store, input.bookId);
@@ -466,8 +469,11 @@ export async function savePlan(store: GenStore, input: { bookId?: unknown; plan?
     const same = plan.title === d.plan.title && plan.dedication === d.plan.dedication && plan.pages.every((p, i) => p.text === d.plan.pages[i]?.text);
     return same ? { ok: true } : lockedFail();
   }
-  // pagado: solo los textos; las escenas siguen como se pintaron (I2). Una escena nueva repintaba la página a nuestra costa
+  // pagado: solo los textos; las escenas siguen como se pintaron (I2). Una escena nueva repintaba la página a nuestra costa.
+  // Si llega un cuento con escenas distintas (otra pestaña, un cuento reescrito), no se injerta su texto en los dibujos
+  // viejos: se dice (revisión 27 oct)
   const paid = await paidHere(store, book.id, env);
+  if (paid && plan.pages.some((p, i) => sceneOf(p) !== sceneOf(d.plan.pages[i]))) return paidFail();
   const next = (cur: BookDraftV2): Plan =>
     paid
       ? { ...cur.plan, title: plan.title, dedication: plan.dedication, pages: cur.plan.pages.map((p, i) => ({ ...p, text: plan.pages[i]?.text ?? p.text })) }
@@ -541,6 +547,13 @@ export async function prepareCheckout(store: GenStore, input: { bookId?: unknown
   if (isFail(loaded)) return loaded;
   let { book, d } = loaded;
   if (await paidHere(store, book.id, env)) return fail(409, "already_paid");
+  // no se paga con unos personajes todavía dibujándose: las páginas saldrían con la hoja anterior y, al terminar la nueva,
+  // se repintaban todas (revisión 27 oct, I2)
+  const sheets = sheetJobs(await store.listJobs(book.id));
+  const drawing = (j: GenJob) => j.status === "pending" || (j.status === "running" && Date.now() - Date.parse(j.updated_at) < STALE_RUNNING_MS);
+  // (solo cuenta la última: una anterior que se quedó en cola sin pintar no puede bloquear el pago)
+  const last = sheets[sheets.length - 1];
+  if (last && drawing(last) && sheets.some((j) => j.status === "done")) return fail(409, "sheet_not_ready", "Espera a que terminen de dibujarse los personajes y vuelve a intentarlo.");
   const edition = paidEdition(input.edition) ?? "illustrated";
   let shipping: Shipping | undefined;
   if (edition === "hardcover") {
@@ -731,9 +744,17 @@ export async function markStuckAlerted(store: GenStore, bookId: string, at: numb
   if (book && draftV2(book)) await mutate(store, book, (cur) => ({ ...cur, stuckAlertedAt: at }));
 }
 
-/** «Otra versión» con motivo que ha pedido el padre en este libro (cuentos_feedback). */
+/**
+ * «Otra versión» con motivo que ha pedido el padre en este libro (cuentos_feedback). Una por job: con la huella fija, dos
+ * peticiones a la vez (doble clic) crean un solo job pero dos filas de motivo, y no pueden gastar dos (revisión 27 oct).
+ */
+function countRedos(feedback: { kind: string; job_id: string | null }[]): number {
+  const rows = feedback.filter((f) => f.kind === "redo");
+  return new Set(rows.map((f, i) => f.job_id ?? `sin-job-${i}`)).size;
+}
+
 async function redosUsed(store: GenStore, bookUuid: string): Promise<number> {
-  return (await store.listFeedback(bookUuid)).filter((f) => f.kind === "redo").length;
+  return countRedos(await store.listFeedback(bookUuid));
 }
 
 /** Ids de las páginas que esperan a pintarse (para el segundo plano). */
@@ -979,10 +1000,14 @@ export async function requestPages(
   if (!d.castArt) return fail(409, "no_sheet");
   let jobs = await store.listJobs(book.id);
   const sheets = sheetJobs(jobs).filter((j) => j.status === "done");
-  const sheet = sheets.find((j) => j.id === d.approvedSheetJobId) ?? sheets[sheets.length - 1];
+  // la hoja de las páginas ya pagadas manda; si no, la aprobada; si no, la última (revisión 27 oct, I2)
+  const paidSheetId = jobs.filter((j) => j.kind === "page" && j.paid && v2Of(j)).map(sheetRefOf).find(Boolean);
+  const sheet = sheets.find((j) => j.id === paidSheetId) ?? sheets.find((j) => j.id === d.approvedSheetJobId) ?? sheets[sheets.length - 1];
   if (!sheet) return fail(409, "sheet_not_ready");
+  // se fija como aprobada: la vista y las peticiones siguientes usan la misma, aunque después termine otra
+  if (d.approvedSheetJobId !== sheet.id) ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, approvedSheetJobId: sheet.id })));
 
-  if (pagesArtKey(d.castArt, d.plan) !== d.pagesArt?.key) {
+  if (pagesArtKey(d.castArt!, d.plan) !== d.pagesArt?.key) {
     ({ book, d } = await pagesArtOnce(store, book, d, llm, { sleep, now }));
     // la dirección de arte tarda: lo que otra petición haya encolado mientras se ve aquí
     jobs = await store.listJobs(book.id);
@@ -1241,7 +1266,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   return {
     ok: true,
     bookId: book.public_id,
-    redosLeft: Math.max(0, MAX_BOOK_REDOS - feedback.filter((f) => f.kind === "redo").length),
+    redosLeft: Math.max(0, MAX_BOOK_REDOS - countRedos(feedback)),
     reported: [...new Set(feedback.filter((f) => f.kind === "report").map((f) => f.page_n))],
     ficha: d.ficha,
     plan: d.plan,

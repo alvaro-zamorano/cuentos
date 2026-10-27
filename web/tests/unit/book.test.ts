@@ -121,8 +121,10 @@ test("flujo nuevo en memoria: hoja + portada tras el email, cambios con palabras
   const pageJob = (await store.listJobs(start.bookId)).find((j) => j.kind === "page" && j.page_n === 1)!;
   assert.ok(JSON.stringify(pageJob.references).includes(r2.sheetJobId));
 
-  // tras pagar, el texto se corrige pero la escena no cambia: nada se repinta a nuestra costa (I2)
-  const edited = { ...plan, pages: plan.pages.map((p) => (p.n === 2 ? { ...p, text: `${p.text} Y se rió.` } : p.n === 4 ? { ...p, scene: "Vera y Toby cruzan un puente de madera sobre un río." } : p)) };
+  // tras pagar, el texto se corrige; una escena distinta se rechaza: nada se repinta a nuestra costa (I2)
+  const withScene = { ...plan, pages: plan.pages.map((p) => (p.n === 4 ? { ...p, scene: "Vera y Toby cruzan un puente de madera sobre un río." } : p)) };
+  assert.equal(((await savePlan(store, { bookId: start.bookId, plan: withScene })) as { error?: string }).error, "already_paid");
+  const edited = { ...plan, pages: plan.pages.map((p) => (p.n === 2 ? { ...p, text: `${p.text} Y se rió.` } : p)) };
   assert.ok((await savePlan(store, { bookId: start.bookId, plan: edited })).ok);
   const view = await bookView(store, start.bookId);
   assert.ok(view.ok);
