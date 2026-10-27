@@ -10,7 +10,7 @@
  */
 import { advances, DEFAULT_PRINT_SIZE, mapGelatoStatus, type CoverGeometry, type GelatoOrder, type GelatoOrderInput, type PrintMode, type PrintSize } from "../print/gelato";
 import { shippingLine } from "../print/shipping";
-import type { PaidOrder, PrintInfo, PrintStatus, PrintStep } from "../print/types";
+import { DISPUTE_HOLD, REFUND_HOLD, type PaidOrder, type PrintInfo, type PrintStatus, type PrintStep } from "../print/types";
 import type { GenStore } from "../generation/store";
 import type { Fail } from "../generation/service";
 import type { PrintBookInput } from "../pdf/printHtml";
@@ -160,6 +160,14 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
       fileUrl = signed;
     }
 
+    // una devolución mientras se maquetaba: el pedido ya no está pagado y no se crea en la imprenta (revisión 27 oct)
+    const fresh = await store.getOrderById(order.id);
+    if (fresh && (fresh.status ?? "paid") !== "paid") {
+      console.warn("[imprenta]", order.id, "devuelto antes de mandarlo: no se crea el pedido");
+      await store.updateOrder(order.id, { printStatus: "canceled", printError: REFUND_HOLD });
+      return fail(409, "refunded", "El pago de este libro se ha devuelto.");
+    }
+
     let printOrderId = `dry-run:${book.public_id}`;
     if (deps.mode === "gelato") {
       const r = await deps.createOrder({ orderReferenceId: order.id, customerReferenceId: book.public_id, productUid, pageCount: deps.pageCount, fileUrl, shipping: order.shipping, email: book.email, orderType: deps.orderType, shipmentMethodUid: deps.shipmentMethod });
@@ -268,8 +276,9 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
   const live = env.VERCEL_ENV === "production";
   // una tapa dura pagada sin mandar a imprimir no tiene plazo (Álvaro, 26 oct; auditoría B3): el libro sigue abriéndose
   // hasta que se manda. El borrado ya la conservaba (`printPending`), pero el enlace dejaba de abrir a los 30 días
-  for (const o of await store.listPrintOrders(["awaiting_approval", "failed"], 500, live)) {
-    if (!mine(o)) continue;
+  // también la parada por una disputa: dura de 60 a 75 días y, si se gana, vuelve a esperar al padre (revisión 27 oct)
+  for (const o of await store.listPrintOrders(["awaiting_approval", "failed", "canceled"], 500, live)) {
+    if (!mine(o) || (o.printStatus === "canceled" && o.printError !== DISPUTE_HOLD)) continue;
     const book = await store.getBookById(o.bookId);
     if (!book?.expiresAt || Date.parse(book.expiresAt) - now.getTime() > 3 * 24 * HOUR) continue;
     await store.extendBook(book.id, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString());

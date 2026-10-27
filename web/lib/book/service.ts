@@ -24,7 +24,8 @@ import { blockedWord, contactData } from "../plan/moderation";
 import { planFromClient } from "../plan/planner";
 import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
-import { cleanShipping, shippingSummary } from "../print/shipping";
+import { cleanShipping, shippingLine, shippingSummary } from "../print/shipping";
+import type { Receipt } from "../mail";
 import { PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping, type ShippingSummary } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
@@ -67,6 +68,8 @@ export interface BookDraftV2 {
   stuckAlertedAt?: number;
   /** Jobs de imágenes pagadas que no salen de los que ya se avisó a soporte (I3): cada uno, una vez. */
   failAlertedJobs?: string[];
+  /** Sesiones de Stripe de las que ya se mandó el recibo (I28): una vez por cobro, aunque Stripe reintente. */
+  receiptSessions?: string[];
   /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
   edition?: PaidEdition;
   shipping?: Shipping;
@@ -585,7 +588,18 @@ export async function updateShipping(store: GenStore, input: { bookId?: unknown;
 
 export interface PaidEvent {
   type: string;
-  data: { object: { id?: string; payment_status?: string; amount_total?: number | null; currency?: string | null; metadata?: Record<string, string> | null; client_reference_id?: string | null } };
+  data: {
+    object: {
+      id?: string;
+      payment_status?: string;
+      amount_total?: number | null;
+      currency?: string | null;
+      metadata?: Record<string, string> | null;
+      client_reference_id?: string | null;
+      customer_email?: string | null;
+      customer_details?: { email?: string | null } | null;
+    };
+  };
 }
 
 export type PaymentOutcome =
@@ -687,6 +701,72 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
     return { subject: "Cobro con un importe que no cuadra", text: `El pedido se ha registrado, pero ${r.mismatch}.\n${facts}\n\nRevísalo en el panel de Stripe.` };
   }
   return null;
+}
+
+/**
+ * Recibo de compra (I28): una vez por sesión de Stripe, cuando el webhook registra el pago o lo vuelve a ver porque Stripe
+ * reintenta. Va al email con el que se pagó; si no viene, al del libro.
+ *
+ * El webhook lo espera antes de responder (revisión 27 oct: mandado después de responder, si fallaba no se reintentaba
+ * nunca). `retry`: fallo pasajero (red, Resend caído); el webhook responde 500 y Stripe vuelve a mandar el evento.
+ * `rejected`: Resend no lo acepta (dirección mal escrita, por ejemplo); reintentar no lo arregla y se avisa a soporte.
+ * `skipped`: nada que mandar (ya mandado, sin correo configurado, pedido devuelto…).
+ */
+export type ReceiptResult = { status: "sent" | "skipped" | "retry" } | { status: "rejected"; to: string; reason: string };
+
+export async function mailReceipt(
+  store: GenStore,
+  r: PaymentOutcome,
+  event: PaidEvent,
+  deps: {
+    send: (to: string, receipt: Receipt) => Promise<{ sent: boolean; reason?: string }>;
+    link: (publicId: string) => string;
+    conditionsLink: string;
+    seller: string;
+    contact: string | null;
+  },
+): Promise<ReceiptResult> {
+  const skipped = { status: "skipped" } as const;
+  if (r.action !== "paid" && r.action !== "upgraded" && r.action !== "duplicate") return skipped;
+  const s = event.data?.object ?? {};
+  if (!s.id) return skipped;
+  const order = await store.getOrderBySession(s.id);
+  if (!order || (order.status ?? "paid") !== "paid") return skipped;
+  const loaded = await loadBook(store, r.bookId, { includeExpired: true });
+  if (isFail(loaded)) return skipped;
+  const { book, d } = loaded;
+  if (d.receiptSessions?.includes(s.id)) return skipped;
+  const to = s.customer_details?.email ?? s.customer_email ?? book.email;
+  if (!to) return skipped;
+  const res = await deps
+    .send(to, {
+      title: d.plan.title,
+      kind: s.metadata?.upgrade === "1" ? "upgrade" : order.edition,
+      amountCents: order.amountCents,
+      paidAt: order.createdAt,
+      address: order.edition === "hardcover" && order.shipping ? shippingLine(order.shipping) : null,
+      waiverAt: s.metadata?.withdrawal_waiver_at ?? null,
+      link: deps.link(book.public_id),
+      conditionsLink: deps.conditionsLink,
+      seller: deps.seller,
+      contact: deps.contact,
+    })
+    .catch(() => ({ sent: false, reason: "red" }));
+  if (!res.sent) {
+    const reason = res.reason ?? "";
+    if (reason === "sin_configurar" || reason === "sin_destino") return skipped;
+    const code = Number(/^resend_(\d+)$/.exec(reason)?.[1] ?? 0);
+    if (code >= 400 && code < 500 && code !== 429) return { status: "rejected", to, reason };
+    return { status: "retry" };
+  }
+  // mandado: si falla apuntarlo, mejor no reintentar (saldría dos veces)
+  try {
+    const fresh = draftV2((await store.findBook({ publicId: book.public_id, includeExpired: true })) ?? book) ?? d;
+    await save(store, book, { ...fresh, receiptSessions: [...(fresh.receiptSessions ?? []), s.id].slice(-5) }, fresh.edition ?? "illustrated");
+  } catch (e) {
+    console.warn(`[stripe] recibo mandado sin apuntar: ${e instanceof Error ? e.message.slice(0, 120) : "error"}`);
+  }
+  return { status: "sent" };
 }
 
 /**
@@ -1183,8 +1263,11 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   const { book, d } = loaded;
   const jobs = (await store.listJobs(book.id)).filter((j) => v2Of(j));
   const sheets = sheetJobs(jobs);
+  const paid = await paidHere(store, book.id, env);
   const out: BookJobView[] = [];
   for (const j of jobs) {
+    // sin pago (o devuelto, I5), las ilustraciones de pago no se enseñan: solo la hoja, la portada y lo gratis (revisión 27 oct)
+    const hidden = !!j.paid && !paid;
     const sheetId = sheetRefOf(j);
     const current =
       j.kind === "page" && d.castArt && d.pagesArt && sheetId
@@ -1198,7 +1281,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       page: j.page_n,
       variant: j.variant,
       status: j.status,
-      url: j.status === "done" && j.storage_path ? await store.signedUrl(j.storage_path, 3600) : null,
+      url: j.status === "done" && j.storage_path && !hidden ? await store.signedUrl(j.storage_path, 3600) : null,
       placeholder: j.status === "done" && !j.storage_path,
       error: j.status === "failed" ? failReason(j.error) : null,
       current,
@@ -1241,7 +1324,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
     reported: [...new Set(feedback.filter((f) => f.kind === "report").map((f) => f.page_n))],
     ficha: d.ficha,
     plan: d.plan,
-    paid: await paidHere(store, book.id, env),
+    paid,
     edition: order?.edition ?? null,
     upgrade: upgradeOffer(book, order ?? null, Date.now(), env),
     print:

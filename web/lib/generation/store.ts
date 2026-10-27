@@ -13,7 +13,7 @@ import { newPublicId } from "../ids";
 import { normalizeDraft } from "../story";
 import type { Database, Json } from "../supabase/types";
 import type { Draft } from "../types";
-import type { PaidEdition, PaidOrder, PrintInfo, PrintStatus, Shipping } from "../print/types";
+import type { OrderStatus, PaidEdition, PaidOrder, PrintInfo, PrintStatus, Shipping } from "../print/types";
 import type { JobKind } from "./keys";
 import { isLiveSession } from "../stripe";
 
@@ -24,6 +24,8 @@ import { isLiveSession } from "../stripe";
  */
 export type LiveFilter = boolean | undefined;
 const liveMatch = (live: LiveFilter, sessionId: string | null | undefined) => live === undefined || isLiveSession(sessionId) === live;
+/** Como el filtro `status = 'paid'` de Supabase, en el almacén en memoria. */
+const paidRow = (o: PaidOrder) => (o.status ?? "paid") === "paid";
 
 export const BUCKET = "cuentos";
 
@@ -113,6 +115,8 @@ export interface GenStore {
   /** El pedido pagado del libro (el más reciente), con su estado en la imprenta. */
   getOrder(bookId: string): Promise<PaidOrder | null>;
   getOrderById(id: string): Promise<PaidOrder | null>;
+  /** El pedido de una sesión de Stripe, en cualquier estado (devoluciones y disputas, I5). */
+  getOrderBySession(sessionId: string): Promise<PaidOrder | null>;
   updateOrder(id: string, patch: OrderPatch): Promise<void>;
   /** Cambia el estado de imprenta solo si sigue en uno de `from` (dos peticiones a la vez no mandan dos pedidos). */
   claimPrint(id: string, from: PrintStatus[], to: PrintStatus): Promise<boolean>;
@@ -145,6 +149,8 @@ export interface NewPaidOrder {
 }
 
 export interface OrderPatch {
+  /** `refunded`: devuelto entero (I5). */
+  status?: Extract<OrderStatus, "paid" | "refunded">;
   printStatus?: PrintStatus;
   printOrderId?: string | null;
   trackingUrl?: string | null;
@@ -157,7 +163,7 @@ export interface OrderPatch {
 }
 
 const ORDER_COLUMNS =
-  "id, book_id, edition, amount_cents, stripe_session_id, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, print_info, created_at";
+  "id, book_id, status, edition, amount_cents, stripe_session_id, shipping, print_status, print_order_id, print_tracking_url, print_error, print_sent_at, print_reminded_at, print_shipped_mailed_at, print_updated_at, print_info, created_at";
 
 /** Aplica `LiveFilter` a una consulta de cuentos_orders (en la sintaxis de PostgREST, `*` es el comodín de like). */
 function sessionFilter<Q extends { like(column: string, pattern: string): Q; or(filters: string): Q }>(q: Q, live: LiveFilter): Q {
@@ -170,6 +176,7 @@ function asOrder(r: Record<string, unknown>): PaidOrder {
   return {
     id: String(r.id),
     bookId: String(r.book_id),
+    ...(typeof r.status === "string" ? { status: r.status as OrderStatus } : {}),
     edition: r.edition === "hardcover" ? "hardcover" : "illustrated",
     amountCents: Number(r.amount_cents ?? 0),
     sessionId: (r.stripe_session_id as string | null) ?? null,
@@ -189,6 +196,7 @@ function asOrder(r: Record<string, unknown>): PaidOrder {
 
 function orderRow(patch: OrderPatch): Database["public"]["Tables"]["cuentos_orders"]["Update"] {
   const row: Database["public"]["Tables"]["cuentos_orders"]["Update"] = {};
+  if (patch.status !== undefined) row.status = patch.status;
   if (patch.printStatus !== undefined) row.print_status = patch.printStatus;
   if (patch.printOrderId !== undefined) row.print_order_id = patch.printOrderId;
   if (patch.trackingUrl !== undefined) row.print_tracking_url = patch.trackingUrl;
@@ -198,7 +206,8 @@ function orderRow(patch: OrderPatch): Database["public"]["Tables"]["cuentos_orde
   if (patch.shippedMailedAt !== undefined) row.print_shipped_mailed_at = patch.shippedMailedAt;
   if (patch.shipping !== undefined) row.shipping = patch.shipping as unknown as Json;
   if (patch.info !== undefined) row.print_info = patch.info as unknown as Json;
-  row.print_updated_at = new Date().toISOString();
+  // solo el estado del pago no es un cambio de imprenta
+  if (Object.keys(row).some((k) => k !== "status")) row.print_updated_at = new Date().toISOString();
   return row;
 }
 
@@ -351,6 +360,11 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       if (error) throw new Error(`orders: ${error.message}`);
       return data ? asOrder(data as Record<string, unknown>) : null;
     },
+    async getOrderBySession(sessionId) {
+      const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("stripe_session_id", sessionId).maybeSingle();
+      if (error) throw new Error(`orders: ${error.message}`);
+      return data ? asOrder(data as Record<string, unknown>) : null;
+    },
     async updateOrder(id, patch) {
       const { error } = await db.from("cuentos_orders").update(orderRow(patch)).eq("id", id);
       if (error) throw new Error(`orders: ${error.message}`);
@@ -457,6 +471,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       orders.set(id, {
         id,
         bookId,
+        status: "paid",
         edition: o.edition === "hardcover" ? "hardcover" : "illustrated",
         amountCents: o.amountCents,
         sessionId: o.sessionId ?? null,
@@ -474,11 +489,15 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       });
     },
     async getOrder(bookId) {
-      const o = [...(state.orders?.values() ?? [])].reverse().find((x) => x.bookId === bookId);
+      const o = [...(state.orders?.values() ?? [])].reverse().find((x) => x.bookId === bookId && paidRow(x));
       return o ? { ...o } : null;
     },
     async getOrderById(id) {
       const o = state.orders?.get(id);
+      return o ? { ...o } : null;
+    },
+    async getOrderBySession(sessionId) {
+      const o = [...(state.orders?.values() ?? [])].find((x) => x.sessionId === sessionId);
       return o ? { ...o } : null;
     },
     async updateOrder(id, patch) {
@@ -496,14 +515,14 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
     },
     async listPrintOrders(statuses, limit, live) {
       return [...(state.orders?.values() ?? [])]
-        .filter((o) => o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus) && liveMatch(live, o.sessionId))
+        .filter((o) => paidRow(o) && o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus) && liveMatch(live, o.sessionId))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .slice(0, limit)
         .map((o) => ({ ...o }));
     },
     async listPaidOrdersSince(since, limit, live) {
       return [...(state.orders?.values() ?? [])]
-        .filter((o) => o.createdAt >= since && liveMatch(live, o.sessionId))
+        .filter((o) => paidRow(o) && o.createdAt >= since && liveMatch(live, o.sessionId))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, limit)
         .map((o) => ({ ...o }));
@@ -565,8 +584,9 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       return null;
     },
     async hasPaidOrder(bookId, accept) {
-      if (!accept) return !!state.paid?.has(bookId);
-      return [...(state.orders?.values() ?? [])].some((o) => o.bookId === bookId && accept(o.sessionId ?? null));
+      const mine = [...(state.orders?.values() ?? [])].filter((o) => o.bookId === bookId);
+      if (!accept) return !!state.paid?.has(bookId) && (mine.length === 0 || mine.some(paidRow));
+      return mine.some((o) => paidRow(o) && accept(o.sessionId ?? null));
     },
     async markIllustrating() {},
   };

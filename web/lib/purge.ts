@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./supabase/types";
 import { BUCKET } from "./generation/store";
 import { paidInEnv } from "./stripe";
+import { DISPUTE_HOLD } from "./print/types";
 
 export interface ExpiredBook {
   id: string;
@@ -143,15 +144,16 @@ export function supabasePurgeDb(db: SupabaseClient<Database>, env: Record<string
     async printPending(bookId) {
       const { data, error } = await db
         .from("cuentos_orders")
-        .select("stripe_session_id")
+        .select("stripe_session_id, print_status, print_error")
         .eq("book_id", bookId)
         .eq("status", "paid")
         .eq("edition", "hardcover")
-        .in("print_status", ["awaiting_approval", "sending", "failed"]);
+        .in("print_status", ["awaiting_approval", "sending", "failed", "canceled"]);
       must(error, "orders.print");
       // en producción solo se conserva por un cobro real: las tapas duras de prueba de la preview se quedaban para
-      // siempre y, con 100, atascaban el borrado (revisión 26 oct)
-      return (data ?? []).some((o) => paidInEnv(o.stripe_session_id, env));
+      // siempre y, con 100, atascaban el borrado (revisión 26 oct). Una parada por disputa también se conserva: si se
+      // gana, vuelve a «Mandar a imprimir» y necesita sus ilustraciones (revisión 27 oct)
+      return (data ?? []).some((o) => (o.print_status !== "canceled" || o.print_error === DISPUTE_HOLD) && paidInEnv(o.stripe_session_id, env));
     },
     async deleteBook(bookId) {
       const { error } = await db.from("cuentos_books").delete().eq("id", bookId);
