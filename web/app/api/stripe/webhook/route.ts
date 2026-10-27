@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { publicOrigin } from "@/lib/book/background";
 import { chargeNotice, isChargeEvent, recordChargeEvent, type ChargeEvent } from "@/lib/book/refunds";
-import { mailReceipt, notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
+import { alertPaidFailures, mailReceipt, notifyBookReady, paymentNotice, pendingPageJobs, recordStripePayment, requestPages } from "@/lib/book/service";
 import { generationContext } from "@/lib/generation/server";
 import { readyMail } from "@/lib/book/readyMail";
 import { holderLine, titular } from "@/lib/legal";
@@ -67,7 +67,14 @@ export async function POST(req: Request) {
           if (!p.ok) console.error("[stripe] páginas", p.error);
           return p.ok ? pendingPageJobs(store, r.bookId) : [];
         },
-        { t0, maxDurationS: maxDuration, then: () => notifyBookReady(store, r.bookId, (id) => `${origin}/crear?b=${id}`, readyMail) },
+        {
+          t0,
+          maxDurationS: maxDuration,
+          then: async () => {
+            await notifyBookReady(store, r.bookId, link, readyMail);
+            await alertPaidFailures(store, r.bookId, sendSupportNotice, link);
+          },
+        },
       );
     }
     // el recibo, antes de responder (revisión 27 oct): si falla por algo pasajero, 500 y Stripe reintenta el evento; el

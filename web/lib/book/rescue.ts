@@ -15,7 +15,7 @@ import type { PaidOrder } from "../print/types";
 import type { Llm } from "../llm";
 import { orderBelongsToEnv } from "../stripe";
 import { paintAll } from "./background";
-import { bookView, draftV2, markStuckAlerted, notifyBookReady, pendingPageJobs, requestPages } from "./service";
+import { alertPaidFailures, bookView, draftV2, markStuckAlerted, notifyBookReady, pendingPageJobs, requestPages } from "./service";
 
 type Env = Record<string, string | undefined>;
 
@@ -96,6 +96,8 @@ export async function rescueBooks(store: GenStore, deps: RescueDeps): Promise<Re
         report.mailed++;
         continue;
       }
+      // una imagen que ya no va a salir sola: aviso a soporte, una vez por libro (I3)
+      await alertPaidFailures(store, pid, deps.notify, deps.link);
     } catch (e) {
       report.errors++;
       failure = e instanceof Error ? e.message.slice(0, 200) : "error";

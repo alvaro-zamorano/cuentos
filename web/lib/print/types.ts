@@ -88,9 +88,20 @@ export interface PaidOrder {
 }
 
 /** Lo que ve el padre en el paso 5 tras pagar la tapa dura (sin el resto del pedido). */
+/**
+ * Lo que la pantalla enseña de la dirección (auditoría 26 oct, I16): el enlace del libro se reenvía a la familia, así que
+ * la vista no lleva ni la calle ni el teléfono. La dirección entera va en los emails del pedido, al buzón de quien pagó.
+ */
+export interface ShippingSummary {
+  name: string;
+  postcode: string;
+  city: string;
+  province?: string;
+}
+
 export interface PrintView {
   status: PrintStatus;
-  shipping: Shipping | null;
+  shipping: ShippingSummary | null;
   trackingUrl: string | null;
   sentAt: string | null;
   /** Página propia de seguimiento (/seguimiento/<id del pedido>), desde que está en la imprenta. */
