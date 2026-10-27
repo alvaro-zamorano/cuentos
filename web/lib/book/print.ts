@@ -17,7 +17,7 @@ import type { PrintBookInput } from "../pdf/printHtml";
 import { isLiveSession, orderBelongsToEnv, printableInEnv } from "../stripe";
 import { bookView, draftV2, loadBook, unsignedImages } from "./service";
 import { bookLine } from "../support";
-import { transientMailFailure, type MailResult } from "../mail";
+import { mailSettled, type MailResult } from "../mail";
 
 export interface PrintDeps {
   mode: PrintMode;
@@ -38,12 +38,13 @@ export interface PrintDeps {
    * existe; sin esta dependencia (pruebas en dry-run), no se mira.
    */
   findOrders?(reference: string): Promise<GelatoOrder[] | { error: string }>;
+  /** `key`: el hecho que manda cada email (lib/mail.ts, `mailKey`): el mismo dos veces en 24 horas sale una vez. */
   mail: {
     /** `link`: nuestra página de seguimiento. */
-    sentToPrint(to: string, title: string, link: string, address: string): Promise<MailResult>;
+    sentToPrint(to: string, title: string, link: string, address: string, key?: string): Promise<MailResult>;
     /** `link`: nuestra página de seguimiento, que lleva al transportista. */
-    shipped(to: string, title: string, link: string): Promise<{ sent: boolean }>;
-    reminder(to: string, title: string, link: string): Promise<{ sent: boolean }>;
+    shipped(to: string, title: string, link: string, key?: string): Promise<{ sent: boolean }>;
+    reminder(to: string, title: string, link: string, key?: string): Promise<{ sent: boolean }>;
   };
   link(bookId: string): string;
   /** Página propia de seguimiento del pedido (cuentos_orders.id). */
@@ -269,18 +270,37 @@ export async function completePrint(store: GenStore, orderId: string, deps: Prin
   }
 }
 
+/** La clave del email de «ya está en la imprenta»: uno por pedido en la imprenta (un reintento tras «failed» es otro). */
+const sentMailKey = (orderId: string, printOrderId: string | null | undefined) => `imprenta:${orderId}:${printOrderId ?? ""}`;
+
+/**
+ * Quita la marca de «ya está en la imprenta» pendiente, sobre lo que haya ahora en el pedido: entre medias puede haber
+ * llegado un aviso de la imprenta con otro hito (revisión 27 oct).
+ */
+async function clearSentMail(store: GenStore, orderId: string): Promise<void> {
+  const fresh = await store.getOrderById(orderId).catch(() => null);
+  if (!fresh?.info?.sentMailPending) return;
+  const info: PrintInfo = { ...fresh.info };
+  delete info.sentMailPending;
+  await store.updateOrder(orderId, { info }).catch(() => null);
+}
+
 /** En la imprenta: estado, id, hitos de cero y el email de «ya está en la imprenta». */
 async function markSent(store: GenStore, deps: PrintDeps, order: PaidOrder, email: string, title: string, printOrderId: string, now: Date): Promise<void> {
-  // un reintento tras «failed» es un pedido nuevo en la imprenta: nada del anterior (hitos, seguimiento, entrega)
-  const info: PrintInfo = { steps: { sent: now.toISOString() } };
+  const mail = !!order.shipping && !!email;
+  // un reintento tras «failed» es un pedido nuevo en la imprenta: nada del anterior (hitos, seguimiento, entrega).
+  // El email queda pendiente desde aquí: si Resend falla o la función se corta antes de mandarlo, lo manda el cron
+  // (auditoría 26 oct, menores: antes no se reintentaba y la pantalla decía que sí)
+  const info: PrintInfo = { steps: { sent: now.toISOString() }, ...(mail ? { sentMailPending: true } : {}) };
   await store.updateOrder(order.id, { printStatus: "sent", printOrderId, sentAt: now.toISOString(), printError: null, trackingUrl: null, info });
   // el libro sigue abriéndose hasta 30 días después de mandarlo (lo que dicen /privacidad §4 y /condiciones §10): si
   // llega dañado, se reimprime con lo guardado (I29). Antes caducaba a los 30 días del pago, saliera cuando saliera
   await store.extendBook(order.bookId, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString()).catch(() => null);
-  if (!order.shipping || !email) return;
-  const r: MailResult = await deps.mail.sentToPrint(email, title, deps.trackLink(order.id), shippingLine(order.shipping)).catch(() => ({ sent: false, reason: "error" }));
-  // si Resend falla, el cron lo reintenta (auditoría 26 oct, menores: antes no se reintentaba y la pantalla decía que sí)
-  if (transientMailFailure(r)) await store.updateOrder(order.id, { info: { ...info, sentMailPending: true } }).catch(() => null);
+  if (!mail) return;
+  const r: MailResult = await deps.mail
+    .sentToPrint(email, title, deps.trackLink(order.id), shippingLine(order.shipping!), sentMailKey(order.id, printOrderId))
+    .catch(() => ({ sent: false, reason: "error" }));
+  if (mailSettled(r)) await clearSentMail(store, order.id);
 }
 
 export type RefreshOutcome = "updated" | "unchanged" | "not_found" | "skipped";
@@ -331,7 +351,7 @@ export async function refreshPrint(store: GenStore, order: PaidOrder, deps: Prin
     const book = await store.getBookById(order.bookId);
     const d = book ? draftV2(book) : null;
     if (book?.email) {
-      const r = await deps.mail.shipped(book.email, d?.plan.title ?? "Tu libro", deps.trackLink(order.id)).catch(() => ({ sent: false }));
+      const r = await deps.mail.shipped(book.email, d?.plan.title ?? "Tu libro", deps.trackLink(order.id), `camino:${order.id}:${order.printOrderId}`).catch(() => ({ sent: false }));
       if (r.sent) patch.shippedMailedAt = now.toISOString();
     }
   }
@@ -407,24 +427,30 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
     if (!book?.email) continue;
     const view = await bookView(store, book.public_id);
     if (!view.ok || !Object.values(view.chosen.pages).every(Boolean)) continue;
-    const r = await deps.mail.reminder(book.email, view.plan.title, deps.link(book.public_id)).catch(() => ({ sent: false }));
+    const r = await deps.mail.reminder(book.email, view.plan.title, deps.link(book.public_id), `recordatorio:${o.id}:${o.remindedAt ? 2 : 1}`).catch(() => ({ sent: false }));
     if (r.sent) {
       await store.updateOrder(o.id, { remindedAt: now.toISOString() });
       report.reminded++;
     }
   }
-  // «ya está en la imprenta» que no salió por un fallo pasajero: se vuelve a mandar, hasta una semana después de mandarlo.
-  // Si sí había salido, Resend no lo repite (la misma clave de idempotencia en 24 horas)
-  for (const o of await store.listPrintOrders(["sent", "in_production"], 200, live)) {
-    if (!mine(o) || !o.info?.sentMailPending || !o.shipping) continue;
-    if (o.sentAt && now.getTime() - Date.parse(o.sentAt) > 7 * 24 * HOUR) continue;
-    const book = await store.getBookById(o.bookId);
-    if (!book?.email) continue;
+  // «ya está en la imprenta» pendiente (Resend falló o la función se cortó antes de mandarlo): se vuelve a mandar, hasta
+  // una semana después de mandarlo a imprimir. Si sí había salido hace menos de 24 horas, Resend no lo repite (la misma
+  // clave). Lo que ya no toca (rechazado, sin dirección, pasada la semana) se desmarca para que no vuelva cada día
+  for (const o of await store.listPrintOrders(["sent", "in_production"], 200, live, { sentMailPending: true })) {
+    if (!mine(o) || !o.info?.sentMailPending) continue;
+    const late = !o.shipping || (!!o.sentAt && now.getTime() - Date.parse(o.sentAt) > 7 * 24 * HOUR);
+    const book = late ? null : await store.getBookById(o.bookId);
+    if (!book?.email) {
+      await clearSentMail(store, o.id);
+      continue;
+    }
     const title = draftV2(book)?.plan.title ?? "Tu libro";
-    const r = await deps.mail.sentToPrint(book.email, title, deps.trackLink(o.id), shippingLine(o.shipping)).catch(() => ({ sent: false }));
-    if (!r.sent) continue;
-    await store.updateOrder(o.id, { info: { ...o.info, sentMailPending: null } });
-    report.remailed++;
+    const r: MailResult = await deps.mail
+      .sentToPrint(book.email, title, deps.trackLink(o.id), shippingLine(o.shipping!), sentMailKey(o.id, o.printOrderId))
+      .catch(() => ({ sent: false, reason: "error" }));
+    if (!mailSettled(r)) continue;
+    await clearSentMail(store, o.id);
+    if (r.sent) report.remailed++;
   }
   for (const o of await store.listPrintOrders(["sending"], 50, live)) {
     if (!mine(o)) continue;

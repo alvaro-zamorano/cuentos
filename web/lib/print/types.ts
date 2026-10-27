@@ -58,7 +58,10 @@ export interface PrintInfo {
   steps?: Partial<Record<PrintStep, string>>;
   /** Última vez que se preguntó a la imprenta desde la página de seguimiento (aunque no cambiara nada). */
   checkedAt?: string | null;
-  /** El email de «ya está en la imprenta» no salió por un fallo pasajero: el cron diario lo reintenta. */
+  /**
+   * El email de «ya está en la imprenta» está pendiente: se pone al pasar a `sent` y se quita cuando sale o cuando el fallo
+   * no tiene arreglo. Mientras está, el cron diario lo reintenta (hasta una semana).
+   */
   sentMailPending?: boolean | null;
 }
 

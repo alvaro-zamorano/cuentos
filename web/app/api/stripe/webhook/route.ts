@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       const c = await recordChargeEvent(store, event as unknown as ChargeEvent, { sessionOf: (pi) => sessionForPaymentIntent(pi) });
       console.log(`[stripe] ${event.type} → ${c.action}${c.action === "unmatched" || c.action === "ignored" ? ` (${c.reason})` : ""}`);
       const notice = chargeNotice(c, event as unknown as ChargeEvent);
-      if (notice) await sendSupportNotice(notice.subject, notice.text).catch(() => null);
+      if (notice) await sendSupportNotice(notice.subject, notice.text, { key: `stripe:${event.id}:${c.action}` }).catch(() => null);
       return NextResponse.json({ received: true });
     }
     const r = await recordStripePayment(store, event);
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     const notice = paymentNotice(r, event);
     if (notice) {
       console.error(`[stripe] ${notice.subject}: ${notice.text.split("\n")[0]} · sesión ${event.data.object.id ?? "?"}`);
-      await sendSupportNotice(notice.subject, notice.text).catch(() => null);
+      await sendSupportNotice(notice.subject, notice.text, { key: `stripe:${event.id}:${r.action}` }).catch(() => null);
     }
     // también con «duplicate»: si Stripe reintenta porque la vez anterior falló después de guardar el pedido, las páginas
     // no se habían pedido (revisión 26 oct). Pedirlas otra vez no repite nada
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
         console.error(`[stripe] recibo rechazado (${receipt.reason})`);
         const book = await store.findBook({ publicId: r.bookId, includeExpired: true }).catch(() => null);
         const n = receiptNotice(receipt.to, receipt.reason, book?.id ?? null, event.data.object.id ?? null);
-        await sendSupportNotice(n.subject, n.text).catch(() => null);
+        await sendSupportNotice(n.subject, n.text, { key: `stripe:${event.id}:recibo` }).catch(() => null);
       }
     }
     return NextResponse.json({ received: true });

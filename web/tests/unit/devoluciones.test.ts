@@ -254,9 +254,9 @@ test("devuelto el cobro, las ilustraciones de pago dejan de verse; la hoja de pe
 
 test("recibo (I28): edición, total con IVA, renuncia con su fecha, condiciones y quién vende; una vez por sesión", async () => {
   const { store, bookId, ev, r } = await paidBook("hardcover");
-  const sent: { to: string; receipt: Receipt }[] = [];
+  const sent: { to: string; receipt: Receipt; key?: string }[] = [];
   const deps = {
-    send: async (to: string, receipt: Receipt) => (sent.push({ to, receipt }), { sent: true }),
+    send: async (to: string, receipt: Receipt, key?: string) => (sent.push({ to, receipt, key }), { sent: true }),
     link,
     conditionsLink: "https://www.erasesuvez.com/condiciones",
     seller: "Érase su vez",
@@ -264,6 +264,7 @@ test("recibo (I28): edición, total con IVA, renuncia con su fecha, condiciones 
   };
   assert.deepEqual(await mailReceipt(store, r, ev, deps), { status: "sent" });
   assert.equal(sent[0].to, "pago@example.com", "al email con el que se pagó");
+  assert.equal(sent[0].key, `recibo:${ev.data.object.id}`, "una clave por sesión: si Stripe reintenta, Resend no lo repite");
   const { facts, notes } = receiptLines(sent[0].receipt);
   const f = Object.fromEntries(facts);
   assert.equal(f["Pedido"], "Libro de tapa dura con envío a casa, y el PDF");

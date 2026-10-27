@@ -59,7 +59,7 @@ En producción Gelato imprime de verdad. Con claves de prueba, un pago con la ta
 
 **Resend**
 
-Cada email lleva una clave de idempotencia (`mailKey`: destinatario, asunto y texto). El mismo email dos veces en 24 horas sale una vez: así no se repiten «listo» ni «va de camino» cuando dos procesos lo mandan a la vez (auditoría 26 oct, menores).
+Los emails de un hecho que puede llegar dos veces llevan una clave de idempotencia (`mailKey`: el hecho y el destinatario). El mismo aviso dos veces en 24 horas sale una vez: así no se repiten «listo» (el libro), «va de camino» y «ya está en la imprenta» (el pedido en la imprenta), el recibo (la sesión de Stripe) ni los avisos a soporte de un evento de Stripe que vuelve (auditoría 26 oct, menores; revisión 27 oct). Lo que el padre vuelve a pedir («tus cuentos») no lleva clave y sale cada vez.
 
 1. Crear la cuenta y verificar el dominio de envío (registros DNS que indica Resend).
 2. API Keys → crear una con permiso de envío → `RESEND_API_KEY`.
