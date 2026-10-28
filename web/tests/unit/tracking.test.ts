@@ -8,7 +8,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, payDryRun, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
+import { bookView, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
 import { completePrint, mergeInfo, refreshPrint, startPrint, trackingView, type PrintDeps } from "../../lib/book/print";
 import { estimatedCover, gelatoOrderBody, gelatoShipmentMethod, parseOrder, type GelatoOrder } from "../../lib/print/gelato";
 import { cleanShipping } from "../../lib/print/shipping";
@@ -16,6 +16,7 @@ import { dayLabel, etaLabel, trackSteps } from "../../lib/print/tracking";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -31,7 +32,7 @@ async function sentBook(now: Date) {
   assert.ok(start.ok, JSON.stringify(start));
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
   const bookId = start.bookId;
-  await payDryRun(store, { bookId, edition: "hardcover", shipping: ADDRESS });
+  await payApproved(store, { bookId, edition: "hardcover", shipping: ADDRESS });
   const r = await requestPages(store, { bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(r.ok, JSON.stringify(r));
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, bookId), { concurrency: 3, deadline: Date.now() + 30_000 });

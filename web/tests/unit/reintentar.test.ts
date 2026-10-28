@@ -8,10 +8,11 @@ import { MOCK_LLM } from "../../lib/llm";
 import { TransientError, dryRunAdapter, type GenerationAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, payDryRun, requestPages, retryCast, reviseSheet, startBook, type StartResult } from "../../lib/book/service";
+import { bookView, requestPages, retryCast, reviseSheet, startBook, type StartResult } from "../../lib/book/service";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -107,7 +108,7 @@ test("si no falló nada, «Reintentar» no cambia nada; con el libro pagado, no 
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: deadline() });
   const r = ok(await retryCast(store, { bookId: start.bookId }, dryRunAdapter));
   assert.deepEqual([r.sheetJobId, r.coverJobId, r.created, r.reopened], [start.sheetJobId, start.coverJobId, 0, 0]);
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition: "illustrated" })).ok);
   assert.equal((await retryCast(store, { bookId: start.bookId }, dryRunAdapter) as { error: string }).error, "already_paid");
   assert.equal((await retryCast(store, { bookId: "zzzzzzzzzz" }, dryRunAdapter) as { status: number }).status, 404);
 });
@@ -137,7 +138,7 @@ test("tras pagar, una portada colgada (más de 330 s «pintando») se da por per
   await paintAll(store, dryRunAdapter, [start.sheetJobId], { concurrency: 1, deadline: deadline() });
   // Vercel cortó la función a mitad de la portada gratis
   Object.assign(state.jobs.get(start.coverJobId)!, { status: "running", attempts: 1, updated_at: new Date(Date.now() - 400_000).toISOString() });
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition: "illustrated" })).ok);
   const pages = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: true }, MOCK_LLM);
   assert.ok(pages.ok, JSON.stringify(pages));
   const covers = (await store.listJobs((await store.getJob(start.sheetJobId))!.book_id)).filter((j) => j.kind === "cover");
@@ -159,7 +160,7 @@ test("una portada que se está pintando de verdad (menos de 330 s) no se toca", 
   const { state, store, start } = await started();
   await paintAll(store, dryRunAdapter, [start.sheetJobId], { concurrency: 1, deadline: deadline() });
   Object.assign(state.jobs.get(start.coverJobId)!, { status: "running", attempts: 1, updated_at: new Date(Date.now() - 60_000).toISOString() });
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition: "illustrated" })).ok);
   const pages = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: true }, MOCK_LLM);
   assert.ok(pages.ok);
   const covers = (await store.listJobs((await store.getJob(start.sheetJobId))!.book_id)).filter((j) => j.kind === "cover");

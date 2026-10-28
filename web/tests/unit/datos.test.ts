@@ -43,7 +43,7 @@ const ADDRESS = { name: "Ana García López", line1: "Calle Mayor 12", postcode:
 test("I23: al entregarse, el pedido pierde la dirección, el teléfono y el seguimiento; y un borrador de hace un día, su dirección", async () => {
   const { client, calls } = fakeClient({
     cuentos_orders: [{ id: "o1", print_info: { method: "Normal", trackingCode: "ABC123", steps: { delivered: "2026-10-20T10:00:00Z" } } }],
-    cuentos_books: [{ id: "b1", draft: { v: 2, plan: { title: "T" }, shipping: ADDRESS }, updated_at: "2026-10-01T10:00:00.123456+00:00" }],
+    cuentos_books: [{ id: "b1", draft: { v: 2, plan: { title: "T" }, shipping: ADDRESS, checkoutShipping: { cs_test_a: ADDRESS } }, updated_at: "2026-10-01T10:00:00.123456+00:00" }],
   });
   const n = await supabasePurgeDb(client, {}).scrubShipping!(new Date("2026-10-26T00:00:00Z"), false);
   assert.equal(n, 2);
@@ -53,6 +53,9 @@ test("I23: al entregarse, el pedido pierde la dirección, el teléfono y el segu
   assert.deepEqual(order.payload, { shipping: null, print_tracking_url: null, print_info: { method: "Normal", steps: { delivered: "2026-10-20T10:00:00Z" } } });
   const bookSel = calls.find((c) => c.table === "cuentos_books" && c.op === "select")!;
   assert.ok(bookSel.filters.includes('not("draft->shipping","is",null)') && bookSel.filters.some((f) => f.startsWith('lt("updated_at"')), bookSel.filters.join(" "));
+  // también las direcciones de las sesiones de pago abiertas (27 oct), una sola vez por libro
+  assert.ok(calls.some((c) => c.table === "cuentos_books" && c.op === "select" && c.filters.includes('not("draft->checkoutShipping","is",null)')));
+  assert.equal(calls.filter((c) => c.table === "cuentos_books" && c.op === "update").length, 1);
   const book = calls.find((c) => c.table === "cuentos_books" && c.op === "update")!;
   assert.deepEqual(book.payload, { draft: { v: 2, plan: { title: "T" } } });
   assert.ok(book.filters.includes('eq("updated_at","2026-10-01T10:00:00.123456+00:00")'), "solo si nadie lo ha tocado entre medias");

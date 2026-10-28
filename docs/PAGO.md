@@ -5,7 +5,7 @@ Código: `web/lib/stripe.ts`, `web/lib/mail.ts`, `web/lib/book/background.ts`, `
 ## Cómo funciona
 
 1. **Paso 4 (email).** `/api/libro/start` guarda el libro y responde. Después, con `after()`, el servidor pinta la hoja y la portada y, si el libro es nuevo, manda por Resend el enlace para volver (`/crear?b=…`). El enlace también se ve en pantalla en los pasos 4 y 5, haya email o no.
-2. **Pago.** El botón del paso 5 llama a `/api/libro/checkout`, que crea una sesión de Stripe Checkout (14,90 €, `metadata.bookId`) y manda al padre a Stripe. Al pagar, Stripe le devuelve a `/crear?b=…&pagado=1` y la página enseña «Confirmando el pago…» hasta que llega el webhook.
+2. **Pago.** El botón del paso 5 llama a `/api/libro/checkout`, que crea una sesión de Stripe Checkout (14,90 €, `metadata.bookId`) y manda al padre a Stripe. Al pagar, Stripe le devuelve a `/crear?b=…&pagado=1` y la página enseña «Confirmando el pago…» hasta que llega el webhook. Antes de abrirla hacen falta los personajes dibujados y aprobados (`cast_not_approved`: el paso 5 lleva al 4; cambiar los personajes quita la aprobación). La ruta apunta con qué se abre cada sesión, las cuatro últimas: los personajes aprobados (`checkoutCast`) y, con la tapa dura, la dirección (`checkoutShipping`). Al pagar, el pedido lleva la dirección de la sesión que se paga y las páginas salen con sus personajes, aunque otra pestaña los cambiara después. Si no se puede apuntar, la ruta responde 502 y no manda a pagar (menores de la auditoría 26 oct y revisión 27 oct).
 3. **Webhook.** `/api/stripe/webhook` comprueba la firma (`STRIPE_WEBHOOK_SECRET`, 5 min de tolerancia) y registra el pedido de `checkout.session.completed` o `checkout.session.async_payment_succeeded` una sola vez: si Stripe reintenta, no se duplica. Después de responder a Stripe, encola las 12 páginas, las pinta y, al terminar, manda «tu libro está listo» (una vez).
 4. **Navegador abierto.** Si el padre sigue en la página, su navegador tira de los mismos jobs. El bloqueo optimista de `runJob` evita pintar dos veces, y el navegador espera hasta 6 minutos a los que está pintando el servidor.
 5. **Modo de pago** (`/api/libro/view` → `payment`, y `/api/health`):
@@ -58,6 +58,8 @@ En producción Gelato imprime de verdad. Con claves de prueba, un pago con la ta
 5. Salvaguarda en el código (18 oct): en producción el webhook ignora los eventos con `livemode: false`, y «Mandar a imprimir» rechaza los pedidos cuya sesión no empieza por `cs_live_` (la base es la misma que la de la preview).
 
 **Resend**
+
+Los emails de un hecho que puede llegar dos veces llevan una clave de idempotencia (`mailKey`: el hecho y el destinatario). El mismo aviso dos veces en 24 horas sale una vez: así no se repiten «listo» (el libro), «va de camino» y «ya está en la imprenta» (el pedido en la imprenta), el recibo (la sesión de Stripe) ni los avisos a soporte de un evento de Stripe que vuelve (auditoría 26 oct, menores; revisión 27 oct). Lo que el padre vuelve a pedir («tus cuentos») no lleva clave y sale cada vez.
 
 1. Crear la cuenta y verificar el dominio de envío (registros DNS que indica Resend).
 2. API Keys → crear una con permiso de envío → `RESEND_API_KEY`.

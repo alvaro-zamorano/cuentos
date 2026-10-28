@@ -8,7 +8,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, mailReceipt, payDryRun, pendingPageJobs, recordStripePayment, requestPages, startBook, type PaidEvent } from "../../lib/book/service";
+import { bookView, mailReceipt, pendingPageJobs, recordStripePayment, requestPages, startBook, type PaidEvent } from "../../lib/book/service";
 import { chargeNotice, DISPUTE_HOLD, recordChargeEvent, type ChargeEvent } from "../../lib/book/refunds";
 import { completePrint, printCron, startPrint, type PrintDeps } from "../../lib/book/print";
 import { supabasePurgeDb } from "../../lib/purge";
@@ -19,6 +19,7 @@ import { receiptLines, type Receipt } from "../../lib/mail";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -254,9 +255,9 @@ test("devuelto el cobro, las ilustraciones de pago dejan de verse; la hoja de pe
 
 test("recibo (I28): edición, total con IVA, renuncia con su fecha, condiciones y quién vende; una vez por sesión", async () => {
   const { store, bookId, ev, r } = await paidBook("hardcover");
-  const sent: { to: string; receipt: Receipt }[] = [];
+  const sent: { to: string; receipt: Receipt; key?: string }[] = [];
   const deps = {
-    send: async (to: string, receipt: Receipt) => (sent.push({ to, receipt }), { sent: true }),
+    send: async (to: string, receipt: Receipt, key?: string) => (sent.push({ to, receipt, key }), { sent: true }),
     link,
     conditionsLink: "https://www.erasesuvez.com/condiciones",
     seller: "Érase su vez",
@@ -264,6 +265,7 @@ test("recibo (I28): edición, total con IVA, renuncia con su fecha, condiciones 
   };
   assert.deepEqual(await mailReceipt(store, r, ev, deps), { status: "sent" });
   assert.equal(sent[0].to, "pago@example.com", "al email con el que se pagó");
+  assert.equal(sent[0].key, `recibo:${ev.data.object.id}`, "una clave por sesión: si Stripe reintenta, Resend no lo repite");
   const { facts, notes } = receiptLines(sent[0].receipt);
   const f = Object.fromEntries(facts);
   assert.equal(f["Pedido"], "Libro de tapa dura con envío a casa, y el PDF");
@@ -375,7 +377,7 @@ test("devuelto mientras se maquetaba para la imprenta: no se crea el pedido en G
   const start = await startBook(store, { email: "vera@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok);
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
-  await payDryRun(store, { bookId: start.bookId, edition: "hardcover", shipping: SHIPPING });
+  await payApproved(store, { bookId: start.bookId, edition: "hardcover", shipping: SHIPPING });
   assert.ok((await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM)).ok);
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, start.bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
   const s = await startPrint(store, start.bookId, "gelato", {});

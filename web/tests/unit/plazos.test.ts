@@ -15,6 +15,7 @@ import { pendingPageJobs, prepareCheckout, recordStripePayment, requestPages, st
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { approveLast } from "./pagar";
 
 const ADDRESS = { name: "Ana García López", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid", country: "ES" as const };
 
@@ -71,6 +72,7 @@ async function hardcoverBook(store: ReturnType<typeof memoryStore>, sessionId: s
   const start = await startBook(store, { email: "vera@example.com", ficha, plan: mockPlan(ficha), planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok);
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
+  await approveLast(store, start.bookId);
   assert.ok((await prepareCheckout(store, { bookId: start.bookId, edition: "hardcover", shipping: ADDRESS })).ok);
   const event = { type: "checkout.session.completed", data: { object: { id: sessionId, payment_status: "paid", amount_total: 3490, metadata: { bookId: start.bookId, edition: "hardcover" } } } };
   assert.equal((await recordStripePayment(store, event, PREVIEW)).action, "paid");

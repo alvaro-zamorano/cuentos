@@ -10,11 +10,12 @@ import { TransientError, dryRunAdapter, getAdapter, isTransient, type Generation
 import { runJob } from "../../lib/generation/service";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, payDryRun, recordStripePayment, requestPages, startBook } from "../../lib/book/service";
+import { bookView, recordStripePayment, requestPages, startBook } from "../../lib/book/service";
 import { rescueBooks, type RescueDeps } from "../../lib/book/rescue";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -42,7 +43,7 @@ async function paidBook(state = newMemoryState()) {
   const start = await startBook(store, { email: "vera@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok, JSON.stringify(start));
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: soon() });
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition: "illustrated" })).ok);
   return { state, store, bookId: start.bookId };
 }
 

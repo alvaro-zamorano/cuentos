@@ -1,5 +1,5 @@
 {
- "_nota": "Esquema de las tablas cuentos_* en la base real (Supabase, PostgreSQL 17.6), leído con consultas de solo lectura el 27 oct 2026, más lo que añade la migración 0013 (I7: email_norm, free_claimed_at, cuentos_locks y cuentos_email_norm), que aún no está aplicada: al aplicarla, volver a leer la base real y comprobar que sale igual. tests/unit/migraciones.test.ts comprueba que las migraciones del repo lo reconstruyen igual. Al cambiar el esquema, actualizar las dos cosas.",
+ "_nota": "Esquema de las tablas cuentos_* en la base real (Supabase, PostgreSQL 17.6), leído con consultas de solo lectura el 27 oct 2026, con la 0013 y la 0014 ya aplicadas (el índice de la 0014, comprobado igual en la base real tras aplicarla). tests/unit/migraciones.test.ts comprueba que las migraciones del repo lo reconstruyen igual. Al cambiar el esquema, actualizar las dos cosas.",
  "columns": [
   "cuentos_assets.category text",
   "cuentos_assets.created_at timestamp with time zone default now() not null",
@@ -157,6 +157,7 @@
   "CREATE UNIQUE INDEX cuentos_locks_pkey ON public.cuentos_locks USING btree (key)",
   "CREATE UNIQUE INDEX cuentos_orders_pkey ON public.cuentos_orders USING btree (id)",
   "CREATE UNIQUE INDEX cuentos_orders_stripe_session_id_key ON public.cuentos_orders USING btree (stripe_session_id)",
+  "CREATE UNIQUE INDEX cuentos_orders_una_tapa_dura ON public.cuentos_orders USING btree (book_id, ((\"left\"(COALESCE(stripe_session_id, ''::text), 8) = 'cs_live_'::text))) WHERE ((status = 'paid'::text) AND (edition = 'hardcover'::text))",
   "CREATE UNIQUE INDEX cuentos_spend_pkey ON public.cuentos_spend USING btree (id)",
   "CREATE UNIQUE INDEX cuentos_stories_pkey ON public.cuentos_stories USING btree (id)"
  ],

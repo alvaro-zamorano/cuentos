@@ -251,6 +251,7 @@ function Crear() {
                 upgrading={mejora && s.bookId === b}
                 onPlan={(p: Plan) => s.record && update({ record: { ...s.record, plan: p } })}
                 onPaid={() => !s.paid && update({ paid: true })}
+                onCast={() => go(4)}
               />
             )}
           </div>
