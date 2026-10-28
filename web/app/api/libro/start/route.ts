@@ -5,6 +5,7 @@ import { startBook, type FreeLimitFail } from "@/lib/book/service";
 import { titular } from "@/lib/legal";
 import { sendBookLink, sendYourBooks } from "@/lib/mail";
 import { clientIp, envInt, rateLimit } from "@/lib/rateLimit";
+import { recordLead } from "@/lib/marketing";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { bad, paintLater, readJson, withContext } from "../_shared";
 
@@ -53,8 +54,9 @@ export async function POST(req: Request) {
   const db = supabaseAdmin();
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   if (db && email) {
-    const { error } = await db.from("cuentos_leads").upsert({ email, marketing: body.marketing === true, edition: "illustrated", source: "cuentos-web" }, { onConflict: "email,edition" });
-    if (error) console.error("[libro/start] lead", error.code);
+    // con la casilla marcada, el consentimiento con su fecha y su texto; sin marcarla no se toca uno anterior (lib/marketing.ts)
+    const r = await recordLead(db, { email, marketing: body.marketing === true });
+    if (!r.ok) console.error("[libro/start] lead", r.error);
   }
   return res;
 }

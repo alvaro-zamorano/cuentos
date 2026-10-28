@@ -19,9 +19,10 @@ export function appOpen(env: Env = process.env): boolean {
 
 /**
  * Rutas de la API que siguen vivas con la app cerrada: no gastan y las llaman otros servicios (crons de Vercel,
- * correo entrante de Resend, avisos firmados de Stripe y Gelato) o sirven para comprobar el despliegue.
+ * correo entrante de Resend, avisos firmados de Stripe y Gelato), sirven para comprobar el despliegue o para darse de
+ * baja de las novedades (siempre tiene que funcionar).
  */
-const OPEN_API = ["/api/health", "/api/cron/", "/api/mail/inbound", "/api/stripe/webhook", "/api/print/webhook"];
+const OPEN_API = ["/api/health", "/api/cron/", "/api/mail/inbound", "/api/stripe/webhook", "/api/print/webhook", "/api/baja"];
 
 /**
  * Con la app abierta solo pasa la API que usa el flujo nuevo (/crear), más la de OPEN_API. Lo demás es del flujo antiguo

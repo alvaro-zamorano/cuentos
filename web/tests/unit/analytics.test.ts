@@ -11,6 +11,9 @@ test("scrubUrl: enmascara b en URL absolutas y relativas y deja el resto igual",
   assert.equal(scrubUrl("https://erasesuvez.es/"), "https://erasesuvez.es/");
   assert.equal(scrubUrl(42), 42);
   assert.ok(!String(scrubUrl("https://x.es/crear?b=abc12345")).includes("abc12345"));
+  // la llave de baja de las novedades tampoco sale
+  assert.equal(scrubUrl("/baja?t=0b8f6c1e-1d2a-4c3b-9a8b-7c6d5e4f3a2b"), "/baja?t=%3CMASKED%3E");
+  assert.ok(!String(scrubUrl("https://erasesuvez.es/baja?t=0b8f6c1e-1d2a-4c3b-9a8b-7c6d5e4f3a2b")).includes("0b8f6c1e"));
 });
 
 const ev = (event: string, properties: Record<string, unknown>, extra: Partial<CaptureResult> = {}) =>

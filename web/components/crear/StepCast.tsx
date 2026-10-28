@@ -6,6 +6,7 @@ import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, loadView, postJson, runJobs, viewErrorMessage, type JobOutcome } from "@/lib/bookClient";
 import { suggestEmail } from "@/lib/emailTypo";
+import { MARKETING_TEXT } from "@/lib/marketing";
 import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
@@ -522,7 +523,7 @@ function EmailGate({
         </label>
         <label className={check}>
           <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--ink)]" />
-          <span>Quiero recibir avisos de nuevas ideas y ediciones. Opcional; puedes darte de baja cuando quieras.</span>
+          <span>{MARKETING_TEXT}</span>
         </label>
       </div>
       <p className="flex items-start gap-2 text-[13px] text-mute">
