@@ -9,10 +9,11 @@ import { dryRunAdapter, type GenerationAdapter } from "../../lib/generation/adap
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
 import { qcFallback, runJob } from "../../lib/generation/service";
-import { bookView, payDryRun, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
+import { bookView, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -71,7 +72,7 @@ test("libro pagado con la portada fallida: al pedir el libro se encarga otra, pa
   const { store, start } = await freshBook();
   await paintAll(store, dryRunAdapter, [start.sheetJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
   await store.updateJob(start.coverJobId, { status: "failed", attempts: 2, error: "presupuesto: tope por lead" });
-  assert.ok((await payDryRun(store, { bookId: start.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: start.bookId, edition: "illustrated" })).ok);
   const r = await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(r.ok, JSON.stringify(r));
   const pending = await pendingPageJobs(store, start.bookId);

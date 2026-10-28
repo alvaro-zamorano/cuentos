@@ -13,12 +13,13 @@ import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState, supabaseStore, type GenStore } from "../../lib/generation/store";
 import type { Database } from "../../lib/supabase/types";
 import { paintAll } from "../../lib/book/background";
-import { notifyBookReady, payDryRun, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
+import { notifyBookReady, pendingPageJobs, requestPages, startBook } from "../../lib/book/service";
 import { completePrint, printCron, refreshPrint, startPrint, type PrintDeps } from "../../lib/book/print";
 import { estimatedCover } from "../../lib/print/gelato";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 /** Resend de mentira: guarda las claves y, como el de verdad, no repite un email con una clave ya mandada. */
 async function withResend<T>(answer: (key: string, seen: Set<string>) => Response, run: (sent: string[]) => Promise<T>): Promise<T> {
@@ -124,7 +125,7 @@ async function readyBook() {
   const start = await startBook(store, { email: "vera@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok);
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
-  await payDryRun(store, { bookId: start.bookId, edition: "hardcover", shipping: ADDRESS });
+  await payApproved(store, { bookId: start.bookId, edition: "hardcover", shipping: ADDRESS });
   assert.ok((await requestPages(store, { bookId: start.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM)).ok);
   await paintAll(store, dryRunAdapter, await pendingPageJobs(store, start.bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
   for (const j of await store.listJobs((await store.findBook({ publicId: start.bookId }))!.id)) if (j.status === "done") await store.updateJob(j.id, { storage_path: `books/x/${j.id}.png` });

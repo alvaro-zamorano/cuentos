@@ -9,13 +9,14 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState, type GenStore } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { payDryRun, paymentNotice, pendingPageJobs, recordStripePayment, requestPages, retryUnsentNotice, startBook, type PaidEvent } from "../../lib/book/service";
+import { paymentNotice, pendingPageJobs, recordStripePayment, requestPages, retryUnsentNotice, startBook, type PaidEvent } from "../../lib/book/service";
 import { completePrint, startPrint } from "../../lib/book/print";
 import { chargeNotice, recordChargeEvent, type ChargeEvent } from "../../lib/book/refunds";
 import { estimatedCover } from "../../lib/print/gelato";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -239,9 +240,9 @@ test("la misma sesión entregada dos veces a la vez, con la base quejándose por
 
 test("pago simulado de la mejora: si ya hay otra tapa dura, no dice que ha ido bien", async () => {
   const { store, bookId } = await book();
-  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "illustrated" })).ok);
   const taken: GenStore = { ...store, addPaidOrder: async () => "hardcover_taken" };
-  const r = await payDryRun(taken, { bookId, upgrade: true, shipping: { name: "Ana García López", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid", country: "ES" } });
+  const r = await payApproved(taken, { bookId, upgrade: true, shipping: { name: "Ana García López", line1: "Calle Mayor 12", postcode: "28013", city: "Madrid", country: "ES" } });
   assert.equal(r.ok, false);
   if (!r.ok) assert.equal(r.error, "already_hardcover");
 });

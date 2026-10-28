@@ -14,6 +14,7 @@ import { estimatedCover } from "../../lib/print/gelato";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { approveLast } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -26,6 +27,7 @@ async function hardcover(edition: "hardcover" | "illustrated", session: string) 
   const start = await startBook(store, { email: "vera@example.com", ficha, plan, planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
   assert.ok(start.ok);
   await paintAll(store, dryRunAdapter, [start.sheetJobId, start.coverJobId], { concurrency: 1, deadline: Date.now() + 30_000 });
+  await approveLast(store, start.bookId);
   assert.ok((await prepareCheckout(store, { bookId: start.bookId, edition, ...(edition === "hardcover" ? { shipping: ADDRESS } : {}) })).ok);
   const amount = edition === "hardcover" ? 3490 : 1490;
   const ev = { type: "checkout.session.completed", data: { object: { id: session, payment_status: "paid", amount_total: amount, metadata: { bookId: start.bookId, edition } } } };

@@ -6,11 +6,12 @@ import { dryRunAdapter } from "../../lib/generation/adapter";
 import { createClient } from "@supabase/supabase-js";
 import { memoryStore, newMemoryState, supabaseStore } from "../../lib/generation/store";
 import type { Database } from "../../lib/supabase/types";
-import { payDryRun, reviseSheet, startBook } from "../../lib/book/service";
+import { reviseSheet, startBook } from "../../lib/book/service";
 import { CLAIM_TTL_MS, FREE_BOOKS, freeLockKey, freeUse, normalizeEmail, passFreeGate } from "../../lib/book/freeLimit";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -57,13 +58,17 @@ test("dentro de un cuento empezado, los cambios con palabras no cuentan como cue
 test("comprar un libro renueva los gratis", async () => {
   const store = memoryStore(newMemoryState());
   const ids: string[] = [];
+  const sheets: string[] = [];
   for (let i = 0; i < 3; i++) {
     const r = await start(store, "ana@example.com");
     assert.ok(r.ok);
     ids.push(r.bookId);
+    sheets.push(r.sheetJobId);
   }
   assert.equal(((await start(store, "ana@example.com")) as { error: string }).error, "free_limit");
-  assert.ok((await payDryRun(store, { bookId: ids[0], edition: "illustrated" })).ok);
+  // se paga con los personajes dibujados
+  await store.updateJob(sheets[0], { status: "done", chosen: "dry-run/sheet.png" });
+  assert.ok((await payApproved(store, { bookId: ids[0], edition: "illustrated" })).ok);
   const r = await start(store, "ana@example.com");
   assert.ok(r.ok, JSON.stringify(r));
   assert.equal(r.freeLeft, FREE_BOOKS - 1);
