@@ -5,13 +5,18 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   // Chromium y puppeteer se cargan desde node_modules en tiempo de ejecución (PDF en servidor), no se empaquetan
-  serverExternalPackages: ["@sparticuz/chromium-min", "puppeteer-core"],
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
   // las anclas de estilo viajan como referencia a Gemini desde las funciones: public/ no se empaqueta por defecto
   outputFileTracingIncludes: {
     "/api/generate/**": ["./public/styles/*.jpg"],
     "/api/libro/**": ["./public/styles/*.jpg"],
     "/api/stripe/**": ["./public/styles/*.jpg"],
     "/api/dev": ["./public/styles/*.jpg"],
+    // el Chromium comprimido (unos 70 MB) viaja solo con las dos rutas que maquetan PDF, para no bajarlo de GitHub en cada
+    // arranque en frío (auditoría 26 oct). El paquete lo busca en su propia carpeta bin/ (lib/pdf/render.ts). Una ruta
+    // nueva que maquete PDF (que llame a launch() o withBrowser()) necesita aquí su clave
+    "/api/libro/pdf": ["./node_modules/@sparticuz/chromium/bin/*"],
+    "/api/libro/print": ["./node_modules/@sparticuz/chromium/bin/*"],
   },
   partialPrefetching: true,
   // flujo antiguo (16 oct, Álvaro): todo a /crear con 307, reversible; el código se queda. Su API (/api/pdf, /api/lead,
