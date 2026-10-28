@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
@@ -379,14 +379,19 @@ export function StepBook({
               </>
             )}
           </PdfLink>
-          {/* en el móvil esta barra tapaba «Quiero la tapa dura»: lleva a la tarjeta (mirada de usuario de la auditoría) */}
-          {offerUpgrade && (
-            <a href="#tapa-dura" className="btn-soft w-full sm:w-auto" data-testid="upgrade-jump">
-              <Icon.book size={18} />
-              En tapa dura
-            </a>
-          )}
-          <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{hardcover ? "A4 apaisado, para leerlo mientras llega el impreso" : "A4 apaisado, listo para imprimir en casa"}</p>
+          <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">
+            {/* en el móvil esta barra tapaba «Quiero la tapa dura»: un enlace a la tarjeta en lugar de esta línea, para no agrandar
+                la barra (mirada de usuario de la auditoría y revisión independiente); en escritorio, los dos */}
+            <span className={offerUpgrade ? "hidden sm:inline" : ""}>{hardcover ? "A4 apaisado, para leerlo mientras llega el impreso" : "A4 apaisado, listo para imprimir en casa"}</span>
+            {offerUpgrade && (
+              <>
+                <span className="hidden sm:inline">{" · "}</span>
+                <a href="#tapa-dura" className="link inline-flex min-h-11 items-center font-semibold" data-testid="upgrade-jump">
+                  ¿Lo quieres en tapa dura?
+                </a>
+              </>
+            )}
+          </p>
         </div>
       ) : (
         <PdfLink bookId={bookId} kind="free" className="link justify-self-center text-sm font-semibold">
@@ -560,8 +565,10 @@ function Paywall({
     illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, `Revisas cada página; si una ilustración no te convence, te hacemos otra versión (hasta ${MAX_PAGE_REDOS} por página y ${MAX_BOOK_REDOS} en todo el libro)`, "PDF en A4 apaisado: imprímelo en casa o en una copistería"],
   };
   // el botón apagado dice por qué (mirada de usuario de la auditoría)
-  const waiverHint = !waiver && !busy && (
-    <p className="mt-2 text-center text-[13px] text-moon-soft" data-testid="pay-waiver-hint">
+  const hintId = useId();
+  const showHint = !waiver && !busy;
+  const waiverHint = showHint && (
+    <p id={hintId} className="mt-2 text-center text-[13px] text-moon-soft" data-testid="pay-waiver-hint">
       Marca la casilla de arriba para pagar.
     </p>
   );
@@ -577,7 +584,14 @@ function Paywall({
               type="button"
               role="radio"
               aria-checked={edition === e}
-              onClick={() => setEdition(e)}
+              onClick={() => {
+                setEdition(e);
+                // el error de un campo de la dirección no sale en la edición sin dirección (revisión independiente)
+                if (isShippingField(field)) {
+                  setErr(null);
+                  setField(null);
+                }
+              }}
               className={`rounded-2xl border-2 px-4 py-3 text-left transition-colors ${edition === e ? "border-star bg-white/[0.1]" : "border-white/15 hover:border-white/35"}`}
               data-testid={`edition-${e}`}
             >
@@ -600,7 +614,18 @@ function Paywall({
       </ul>
       {edition === "hardcover" && payment !== "none" && (
         <div className="mt-7 rounded-2xl bg-white/[0.07] p-4 text-ink">
-          <ShippingForm value={shipping} onChange={setShipping} field={field} error={isShippingField(field) ? err : null} tone="night" />
+          <ShippingForm
+            value={shipping}
+            onChange={setShipping}
+            field={field}
+            error={isShippingField(field) ? err : null}
+            onEdit={(k) => {
+              if (k !== field) return;
+              setErr(null);
+              setField(null);
+            }}
+            tone="night"
+          />
         </div>
       )}
       {payment !== "none" && (
@@ -623,7 +648,7 @@ function Paywall({
       )}
       {payment === "stripe" && (
         <>
-          <button className="btn-primary btn-lg mt-4 w-full" disabled={busy || !waiver} data-testid="pay" onClick={() => void checkout()}>
+          <button className="btn-primary btn-lg mt-4 w-full" disabled={busy || !waiver} aria-describedby={showHint ? hintId : undefined} data-testid="pay" onClick={() => void checkout()}>
             {busy ? "Abriendo el pago…" : `Pagar ${price} y pintar el libro`}
           </button>
           {waiverHint}
@@ -637,6 +662,7 @@ function Paywall({
         <button
           className="btn-primary btn-lg mt-4 w-full"
           disabled={busy || !waiver}
+          aria-describedby={showHint ? hintId : undefined}
           data-testid="pay"
           onClick={() => void dryRun()}
         >

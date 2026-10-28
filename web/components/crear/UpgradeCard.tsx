@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import type { BookView } from "@/lib/book/service";
 import { errorMessage, postJson } from "@/lib/bookClient";
@@ -25,6 +25,7 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const price = eur(offer.cents);
+  const hintId = useId();
 
   const pay = async () => {
     setBusy(true);
@@ -83,7 +84,17 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
         </button>
       ) : (
         <div className="grid gap-4">
-          <ShippingForm value={shipping} onChange={setShipping} field={field} error={isShippingField(field) ? err : null} />
+          <ShippingForm
+            value={shipping}
+            onChange={setShipping}
+            field={field}
+            error={isShippingField(field) ? err : null}
+            onEdit={(k) => {
+              if (k !== field) return;
+              setErr(null);
+              setField(null);
+            }}
+          />
           <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-paper p-4 text-[14px] leading-snug text-ink">
             <input type="checkbox" checked={waiver} onChange={(e) => setWaiver(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--accent)]" data-testid="upgrade-waiver" />
             <span>
@@ -97,7 +108,7 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
           {/* un error de un campo de la dirección sale junto a ese campo */}
           {err && !isShippingField(field) && <ErrorNote>{err}</ErrorNote>}
           <div className="flex flex-wrap items-center gap-3">
-            <button className="btn-primary btn-lg" disabled={busy || !waiver} onClick={() => void pay()} data-testid="upgrade-pay">
+            <button className="btn-primary btn-lg" disabled={busy || !waiver} aria-describedby={!waiver && !busy ? hintId : undefined} onClick={() => void pay()} data-testid="upgrade-pay">
               {busy ? (payment === "stripe" ? "Abriendo el pago…" : "Procesando…") : payment === "stripe" ? `Pagar ${price}` : `Pagar ${price} (pago de prueba)`}
             </button>
             <button className="btn-ghost" disabled={busy} onClick={() => setOpen(false)}>
@@ -105,7 +116,7 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
             </button>
           </div>
           {!waiver && !busy && (
-            <p className="text-[13px] text-mute" data-testid="upgrade-waiver-hint">
+            <p id={hintId} className="text-[13px] text-mute" data-testid="upgrade-waiver-hint">
               Marca la casilla de arriba para pagar.
             </p>
           )}

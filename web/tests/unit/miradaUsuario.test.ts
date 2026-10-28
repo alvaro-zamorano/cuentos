@@ -58,18 +58,40 @@ test("el género: un borrador nuevo no lo da por elegido; uno que ya pasó del p
   });
 });
 
-test("abrir el enlace de otro libro guarda aparte el cuento a medias, y se puede volver a él", async () => {
-  await withStorage(async () => {
-    const { unsavedWork, setAside, readAside, clearAside } = await import("../../lib/crearStore");
-    const half = { v: 2 as const, step: 3 as const, ficha: { ...ficha, hero: { ...ficha.hero, name: "Martina" } } };
-    assert.equal(unsavedWork(half), true);
-    assert.equal(unsavedWork({ ...half, bookId: "abcd2345ef" }), false, "con libro en el servidor vuelve con su enlace");
-    assert.equal(unsavedWork({ v: 2, step: 1, ficha: normalizeFicha({}) }), false, "nada escrito, nada que guardar");
-    setAside(half);
-    const back = readAside();
-    assert.equal(back?.ficha.hero.name, "Martina");
-    assert.equal(back?.step, 3);
-    clearAside();
-    assert.equal(readAside(), null);
+test("abrir el enlace de otro libro guarda aparte lo que había, en una lista, y se puede volver a ello", async () => {
+  await withStorage(async (data) => {
+    const { unsavedWork, worthKeeping, sameDraft, addAside, removeAside, readAsides, ASIDE_MAX } = await import("../../lib/crearStore");
+    const draft = (name: string) => ({ v: 2 as const, step: 3 as const, ficha: { ...ficha, hero: { ...ficha.hero, name } } });
+    const martina = draft("Martina");
+    assert.equal(unsavedWork(martina), true);
+    assert.equal(unsavedWork({ ...martina, bookId: "abcd2345ef" }), false, "con libro en el servidor vuelve con su enlace");
+    assert.equal(worthKeeping({ ...martina, bookId: "abcd2345ef" }), true, "pero se guarda aparte igual: no depende del email");
+    assert.equal(worthKeeping({ v: 2, step: 1, ficha: normalizeFicha({}) }), false, "nada escrito, nada que guardar");
+
+    // revisión independiente: un segundo cuento apartado no borra el primero
+    addAside(martina);
+    addAside(draft("Pablo"));
+    assert.deepEqual(readAsides().map((d) => d.ficha.hero.name), ["Pablo", "Martina"]);
+    // el mismo otra vez sube, no se repite
+    addAside(martina);
+    assert.deepEqual(readAsides().map((d) => d.ficha.hero.name), ["Martina", "Pablo"]);
+    // un libro, por su id aunque cambie el texto
+    addAside({ ...draft("Lucas"), bookId: "abcd2345ef" });
+    addAside({ ...draft("Lucas cambiado"), bookId: "abcd2345ef" });
+    assert.deepEqual(readAsides().map((d) => d.ficha.hero.name), ["Lucas cambiado", "Martina", "Pablo"]);
+    assert.equal(readAsides()[0].bookId, "abcd2345ef");
+    assert.ok(sameDraft(readAsides()[1], martina));
+    removeAside(martina);
+    assert.deepEqual(readAsides().map((d) => d.ficha.hero.name), ["Lucas cambiado", "Pablo"]);
+    // como mucho ASIDE_MAX: se va el más antiguo
+    const names = ["Ana", "Bea", "Carla", "Dani", "Eva", "Fran", "Gael"];
+    for (const n of names) addAside(draft(n));
+    assert.equal(readAsides().length, ASIDE_MAX);
+    assert.equal(readAsides()[0].ficha.hero.name, "Gael");
+    // lo caducado (30 días) se va al leer
+    const old = Date.now() - 31 * 24 * 3600 * 1000;
+    data.set("cuentos:crear:v2:aparte", JSON.stringify([{ ...martina, savedAt: old }, { ...draft("Pablo"), savedAt: Date.now() }]));
+    assert.deepEqual(readAsides().map((d) => d.ficha.hero.name), ["Pablo"]);
+    assert.equal(JSON.parse(data.get("cuentos:crear:v2:aparte")!).length, 1, "y se borra");
   });
 });

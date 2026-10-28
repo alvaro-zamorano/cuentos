@@ -465,12 +465,21 @@ test("Recuperar un libro con el enlace /crear?b=", async ({ page }) => {
   await page.goto(`/crear?b=${bookId}`);
   await expect(page.getByText("Libro recuperado.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Así será Vera" })).toBeVisible();
-  await expect(page.getByTestId("aside")).toContainText("el cuento a medias de Martina");
+  await expect(page.getByTestId("aside")).toContainText("El cuento a medias de Martina");
   await page.getByTestId("aside-restore").click();
   await expect(page.getByTestId("hero-name")).toHaveValue("Martina");
   await expect(page.getByTestId("idea")).toHaveValue("Martina encuentra un mapa en el desván de la abuela.");
-  await expect(page.getByTestId("aside")).toHaveCount(0);
   await expect(page).toHaveURL(/\/crear$/);
+  // el libro que estaba abierto no se pierde: queda aparte y se vuelve a él por su enlace (revisión independiente)
+  await expect(page.getByTestId("aside-item")).toHaveCount(1);
+  await expect(page.getByTestId("aside")).toContainText("El libro de Vera");
+  await page.getByTestId("aside-restore").click();
+  await expect(page.getByRole("heading", { name: "Así será Vera" })).toBeVisible();
+  await expect(page.getByTestId("aside")).toContainText("El cuento a medias de Martina");
+  // descartar pide confirmación
+  await page.getByTestId("aside-discard").click();
+  await page.getByTestId("aside-discard-yes").click();
+  await expect(page.getByTestId("aside")).toHaveCount(0);
   await page.goto("/crear?b=noexiste00");
   await expect(page.getByText("Este enlace ya no abre ningún libro")).toBeVisible();
 

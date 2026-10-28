@@ -23,12 +23,27 @@ function useTinted(src: string, skin?: string | null, hair?: string | null, hair
   return (skin || hair) && state?.key === key ? state.url : src;
 }
 
+/**
+ * Guiones opcionales para las etiquetas que no caben enteras a 360 px: sin ellos, «Transparentes» se partía sin guion
+ * (revisión independiente). Se enseñan así y el nombre del botón sigue siendo la etiqueta tal cual.
+ */
+const SOFT_HYPHENS: Record<string, string> = { Transparentes: "Trans\u00ADparentes" };
+
 function Tile({ pick, on, tall, tint, onClick }: { pick: Pick; on: boolean; tall?: boolean; tint?: { skin?: string | null; hair?: string | null }; onClick: () => void }) {
   const src = useTinted(pick.src, tint?.skin, tint?.hair, pick.mask);
   return (
     <button type="button" aria-pressed={on} className={`tile ${on ? "tile-on" : ""}`} onClick={onClick} data-pick={pick.id}>
       <img src={src} alt="" loading="lazy" draggable={false} className={`w-full object-cover object-top ${tall ? "aspect-[3/4]" : "aspect-square"}`} />
-      <span className="tile-label">{pick.label}</span>
+      {SOFT_HYPHENS[pick.label] ? (
+        <>
+          <span className="tile-label" aria-hidden>
+            {SOFT_HYPHENS[pick.label]}
+          </span>
+          <span className="sr-only">{pick.label}</span>
+        </>
+      ) : (
+        <span className="tile-label">{pick.label}</span>
+      )}
       {on && (
         <span aria-hidden className="rise absolute top-1.5 right-1.5 grid h-6 w-6 place-items-center rounded-full bg-accent text-white shadow-[0_0_0_2px_#fff]">
           <Icon.check size={13} />

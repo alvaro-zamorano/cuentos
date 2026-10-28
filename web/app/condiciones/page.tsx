@@ -76,8 +76,8 @@ export default function Condiciones() {
       <p>
         El libro de tapa dura (apaisado, de unos 28 × 21 cm; la medida exacta es la del formato de la imprenta) se imprime cuando pulsas «Mandar a imprimir». Suele llegar en una o dos semanas desde entonces; el plazo
         es orientativo y te escribimos con el seguimiento cuando sale de la imprenta. Revisa bien la dirección: si el transportista no puede
-        entregarlo por un error en ella, el nuevo envío corre por tu cuenta. Si tres semanas después de mandarlo a imprimir no te ha llegado,
-        escríbenos: lo buscamos con la imprenta y el transportista y, si se ha perdido, lo volvemos a imprimir y te lo enviamos sin coste.
+        entregarlo por un error en ella, el nuevo envío corre por tu cuenta. Si a las tres semanas de mandarlo a imprimir no te ha llegado,
+        escríbenos antes de que se cumpla un mes: lo buscamos con la imprenta y el transportista y, si se ha perdido, lo volvemos a imprimir y te lo enviamos sin coste.
       </p>
 
       <h2>9. Garantía y reclamaciones</h2>

@@ -182,7 +182,10 @@ export default function Landing() {
             <ul className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[15px] text-[#b9c1da]">
               <li className="flex items-center gap-2">{CHECK}Sin subir fotos</li>
               <li className="flex items-center gap-2">{CHECK}El cuento y la portada, gratis</li>
-              <li className="flex items-center gap-2">{CHECK}Tapa dura con envío: {PRICE_HARDCOVER}</li>
+              <li className="flex items-center gap-2">
+                {CHECK}Tapa dura con envío: {PRICE_HARDCOVER}
+                {hardcoverStatus === "Muy pronto" ? " (muy pronto)" : ""}
+              </li>
             </ul>
           </div>
 

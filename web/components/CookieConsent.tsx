@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { OPEN_CONSENT_EVENT, readConsent, saveConsent, startPostHog, withdrawConsent, type Consent } from "@/lib/analytics";
 
@@ -17,6 +17,24 @@ export function CookieConsent({ enabled }: { enabled: boolean }) {
   const [choice, setChoice] = useState<Consent | null | "unknown">("unknown");
   const [reopened, setReopened] = useState(false);
   const inFlow = usePathname()?.startsWith("/crear") ?? false;
+  const box = useRef<HTMLDivElement>(null);
+  const visible = enabled && choice !== "unknown" && (choice === null || reopened);
+  // flotando, deja abajo un hueco de su altura: si no, tapaba el pie (privacidad, condiciones) hasta decidir (revisión
+  // independiente)
+  useEffect(() => {
+    const el = box.current;
+    if (!visible || inFlow || !el) return;
+    const apply = () => {
+      document.body.style.paddingBottom = `${el.offsetHeight + 24}px`;
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.body.style.paddingBottom = "";
+    };
+  }, [visible, inFlow]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -50,6 +68,7 @@ export function CookieConsent({ enabled }: { enabled: boolean }) {
 
   return (
     <div
+      ref={box}
       role="dialog"
       aria-live="polite"
       aria-label="Cookies de medición"
@@ -84,6 +103,8 @@ export function CookieConsent({ enabled }: { enabled: boolean }) {
 
 /** Enlace del pie que vuelve a abrir el aviso para cambiar la elección. */
 export function CookieSettingsLink({ className }: { className?: string }) {
+  // el aviso sale arriba solo en /crear; en el resto flota abajo, a la vista
+  const inFlow = usePathname()?.startsWith("/crear") ?? false;
   return (
     <button
       type="button"
@@ -91,7 +112,7 @@ export function CookieSettingsLink({ className }: { className?: string }) {
       data-testid="cookie-settings"
       onClick={() => {
         window.dispatchEvent(new Event(OPEN_CONSENT_EVENT));
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        if (inFlow) window.scrollTo({ top: 0, behavior: "smooth" });
       }}
     >
       Cookies

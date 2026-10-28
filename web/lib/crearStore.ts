@@ -78,6 +78,11 @@ function subscribe(listener: () => void) {
       current = read();
       emit();
     }
+    // lo guardado aparte también se mira en las otras pestañas (revisión independiente)
+    if (e.key === ASIDE_KEY || e.key === null) {
+      asidesCurrent = undefined;
+      emit();
+    }
   };
   window.addEventListener("storage", onStorage);
   return () => {
@@ -115,64 +120,93 @@ export function useCrear(): CrearState | null {
 }
 
 /**
- * El cuento a medias que había en el navegador cuando se abre el enlace de otro libro (mirada de usuario de la auditoría:
- * abrir el enlace del libro de Lucas sustituía sin aviso el cuento de Martina, aún sin email). Se guarda aparte, uno solo,
- * y /crear ofrece volver a él. Lo que ya tiene libro en el servidor no hace falta guardarlo: vuelve con su enlace.
+ * Lo que había en el navegador cuando se abre el enlace de otro libro (mirada de usuario de la auditoría: abrir el enlace
+ * del libro de Lucas sustituía sin aviso el cuento de Martina, aún sin email). Se guarda aparte, en una lista, y /crear
+ * ofrece volver. Entra un cuento a medias y también un libro ya empezado: tiene su enlace, pero así no depende del email
+ * (revisión independiente). Con un libro se vuelve por su enlace, para traerlo como esté en el servidor.
  */
 const ASIDE_KEY = "cuentos:crear:v2:aparte";
+/** Como mucho, cuántos se guardan aparte; al pasarse, se va el más antiguo. */
+export const ASIDE_MAX = 5;
 
 /** ¿Hay trabajo que se perdería? Un cuento sin libro en el servidor con algo escrito. */
 export function unsavedWork(s: CrearState): boolean {
   return !s.bookId && (!!s.record || !!s.ficha.idea.trim() || !!s.ficha.hero.name.trim());
 }
 
-/** Lo guardado aparte, leído una vez y luego al cambiar (undefined: sin leer todavía). */
-let asideCurrent: CrearState | null | undefined;
+/** ¿Merece guardarse aparte? Un cuento a medias o un libro empezado. */
+export function worthKeeping(s: CrearState): boolean {
+  return unsavedWork(s) || !!s.bookId;
+}
 
-export function setAside(s: CrearState): void {
+/** ¿Es el mismo cuento? Un libro, por su id; uno a medias, por lo escrito. */
+export function sameDraft(a: CrearState, b: CrearState): boolean {
+  if (a.bookId || b.bookId) return a.bookId === b.bookId;
+  return JSON.stringify(a.ficha) === JSON.stringify(b.ficha) && JSON.stringify(a.record?.plan ?? null) === JSON.stringify(b.record?.plan ?? null);
+}
+
+function normalizeAside(x: unknown): CrearState | null {
+  const s = x as Partial<CrearState> | null;
+  if (!s || s.v !== 2 || typeof s.savedAt !== "number" || Date.now() - s.savedAt > LOCAL_TTL_MS) return null;
+  const step = [1, 2, 3, 4, 5].includes(Number(s.step)) ? (Number(s.step) as Step) : 1;
+  const record = s.record?.plan?.pages?.length === 12 ? s.record : undefined;
+  const bookId = typeof s.bookId === "string" && /^[a-z0-9]{8,16}$/.test(s.bookId) ? s.bookId : undefined;
+  const out: CrearState = { v: 2, step, ficha: normalizeFicha(s.ficha), record, bookId, email: s.email, quickAsked: s.quickAsked === true || undefined, paid: (!!bookId && s.paid === true) || undefined, savedAt: s.savedAt, genderChosen: s.genderChosen === true || step > 1 || undefined };
+  return worthKeeping(out) ? out : null;
+}
+
+/** Lo guardado aparte, del más nuevo al más antiguo (sin lo caducado: 30 días, como el principal). */
+export function readAsides(): CrearState[] {
   try {
-    localStorage.setItem(ASIDE_KEY, JSON.stringify({ ...s, savedAt: Date.now() }));
+    const raw = localStorage.getItem(ASIDE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    const all = Array.isArray(parsed) ? parsed : [parsed];
+    const list = all.map(normalizeAside).filter((x): x is CrearState => !!x);
+    if (list.length !== all.length) writeAsides(list);
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+function writeAsides(list: CrearState[]): void {
+  try {
+    if (list.length) localStorage.setItem(ASIDE_KEY, JSON.stringify(list));
+    else localStorage.removeItem(ASIDE_KEY);
   } catch {
     // sin almacenamiento: no se puede guardar aparte
   }
-  asideCurrent = undefined;
+}
+
+/** Lo guardado aparte, leído una vez y luego al cambiar (undefined: sin leer todavía). */
+let asidesCurrent: CrearState[] | undefined;
+
+function changedAsides(list: CrearState[]) {
+  writeAsides(list);
+  asidesCurrent = undefined;
   emit();
 }
 
-/** El cuento guardado aparte, o null (también si ha caducado, como el principal). */
-export function readAside(): CrearState | null {
-  try {
-    const raw = localStorage.getItem(ASIDE_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as Partial<CrearState>;
-    if (s?.v !== 2 || (typeof s.savedAt === "number" && Date.now() - s.savedAt > LOCAL_TTL_MS)) {
-      localStorage.removeItem(ASIDE_KEY);
-      return null;
-    }
-    const step = [1, 2, 3, 4, 5].includes(Number(s.step)) ? (Number(s.step) as Step) : 1;
-    const record = s.record?.plan?.pages?.length === 12 ? s.record : undefined;
-    return { v: 2, step, ficha: normalizeFicha(s.ficha), record, email: s.email, quickAsked: s.quickAsked === true || undefined, genderChosen: s.genderChosen === true || step > 1 || undefined };
-  } catch {
-    return null;
-  }
+/** Guarda aparte (el primero de la lista; si ya estaba, sube). */
+export function addAside(s: CrearState): void {
+  if (!worthKeeping(s)) return;
+  const list = readAsides().filter((x) => !sameDraft(x, s));
+  changedAsides([{ ...s, savedAt: Date.now() }, ...list].slice(0, ASIDE_MAX));
 }
 
-export function clearAside(): void {
-  try {
-    localStorage.removeItem(ASIDE_KEY);
-  } catch {
-    // nada que borrar
-  }
-  asideCurrent = null;
-  emit();
+export function removeAside(s: CrearState): void {
+  changedAsides(readAsides().filter((x) => !sameDraft(x, s)));
 }
 
-function getAsideSnapshot(): CrearState | null {
-  if (asideCurrent === undefined) asideCurrent = readAside();
-  return asideCurrent;
+function getAsidesSnapshot(): CrearState[] {
+  if (asidesCurrent === undefined) asidesCurrent = readAsides();
+  return asidesCurrent;
 }
 
-/** El cuento guardado aparte, para pintarlo (null en el servidor y si no hay). */
-export function useAside(): CrearState | null {
-  return useSyncExternalStore(subscribe, getAsideSnapshot, () => null);
+const NO_ASIDES: CrearState[] = [];
+
+/** Lo guardado aparte, para pintarlo (nada en el servidor). */
+export function useAsides(): CrearState[] {
+  return useSyncExternalStore(subscribe, getAsidesSnapshot, () => NO_ASIDES);
 }

@@ -44,7 +44,8 @@ export function StepIdea({
 
   // la idea elegida de la lista sigue al nombre mientras no se toque a mano
   const setName = (v: string) => {
-    const follows = ficha.starter && ficha.idea === starterIdea(ficha.starter, hero.name);
+    // sin distinguir mayúsculas: la idea sin nombre ahora empieza en mayúscula y los borradores de antes no (revisión independiente)
+    const follows = ficha.starter && ficha.idea.toLowerCase() === starterIdea(ficha.starter, hero.name)?.toLowerCase();
     onChange({ ...ficha, hero: { ...hero, name: v }, idea: follows ? (starterIdea(ficha.starter!, v) ?? ficha.idea) : ficha.idea });
   };
   const nameWidth = `calc(${Math.min(12, Math.max(hero.name ? 2.6 : 6.6, hero.name.length * 0.95 + 0.6))}ch + 30px)`;

@@ -539,7 +539,7 @@ function EmailGate({
           </p>
           <p className="m-0 text-[15px] leading-relaxed">
             Con este email ya tienes tres cuentos con sus personajes dibujados. Te los acabamos de mandar para que elijas el que más te guste y lo termines.
-            Cuando compres uno, puedes empezar otros tres; si no, vuelves a tenerlos a los 30 días.
+            Cuando compres uno, puedes empezar otros tres; si no, cada uno vuelve a quedar libre a los 30 días de empezarlo.
           </p>
           <p className="m-0 text-[15px] leading-relaxed">
             ¿No te llega? Mira en el correo no deseado

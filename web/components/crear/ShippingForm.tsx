@@ -33,6 +33,7 @@ export function ShippingForm({
   onChange,
   field,
   error,
+  onEdit,
   tone = "light",
 }: {
   value: ShippingDraft;
@@ -40,6 +41,8 @@ export function ShippingForm({
   field?: string | null;
   /** El mensaje del servidor para `field`. */
   error?: string | null;
+  /** Se ha tocado un campo: si era el del error, el padre lo quita (revisión independiente: se quedaba ya corregido). */
+  onEdit?: (key: string) => void;
   tone?: "light" | "night";
 }) {
   const uid = useId();
@@ -80,7 +83,10 @@ export function ShippingForm({
               required={!f.optional}
               aria-invalid={field === f.key || over || undefined}
               aria-describedby={[limited ? `${id}-count ${id}-long` : "", errorFor === f.key ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined}
-              onChange={(e) => onChange({ ...value, [f.key]: e.target.value })}
+              onChange={(e) => {
+                onChange({ ...value, [f.key]: e.target.value });
+                onEdit?.(f.key);
+              }}
               data-testid={`ship-${f.key}`}
             />
             {errorFor === f.key && (
