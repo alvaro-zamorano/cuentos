@@ -10,7 +10,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { choosePage, draftV2, requestPages, savePlan, startBook } from "../../lib/book/service";
+import { choosePage, draftV2, pendingPageJobs, requestPages, savePlan, startBook } from "../../lib/book/service";
 import { hashString } from "../../lib/story/hash";
 import { pageArtKey } from "../../lib/plan/art";
 import { normalizeFicha } from "../../lib/plan/ficha";
@@ -145,4 +145,15 @@ test("I13: dos cambios a la vez sobre el mismo borrador se quedan los dos", asyn
   const d = draftV2((await store.findBook({ publicId: bookId }))!)!;
   assert.equal(d.plan.title, "Vera y la caja");
   assert.equal(d.pageChoice?.[all[0].page_n!], all[0].id);
+});
+
+test("«Otra versión» de la misma página desde dos pestañas a la vez: una sola versión 2 (menores de la auditoría 26 oct)", async () => {
+  const { store, bookId } = await paidBook();
+  assert.ok((await requestPages(store, { bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM)).ok);
+  await paintAll(store, dryRunAdapter, await pendingPageJobs(store, bookId), { concurrency: 3, deadline: Date.now() + 30_000 });
+  const ask = () => requestPages(store, { bookId, page: 3, reason: "cuerpo" }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
+  const [a, b] = await Promise.all([ask(), ask()]);
+  assert.ok(a.ok && b.ok);
+  assert.deepEqual(a.jobs, b.jobs, "las dos pestañas esperan la misma versión");
+  assert.deepEqual((await pageJobs(store, bookId)).filter((j) => j.page_n === 3).map((j) => j.variant).sort(), [1, 2]);
 });

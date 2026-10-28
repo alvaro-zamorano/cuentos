@@ -387,6 +387,8 @@ export interface PrintCronReport {
   reconciled: number;
   /** Emails de «ya está en la imprenta» que no salieron y se han vuelto a mandar. */
   remailed: number;
+  /** Se acabó el tiempo de la pasada con pedidos por mirar: siguen en la próxima. */
+  remaining: boolean;
 }
 
 const HOUR = 3_600_000;
@@ -394,13 +396,32 @@ const HOUR = 3_600_000;
 const KEEP_FOR_PRINT_MS = 30 * 24 * HOUR;
 
 /**
+ * Lo más que puede tardar un pedido del cron una vez empezado: una consulta a la imprenta (25 s, lib/print/gelato.ts) y
+ * dos emails (15 s cada uno, lib/mail.ts), con margen. El plazo interno del cron deja este hueco antes de que Vercel corte
+ * la ruta (revisión del 27 oct: con 12 s, un pedido empezado al final se cortaba a medias).
+ */
+export const PRINT_CRON_SLOWEST_MS = 60_000;
+
+/** Hasta cuándo puede empezar pedidos el cron, para una ruta de `maxDurationS` segundos que empezó en `t0`. */
+export function printCronDeadline(t0: number, maxDurationS: number): number {
+  return t0 + maxDurationS * 1000 - PRINT_CRON_SLOWEST_MS;
+}
+
+/**
  * Cron diario: recordatorio a quien pagó la tapa dura y no la ha mandado a imprimir (a los 2 días y otra vez a los 7, con
  * las ilustraciones terminadas), pedidos atascados en `sending` más de 15 minutos a `failed` (para reintentar), y
  * consulta de los pedidos abiertos por si un aviso de la imprenta se perdió.
  */
-export async function printCron(store: GenStore, deps: PrintDeps): Promise<PrintCronReport> {
+export async function printCron(store: GenStore, deps: PrintDeps, opts: { deadline?: number } = {}): Promise<PrintCronReport> {
   const now = deps.now?.() ?? new Date();
-  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0, remailed: 0 };
+  const report: PrintCronReport = { reminded: 0, refreshed: 0, unstuck: 0, kept: 0, reconciled: 0, remailed: 0, remaining: false };
+  // plazo propio por debajo del de la ruta (menores de la auditoría 26 oct): con muchos pedidos abiertos, las consultas a
+  // la imprenta no cabían y Vercel lo cortaba a medias. Un pedido solo se empieza antes del plazo, que deja el hueco del
+  // más lento (printCronDeadline). Lo que no da tiempo, en la próxima pasada
+  const late = () => {
+    if (opts.deadline !== undefined && Date.now() > opts.deadline) report.remaining = true;
+    return report.remaining;
+  };
   // cada entorno, solo sus pedidos: la preview no escribe a clientes reales ni toca sus pedidos; producción no recuerda
   // los de prueba (auditoría 26 oct, B1)
   const env = deps.env ?? process.env;
@@ -411,48 +432,15 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
   // hasta que se manda. El borrado ya la conservaba (`printPending`), pero el enlace dejaba de abrir a los 30 días
   // también la parada por una disputa: dura de 60 a 75 días y, si se gana, vuelve a esperar al padre (revisión 27 oct)
   for (const o of await store.listPrintOrders(["awaiting_approval", "failed", "canceled"], 500, live)) {
+    if (late()) return report;
     if (!mine(o) || (o.printStatus === "canceled" && o.printError !== DISPUTE_HOLD)) continue;
     const book = await store.getBookById(o.bookId);
     if (!book?.expiresAt || Date.parse(book.expiresAt) - now.getTime() > 3 * 24 * HOUR) continue;
     await store.extendBook(book.id, new Date(now.getTime() + KEEP_FOR_PRINT_MS).toISOString());
     report.kept++;
   }
-  for (const o of await store.listPrintOrders(["awaiting_approval"], 200, live)) {
-    if (!mine(o)) continue;
-    const age = now.getTime() - Date.parse(o.createdAt);
-    const sinceReminder = o.remindedAt ? now.getTime() - Date.parse(o.remindedAt) : Infinity;
-    const due = (!o.remindedAt && age >= 48 * HOUR) || (!!o.remindedAt && age >= 7 * 24 * HOUR && sinceReminder >= 4 * 24 * HOUR && Date.parse(o.remindedAt) - Date.parse(o.createdAt) < 7 * 24 * HOUR);
-    if (!due) continue;
-    const book = await store.getBookById(o.bookId);
-    if (!book?.email) continue;
-    const view = await bookView(store, book.public_id);
-    if (!view.ok || !Object.values(view.chosen.pages).every(Boolean)) continue;
-    const r = await deps.mail.reminder(book.email, view.plan.title, deps.link(book.public_id), `recordatorio:${o.id}:${o.remindedAt ? 2 : 1}`).catch(() => ({ sent: false }));
-    if (r.sent) {
-      await store.updateOrder(o.id, { remindedAt: now.toISOString() });
-      report.reminded++;
-    }
-  }
-  // «ya está en la imprenta» pendiente (Resend falló o la función se cortó antes de mandarlo): se vuelve a mandar, hasta
-  // una semana después de mandarlo a imprimir. Si sí había salido hace menos de 24 horas, Resend no lo repite (la misma
-  // clave). Lo que ya no toca (rechazado, sin dirección, pasada la semana) se desmarca para que no vuelva cada día
-  for (const o of await store.listPrintOrders(["sent", "in_production"], 200, live, { sentMailPending: true })) {
-    if (!mine(o) || !o.info?.sentMailPending) continue;
-    const late = !o.shipping || (!!o.sentAt && now.getTime() - Date.parse(o.sentAt) > 7 * 24 * HOUR);
-    const book = late ? null : await store.getBookById(o.bookId);
-    if (!book?.email) {
-      await clearSentMail(store, o.id);
-      continue;
-    }
-    const title = draftV2(book)?.plan.title ?? "Tu libro";
-    const r: MailResult = await deps.mail
-      .sentToPrint(book.email, title, deps.trackLink(o.id), shippingLine(o.shipping!), sentMailKey(o.id, o.printOrderId))
-      .catch(() => ({ sent: false, reason: "error" }));
-    if (!mailSettled(r)) continue;
-    await clearSentMail(store, o.id);
-    if (r.sent) report.remailed++;
-  }
   for (const o of await store.listPrintOrders(["sending"], 50, live)) {
+    if (late()) return report;
     if (!mine(o)) continue;
     const book = await store.getBookById(o.bookId);
     if (!book || now.getTime() - Date.parse(o.updatedAt ?? o.createdAt) <= 15 * 60_000) continue;
@@ -484,7 +472,48 @@ export async function printCron(store: GenStore, deps: PrintDeps): Promise<Print
       report.unstuck++;
     }
   }
+  // los recordatorios después de los envíos atascados: esperar un día más no le hace daño a nadie
+  for (const o of await store.listPrintOrders(["awaiting_approval"], 200, live)) {
+    if (late()) return report;
+    if (!mine(o)) continue;
+    const age = now.getTime() - Date.parse(o.createdAt);
+    const sinceReminder = o.remindedAt ? now.getTime() - Date.parse(o.remindedAt) : Infinity;
+    const due = (!o.remindedAt && age >= 48 * HOUR) || (!!o.remindedAt && age >= 7 * 24 * HOUR && sinceReminder >= 4 * 24 * HOUR && Date.parse(o.remindedAt) - Date.parse(o.createdAt) < 7 * 24 * HOUR);
+    if (!due) continue;
+    const book = await store.getBookById(o.bookId);
+    if (!book?.email) continue;
+    const view = await bookView(store, book.public_id);
+    if (!view.ok || !Object.values(view.chosen.pages).every(Boolean)) continue;
+    const r = await deps.mail.reminder(book.email, view.plan.title, deps.link(book.public_id), `recordatorio:${o.id}:${o.remindedAt ? 2 : 1}`).catch(() => ({ sent: false }));
+    if (r.sent) {
+      await store.updateOrder(o.id, { remindedAt: now.toISOString() });
+      report.reminded++;
+    }
+  }
+  // «ya está en la imprenta» pendiente (Resend falló o la función se cortó antes de mandarlo): se vuelve a mandar, hasta
+  // una semana después de mandarlo a imprimir. Si sí había salido hace menos de 24 horas, Resend no lo repite (la misma
+  // clave). Lo que ya no toca (rechazado, sin dirección, pasada la semana) se desmarca para que no vuelva cada día
+  for (const o of await store.listPrintOrders(["sent", "in_production"], 200, live, { sentMailPending: true })) {
+    if (late()) return report;
+    if (!mine(o) || !o.info?.sentMailPending) continue;
+    const stale = !o.shipping || (!!o.sentAt && now.getTime() - Date.parse(o.sentAt) > 7 * 24 * HOUR);
+    const book = stale ? null : await store.getBookById(o.bookId);
+    if (!book?.email) {
+      await clearSentMail(store, o.id);
+      continue;
+    }
+    const title = draftV2(book)?.plan.title ?? "Tu libro";
+    const r: MailResult = await deps.mail
+      .sentToPrint(book.email, title, deps.trackLink(o.id), shippingLine(o.shipping!), sentMailKey(o.id, o.printOrderId))
+      .catch(() => ({ sent: false, reason: "error" }));
+    if (!mailSettled(r)) continue;
+    await clearSentMail(store, o.id);
+    if (r.sent) report.remailed++;
+  }
+  // y lo último, la consulta de los pedidos abiertos: una llamada a la imprenta por pedido; lo que no dé tiempo lo trae el
+  // aviso de Gelato o la próxima pasada
   for (const o of await store.listPrintOrders(["sent", "in_production", "shipped"], 100, live)) {
+    if (late()) return report;
     if (!mine(o)) continue;
     if ((await refreshPrint(store, o, deps)) === "updated") report.refreshed++;
   }
