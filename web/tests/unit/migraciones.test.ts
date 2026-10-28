@@ -158,6 +158,26 @@ test("0013 (I7): email_norm es normalizeEmail, también en las filas que ya hab�
   await db.close();
 });
 
+test("0014: una tapa dura pagada por libro y entorno; la devuelta y la del PDF no cuentan", async () => {
+  const db = await rebuilt();
+  const book = (await db.query<{ id: string }>(`insert into cuentos_books (public_id, draft, edition, email) values ('tapa23456', '{}', 'hardcover', 'vera@example.com') returning id`)).rows[0].id;
+  const order = (edition: string, session: string, status = "paid") =>
+    db.query(`insert into cuentos_orders (book_id, edition, amount_cents, stripe_session_id, status) values ($1, $2, 3490, $3, $4)`, [book, edition, session, status]);
+  await order("illustrated", "cs_test_pdf");
+  await order("hardcover", "cs_test_1");
+  // otra tapa dura de prueba del mismo libro: no entra (el código lo trata como cobro doble)
+  await assert.rejects(order("hardcover", "cs_test_2"), (e: { code?: string; message?: string }) => e.code === "23505" && /cuentos_orders_una_tapa_dura/.test(e.message ?? ""));
+  // la base es la misma en la preview y en producción: un cobro real del mismo libro sí entra
+  await order("hardcover", "cs_live_1");
+  await assert.rejects(order("hardcover", "cs_live_2"), /cuentos_orders_una_tapa_dura/);
+  // devuelta, deja sitio
+  await db.query(`update cuentos_orders set status = 'refunded' where stripe_session_id = 'cs_test_1'`);
+  await order("hardcover", "cs_test_3");
+  // el pago simulado (sin sesión de Stripe) cuenta como de prueba
+  await assert.rejects(db.query(`insert into cuentos_orders (book_id, edition, amount_cents, stripe_session_id, status) values ($1, 'hardcover', 3490, null, 'paid')`, [book]), /cuentos_orders_una_tapa_dura/);
+  await db.close();
+});
+
 test("0015: las filas de leads que ya había reciben su llave de baja, una distinta cada una, y su buzón", async () => {
   const db = await rebuilt({ before: "0015" });
   await db.query(`insert into cuentos_leads (email, marketing, edition) values ('ana.lopez+cuentos@googlemail.com', true, 'illustrated'), ('luis@example.com', false, 'illustrated')`);

@@ -27,6 +27,8 @@ export interface LlmRequest {
    */
   thinking?: "min" | "adaptive";
   effort?: "low" | "medium" | "high";
+  /** Cuánto se espera la respuesta (por defecto, 120 s). Las rutas con plazo corto lo bajan para no quedarse sin tiempo. */
+  timeoutMs?: number;
 }
 
 export interface LlmResult {
@@ -124,7 +126,7 @@ function anthropic(apiKey: string, model: string, defaults: Pick<LlmRequest, "th
           system: req.system,
           messages,
         }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(req.timeoutMs ?? TIMEOUT_MS),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: { type?: string; message?: string } } | null;
@@ -164,7 +166,7 @@ function openai(apiKey: string, model: string): Llm {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({ model, temperature: req.temperature ?? 0.8, max_tokens: req.maxTokens, response_format: { type: "json_object" }, messages }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(req.timeoutMs ?? TIMEOUT_MS),
       });
       if (!res.ok) throw new LlmError("openai", res.status);
       const json = (await res.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; model?: string };

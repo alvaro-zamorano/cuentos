@@ -1,6 +1,9 @@
 {
   "name": "web",
   "version": "0.1.0",
+  "engines": {
+    "node": ">=22.17"
+  },
   "private": true,
   "scripts": {
     "pieces": "node scripts/pieces-build.mjs",
@@ -14,12 +17,12 @@
     "test:unit": "node --import tsx --test tests/unit/*.test.ts"
   },
   "dependencies": {
-    "@sparticuz/chromium-min": "^140.0.0",
+    "@sparticuz/chromium": "153.0.0",
     "@supabase/supabase-js": "^2.117.3",
     "next": "16.4.3",
     "pdf-lib": "^1.17.1",
     "posthog-js": "^1.438.13",
-    "puppeteer-core": "^24.43.1",
+    "puppeteer-core": "25.13.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",

@@ -10,7 +10,7 @@ import { MOCK_LLM, type Llm } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState, supabaseStore, type GenStore } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, payDryRun, prepareCheckout, recordStripePayment, savePlan, startBook } from "../../lib/book/service";
+import { bookView, prepareCheckout, recordStripePayment, savePlan, startBook } from "../../lib/book/service";
 import { printCron, type PrintDeps } from "../../lib/book/print";
 import { rescueBooks, type RescueDeps } from "../../lib/book/rescue";
 import { freeUse } from "../../lib/book/freeLimit";
@@ -22,6 +22,7 @@ import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
 import type { Plan } from "../../lib/plan/types";
+import { approveLast, payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]); // Vera y su perro Toby: ningún familiar en la ficha
 const plan = mockPlan(ficha);
@@ -103,6 +104,7 @@ test("Supabase: si falla la lectura de pedidos, hasPaidOrder lanza (un cobro dob
 test("crons de la imprenta: los pedidos de prueba acumulados no tapan a los reales en producción", async () => {
   const { state, store, bookId } = await book();
   await testOrders(store, 600, "hardcover");
+  await approveLast(store, bookId);
   assert.ok((await prepareCheckout(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
   assert.equal((await recordStripePayment(store, session("cs_live_real", bookId, "hardcover"), PROD)).action, "paid");
   state.books.get(bookId)!.expiresAt = new Date(Date.now() + DAY).toISOString();
@@ -121,7 +123,7 @@ test("rescate: los pedidos de prueba o ya terminados no dejan fuera al recién p
 
 test("rescate: si falla antes de pintar (texto caído), el aviso de libro atascado llega igual", async () => {
   const { store, bookId } = await book();
-  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "illustrated" })).ok);
   const down: Llm = { name: "anthropic", model: "x", complete: async () => Promise.reject(new Error("529 overloaded")) };
   const { deps, notices } = rescueDeps({ llm: down, now: () => Date.now() + 3 * HOUR });
   const r = await rescueBooks(store, deps);
@@ -148,7 +150,7 @@ test("pagos: el reintento de Stripe vuelve a alargar el libro; el pago de prueba
 
   const dry = await book();
   dry.state.books.get(dry.bookId)!.expiresAt = new Date(Date.now() + DAY).toISOString();
-  assert.ok((await payDryRun(dry.store, { bookId: dry.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(dry.store, { bookId: dry.bookId, edition: "illustrated" })).ok);
   assert.ok(Date.parse(dry.state.books.get(dry.bookId)!.expiresAt!) - Date.now() > 29 * DAY);
 });
 

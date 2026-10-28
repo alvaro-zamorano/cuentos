@@ -27,7 +27,7 @@ import { planFromClient } from "../plan/planner";
 import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping, shippingLine, shippingSummary } from "../print/shipping";
-import type { Receipt } from "../mail";
+import { transientMailFailure, type MailResult, type Receipt } from "../mail";
 import { EDITION_LABEL, PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping, type ShippingSummary } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
@@ -83,6 +83,18 @@ export interface BookDraftV2 {
   /** Edición elegida al abrir el pago y dirección de envío de la tapa dura (pasan al pedido cuando llega el pago). */
   edition?: PaidEdition;
   shipping?: Shipping;
+  /**
+   * La dirección con la que se abrió cada sesión de pago de tapa dura, por id de sesión de Stripe (las últimas). El pedido
+   * lleva la de la sesión que se paga, no la última escrita: con dos pestañas y dos direcciones ganaba la última que se
+   * abría (menores de la auditoría 26 oct). Se vacía al registrar el pago; el borrado diario quita las abandonadas.
+   */
+  checkoutShipping?: Record<string, Shipping>;
+  /**
+   * Los personajes aprobados con los que se abrió cada sesión de pago, por id de sesión (las últimas). Al pagar, esos
+   * quedan como aprobados: si entretanto se cambiaron en otra pestaña, las páginas salen con los que se vieron al pagar
+   * (revisión 27 oct). Se vacía al registrar el pago.
+   */
+  checkoutCast?: Record<string, string>;
   updatedAt: number;
 }
 
@@ -237,10 +249,13 @@ export interface StartResult {
   title?: string;
 }
 
-/** El buzón ya tiene sus cuentos gratis del periodo: no se dibuja; la ruta le manda por email los que tiene empezados. */
+/**
+ * El buzón ya tiene sus cuentos gratis del periodo: no se dibuja; la ruta le manda por email los que tiene empezados,
+ * cada uno al email guardado en él (`mailYourBooks`).
+ */
 export interface FreeLimitFail extends Fail {
   error: "free_limit";
-  books: { publicId: string; title: string }[];
+  books: { publicId: string; title: string; email: string | null }[];
 }
 
 /**
@@ -287,6 +302,8 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
     readyMailedAt: prev?.readyMailedAt,
     edition: prev?.edition,
     shipping: prev?.shipping,
+    checkoutShipping: prev?.checkoutShipping,
+    checkoutCast: prev?.checkoutCast,
     updatedAt: Date.now(),
   };
   book = await store.saveBook({ publicId: book?.public_id, email, draft: d, edition: "illustrated" });
@@ -358,7 +375,7 @@ async function freeGate(store: GenStore, email: string, book: BookRecord, sheets
     return { freeLeft: gate.left, claimed: true };
   }
   if ("busy" in gate) return fail(409, "busy", "Estamos empezando otro cuento con este email. Espera unos segundos y vuelve a intentarlo.");
-  return { ok: false, status: 429, error: "free_limit", books: gate.books.map((b) => ({ publicId: b.publicId, title: b.title ?? "Tu cuento" })) };
+  return { ok: false, status: 429, error: "free_limit", books: gate.books.map((b) => ({ publicId: b.publicId, title: b.title ?? "Tu cuento", email: b.email })) };
 }
 
 async function newSheetAndCover(store: GenStore, book: BookRecord, d: BookDraftV2, variant: number): Promise<{ sheet: GenJob; cover: GenJob } | Fail> {
@@ -547,7 +564,9 @@ export async function payDryRun(store: GenStore, input: { bookId?: unknown; edit
     if (!up.ok) return up;
     const loaded = await loadBook(store, input.bookId);
     if (isFail(loaded)) return loaded;
-    await store.addPaidOrder(loaded.book.id, newOrder("hardcover", up.amountCents, `dry-run-mejora:${loaded.book.public_id}`, loaded.d.shipping));
+    const added = await store.addPaidOrder(loaded.book.id, newOrder("hardcover", up.amountCents, `dry-run-mejora:${loaded.book.public_id}`, loaded.d.shipping));
+    // como en el webhook (0014): si entretanto entró otra tapa dura, esta no
+    if (added === "hardcover_taken") return fail(409, "already_hardcover");
     await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
     return { ok: true };
   }
@@ -577,6 +596,10 @@ export interface CheckoutPrep {
   amountCents: number;
   /** Pasar a tapa dura un libro ya pagado en PDF: se cobra solo la diferencia. */
   upgrade?: boolean;
+  /** La dirección de la tapa dura con la que se abre este pago (`rememberCheckout`). */
+  shipping?: Shipping;
+  /** Los personajes aprobados que se pagan (`rememberCheckout`). La mejora no los lleva: las páginas ya están pintadas. */
+  castJobId?: string;
 }
 
 /**
@@ -595,6 +618,13 @@ export async function prepareCheckout(store: GenStore, input: { bookId?: unknown
   // (solo cuenta la última: una anterior que se quedó en cola sin pintar no puede bloquear el pago)
   const last = sheets[sheets.length - 1];
   if (last && drawing(last) && sheets.some((j) => j.status === "done")) return fail(409, "sheet_not_ready", "Espera a que terminen de dibujarse los personajes y vuelve a intentarlo.");
+  // sin personajes dibujados y aprobados no se paga (menores de la auditoría 26 oct): la pantalla no deja llegar aquí sin
+  // aprobarlos, pero otra pestaña puede haberlos cambiado (cambiar los personajes quita la aprobación) o llegar un enlace
+  // con `pagado=1`. El paso 5 lleva entonces al 4
+  const done = sheets.filter((j) => j.status === "done");
+  if (done.length === 0) return fail(409, "cast_not_ready", "Antes de pagar tienen que estar dibujados los personajes.");
+  const cast = done.find((j) => j.id === d.approvedSheetJobId);
+  if (!cast) return fail(409, "cast_not_approved", "Antes de pagar, revisa y aprueba los personajes.");
   const edition = paidEdition(input.edition) ?? "illustrated";
   let shipping: Shipping | undefined;
   if (edition === "hardcover") {
@@ -603,7 +633,52 @@ export async function prepareCheckout(store: GenStore, input: { bookId?: unknown
     shipping = s.shipping;
   }
   ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, edition, ...(shipping ? { shipping } : {}) })));
-  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition, amountCents: PRICES[edition] };
+  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition, amountCents: PRICES[edition], castJobId: cast.id, ...(shipping ? { shipping } : {}) };
+}
+
+/** Cuántas sesiones de pago abiertas se recuerdan (dos pestañas, un reintento): las más recientes. */
+const CHECKOUT_KEEP = 4;
+
+/** Añade la sesión a un mapa por sesión, sin pasar de las `CHECKOUT_KEEP` más recientes. */
+function withSession<T>(map: Record<string, T> | undefined, sessionId: string, value: T): Record<string, T> {
+  return Object.fromEntries([...Object.entries(map ?? {}).filter(([id]) => id !== sessionId), [sessionId, value]].slice(-CHECKOUT_KEEP));
+}
+
+/**
+ * Abierta la sesión de pago (la ruta, con el id que da Stripe), apunta con qué se abrió: la dirección de la tapa dura y
+ * los personajes aprobados. El pedido y las páginas llevarán esos cuando llegue el pago de esa sesión. Si no se puede
+ * apuntar, lanza: la ruta responde 502 y el padre lo vuelve a intentar (revisión 27 oct).
+ */
+export async function rememberCheckout(store: GenStore, bookId: string, sessionId: string, opened: { shipping?: Shipping; castJobId?: string }): Promise<void> {
+  if (!opened.shipping && !opened.castJobId) return;
+  const loaded = await loadBook(store, bookId);
+  if (isFail(loaded)) throw new Error(`books: ${loaded.error}`);
+  await mutate(store, loaded.book, (cur) => ({
+    ...cur,
+    ...(opened.shipping ? { checkoutShipping: withSession(cur.checkoutShipping, sessionId, opened.shipping) } : {}),
+    ...(opened.castJobId ? { checkoutCast: withSession(cur.checkoutCast, sessionId, opened.castJobId) } : {}),
+  }));
+}
+
+/**
+ * Pagado: los personajes de la sesión que se paga quedan como aprobados, y lo apuntado de las sesiones abiertas ya no hace
+ * falta (la dirección buena va en el pedido). Sin nada que cambiar, no escribe. Si falla, las direcciones las quita el
+ * borrado.
+ */
+async function settleCheckout(store: GenStore, book: BookRecord, sessionId: string | null | undefined): Promise<void> {
+  await mutate(store, book, (cur) => {
+    if (!cur.checkoutShipping && !cur.checkoutCast) return null;
+    const cast = sessionId ? cur.checkoutCast?.[sessionId] : undefined;
+    const next = { ...cur, ...(cast ? { approvedSheetJobId: cast } : {}) };
+    delete next.checkoutShipping;
+    delete next.checkoutCast;
+    return next;
+  }).catch(() => null);
+}
+
+/** La dirección del pedido: la de la sesión que se paga; si no se apuntó, la última escrita (como antes). */
+function shippingFor(d: BookDraftV2, sessionId: string | null | undefined): Shipping | undefined {
+  return (sessionId ? d.checkoutShipping?.[sessionId] : undefined) ?? d.shipping;
 }
 
 /**
@@ -632,7 +707,7 @@ export async function prepareUpgrade(
   if (!s.ok) return { ...fail(400, "shipping", s.message), field: s.field };
   // la edición del libro no cambia hasta que llega el pago (si se abandona, sigue siendo el PDF)
   ({ book, d } = await mutate(store, book, (cur) => ({ ...cur, shipping: s.shipping })));
-  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true };
+  return { ok: true, bookId: book.public_id, email: book.email, title: d.plan.title, edition: "hardcover", amountCents, upgrade: true, shipping: s.shipping };
 }
 
 /**
@@ -689,8 +764,11 @@ export interface PaidEvent {
 export type PaymentOutcome =
   | { action: "paid"; bookId: string; mismatch?: string }
   | { action: "upgraded"; bookId: string; mismatch?: string }
-  /** La misma sesión otra vez (Stripe reintenta): nada que hacer. */
-  | { action: "duplicate"; bookId: string }
+  /**
+   * La misma sesión otra vez (Stripe reintenta): nada que hacer. `mismatch`: el importe que no cuadraba, otra vez, para
+   * volver a avisar si el aviso no salió la primera vez (revisión 27 oct).
+   */
+  | { action: "duplicate"; bookId: string; mismatch?: string }
   /** Otra sesión pagada para un libro ya pagado: cobro doble que hay que devolver (el webhook avisa). `already`: la
    * edición que ya estaba pagada. */
   | { action: "double_charge"; bookId: string; already?: PaidEdition }
@@ -769,7 +847,10 @@ async function recordCharge(
     // Stripe reintenta si la vez anterior falló después de guardar el pedido (por ejemplo, al alargar el libro): se
     // vuelve a alargar, que nunca acorta (revisión 26 oct)
     if ((same.status ?? "paid") === "paid") await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
-    return { action: "duplicate", bookId: publicId };
+    // el importe que no cuadraba se vuelve a mirar. En una mejora solo la moneda: su precio sale del pedido de base
+    const expected = s.metadata?.upgrade === "1" ? null : (PRICES[same.edition] ?? null);
+    const mismatch = (same.status ?? "paid") === "paid" ? paymentMismatch(expected, s) : undefined;
+    return { action: "duplicate", bookId: publicId, ...(mismatch ? { mismatch } : {}) };
   }
   if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
   if (await paidHere(store, loaded.book.id, env)) {
@@ -778,12 +859,25 @@ async function recordCharge(
   }
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
-  await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
+  const added = await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, shippingFor(loaded.d, s.id)));
+  // lo apuntado de las sesiones abiertas sobra también si este pedido no entra; sus personajes quedan aprobados solo si
+  // entra
+  await settleCheckout(store, loaded.book, added === "added" ? s.id : null);
+  // la red de la base (0014) para cuando el bloqueo no basta: otra tapa dura pagada del libro, cobro doble. Si esta
+  // misma sesión ya entró (dos entregas del mismo evento a la vez), la base puede quejarse por cualquiera de los dos
+  // índices: es un duplicado
+  if (added === "same_session" || (added === "hardcover_taken" && (await sameSessionIn(store, s.id)))) return { action: "duplicate", bookId: publicId };
+  if (added === "hardcover_taken") return { action: "double_charge", bookId: publicId, already: "hardcover" };
   await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
   const mismatch = paymentMismatch(PRICES[edition], s);
   return { action: "paid", bookId: publicId, ...(mismatch ? { mismatch } : {}) };
 }
 
+
+/** ¿Ya hay un pedido de esta sesión de Stripe? */
+async function sameSessionIn(store: GenStore, sessionId: string | undefined): Promise<boolean> {
+  return !!sessionId && !!(await store.getOrderBySession(sessionId));
+}
 
 /**
  * La mejora a tapa dura pagada: un segundo pedido, de tapa dura, que espera a «Mandar a imprimir» como cualquier otro.
@@ -802,7 +896,12 @@ async function recordUpgrade(
   if (!printableInEnv(order.sessionId, env)) return { action: "ignored", reason: "upgrade:test_order" };
   const expected = upgradeCents(order.amountCents);
   const amount = typeof s.amount_total === "number" ? s.amount_total : (expected ?? 0);
-  await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
+  const added = await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, shippingFor(d, s.id)));
+  await settleCheckout(store, book, null);
+  // otra mejora del mismo libro entró antes (0014): como si ya fuera de tapa dura, con aviso para devolverla. La misma
+  // sesión, otra vez, es un duplicado (ver `recordCharge`)
+  if (added === "same_session" || (added === "hardcover_taken" && (await sameSessionIn(store, s.id)))) return { action: "duplicate", bookId: book.public_id };
+  if (added === "hardcover_taken") return { action: "ignored", reason: "upgrade:already_hardcover" };
   // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
   // caducara al pedir la mejora
   await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
@@ -823,6 +922,17 @@ export function receiptNotice(to: string, reason: string, bookUuid: string | nul
       bookUuid ? bookLine(bookUuid) : `Sesión de Stripe: ${sessionId ?? "?"} (el libro va en sus metadatos)`,
     ].join("\n\n"),
   };
+}
+
+/**
+ * ¿Responder 500 a Stripe porque el aviso a soporte no ha salido? Revisión 27 oct (Álvaro: sí): antes, si fallaba el
+ * correo, un cobro doble solo quedaba en los registros. El reintento vuelve a dar el mismo aviso: los que no cambian nada
+ * en la base salen igual, y los que sí (pago con importe que no cuadra, devolución, disputa) se rehacen desde la base al
+ * verlos repetidos (`duplicate`). Solo con fallos pasajeros (red, Resend caído o saturado): sin destino o sin correo
+ * configurado, reintentar no arregla nada.
+ */
+export function retryUnsentNotice(mail: MailResult): boolean {
+  return transientMailFailure(mail);
 }
 
 /**
@@ -854,7 +964,7 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
       }`,
     };
   }
-  if ((r.action === "paid" || r.action === "upgraded") && r.mismatch) {
+  if ((r.action === "paid" || r.action === "upgraded" || r.action === "duplicate") && r.mismatch) {
     return { subject: "Cobro con un importe que no cuadra", text: `El pedido se ha registrado, pero ${r.mismatch}.\n${facts}\n\nRevísalo en el panel de Stripe.` };
   }
   return null;
@@ -876,7 +986,8 @@ export async function mailReceipt(
   r: PaymentOutcome,
   event: PaidEvent,
   deps: {
-    send: (to: string, receipt: Receipt) => Promise<{ sent: boolean; reason?: string }>;
+    /** `key`: la sesión de Stripe, para que un reintento del evento no lo mande dos veces (lib/mail.ts, `mailKey`). */
+    send: (to: string, receipt: Receipt, key?: string) => Promise<{ sent: boolean; reason?: string }>;
     link: (publicId: string) => string;
     conditionsLink: string;
     seller: string;
@@ -907,7 +1018,7 @@ export async function mailReceipt(
       conditionsLink: deps.conditionsLink,
       seller: deps.seller,
       contact: deps.contact,
-    })
+    }, `recibo:${s.id}`)
     .catch(() => ({ sent: false, reason: "red" }));
   if (!res.sent) {
     const reason = res.reason ?? "";
@@ -927,13 +1038,14 @@ export async function mailReceipt(
 
 /**
  * Cuando las 12 páginas están pintadas, manda una vez el email de «tu libro está listo» (el envío se inyecta: Resend en
- * la ruta, un doble en los tests). Devuelve si lo ha mandado.
+ * la ruta, un doble en los tests). Devuelve si lo ha mandado. Dos segundos planos que terminan a la vez lo mandan con la
+ * misma clave (el libro): sale una vez.
  */
 export async function notifyBookReady(
   store: GenStore,
   bookId: string,
   link: (id: string) => string,
-  send: (to: string, title: string, link: string, edition: PaidEdition, upgrade?: UpgradeOffer | null) => Promise<{ sent: boolean }>,
+  send: (to: string, title: string, link: string, edition: PaidEdition, upgrade?: UpgradeOffer | null, key?: string) => Promise<{ sent: boolean }>,
 ): Promise<boolean> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return false;
@@ -941,7 +1053,7 @@ export async function notifyBookReady(
   if (d.readyMailedAt || !book.email) return false;
   const view = await bookView(store, bookId);
   if (!view.ok || !view.paid || !Object.values(view.chosen.pages).every(Boolean)) return false;
-  const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated", view.upgrade);
+  const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated", view.upgrade, `listo:${book.id}`);
   if (!r.sent) return false;
   await mutate(store, book, (cur) => ({ ...cur, readyMailedAt: Date.now() }));
   return true;

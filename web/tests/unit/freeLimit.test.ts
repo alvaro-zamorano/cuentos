@@ -6,11 +6,12 @@ import { dryRunAdapter } from "../../lib/generation/adapter";
 import { createClient } from "@supabase/supabase-js";
 import { memoryStore, newMemoryState, supabaseStore } from "../../lib/generation/store";
 import type { Database } from "../../lib/supabase/types";
-import { payDryRun, reviseSheet, startBook } from "../../lib/book/service";
+import { reviseSheet, startBook } from "../../lib/book/service";
 import { CLAIM_TTL_MS, FREE_BOOKS, freeLockKey, freeUse, normalizeEmail, passFreeGate } from "../../lib/book/freeLimit";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -57,13 +58,17 @@ test("dentro de un cuento empezado, los cambios con palabras no cuentan como cue
 test("comprar un libro renueva los gratis", async () => {
   const store = memoryStore(newMemoryState());
   const ids: string[] = [];
+  const sheets: string[] = [];
   for (let i = 0; i < 3; i++) {
     const r = await start(store, "ana@example.com");
     assert.ok(r.ok);
     ids.push(r.bookId);
+    sheets.push(r.sheetJobId);
   }
   assert.equal(((await start(store, "ana@example.com")) as { error: string }).error, "free_limit");
-  assert.ok((await payDryRun(store, { bookId: ids[0], edition: "illustrated" })).ok);
+  // se paga con los personajes dibujados
+  await store.updateJob(sheets[0], { status: "done", chosen: "dry-run/sheet.png" });
+  assert.ok((await payApproved(store, { bookId: ids[0], edition: "illustrated" })).ok);
   const r = await start(store, "ana@example.com");
   assert.ok(r.ok, JSON.stringify(r));
   assert.equal(r.freeLeft, FREE_BOOKS - 1);
@@ -155,7 +160,7 @@ test("I7: en Supabase, el límite se cuenta con tres consultas pequeñas por ema
   const calls: { method: string; url: URL; prefer: string; body: unknown }[] = [];
   const reply = (url: URL, method: string): unknown => {
     const table = url.pathname.split("/").pop();
-    if (table === "cuentos_books") return [{ id: "b1", public_id: "abcd2345ef", created_at: "2026-10-27T10:00:00Z", free_claimed_at: null, title: "El dragón" }];
+    if (table === "cuentos_books") return [{ id: "b1", public_id: "abcd2345ef", email: "v.era@gmail.com", created_at: "2026-10-27T10:00:00Z", free_claimed_at: null, title: "El dragón" }];
     if (table === "cuentos_orders") return [];
     if (table === "cuentos_generation_jobs") return [{ book_id: "b1", status: "error", updated_at: "2026-10-27T10:01:00Z" }];
     if (table === "cuentos_locks" && method === "POST") return [];
@@ -173,10 +178,10 @@ test("I7: en Supabase, el límite se cuenta con tres consultas pequeñas por ema
   const store = supabaseStore(db);
 
   const books = await store.listFreeBooks("vera@gmail.com", "2026-09-27T00:00:00Z");
-  assert.deepEqual(books, [{ id: "b1", publicId: "abcd2345ef", createdAt: "2026-10-27T10:00:00Z", freeClaimedAt: null, title: "El dragón", paid: [], sheets: [{ status: "failed", updatedAt: "2026-10-27T10:01:00Z" }] }]);
+  assert.deepEqual(books, [{ id: "b1", publicId: "abcd2345ef", createdAt: "2026-10-27T10:00:00Z", freeClaimedAt: null, title: "El dragón", email: "v.era@gmail.com", paid: [], sheets: [{ status: "failed", updatedAt: "2026-10-27T10:01:00Z" }] }]);
   assert.equal(calls.length, 3);
   const [q] = calls;
-  assert.equal(q.url.searchParams.get("select"), "id,public_id,created_at,free_claimed_at,title:draft->plan->>title", "del borrador, solo el título");
+  assert.equal(q.url.searchParams.get("select"), "id,public_id,email,created_at,free_claimed_at,title:draft->plan->>title", "del borrador, solo el título; el email guardado, para mandar ahí su enlace");
   assert.equal(q.url.searchParams.get("email_norm"), "eq.vera@gmail.com");
   assert.equal(q.url.searchParams.get("free_claimed_at"), "not.is.null", "solo los que pasaron la puerta");
   assert.equal(q.url.searchParams.get("created_at"), "gte.2026-09-27T00:00:00Z");

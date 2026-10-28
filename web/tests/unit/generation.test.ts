@@ -18,7 +18,7 @@ import {
   parseGeminiImageResponse,
   resolveRefPath,
 } from "../../lib/generation/adapter";
-import { canSpend, capDay, capDayStart, freeSpendToday, leadCapCents, recordSpend } from "../../lib/generation/budget";
+import { canSpend, capDay, capDayStart, freeSpendToday, leadCapCents, recordSpend, reserveSpend, settleSpend } from "../../lib/generation/budget";
 import { TEXT_ESTIMATE_CENTS, recordText, textRoom } from "../../lib/plan/textBudget";
 import { MOCK_LLM } from "../../lib/llm";
 import { DEFAULT_TRAITS } from "../../lib/traits";
@@ -228,6 +228,7 @@ type Order = { book_id: string; stripe_session_id: string | null; status?: strin
  */
 function fakeDb(rows: Row[], opts: { failRead?: boolean; orders?: Order[] } = {}) {
   const inserted: Row[] = [];
+  let tick = 0;
   const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const like = (v: unknown, pat: string) => new RegExp(`^${pat.split("%").map((a) => a.split("_").map(esc).join(".")).join(".*")}$`).test(String(v ?? ""));
   const query = (data: () => Record<string, unknown>[]) => {
@@ -254,12 +255,24 @@ function fakeDb(rows: Row[], opts: { failRead?: boolean; orders?: Order[] } = {}
         return { select: () => query(all) };
       }
       assert.equal(table, "cuentos_spend");
+      // con id y hora en microsegundos (como Postgres), y lo que hacen las reservas: insertar y leer la fila, cambiarla
+      // y quitarla
+      const where = (c: string, v: unknown) => [...rows, ...inserted].filter((r) => (r as Record<string, unknown>)[c] === v);
       return {
         select: () => query(() => [...rows, ...inserted]),
         insert(row: Row) {
-          inserted.push({ ...row, created_at: new Date().toISOString() });
-          return Promise.resolve({ error: null });
+          const rec = { id: crypto.randomUUID(), ...row, created_at: `${new Date().toISOString().slice(0, 23)}${String(++tick % 1000).padStart(3, "0")}+00:00` };
+          inserted.push(rec);
+          const done = Promise.resolve({ error: null });
+          return { then: done.then.bind(done), select: () => ({ single: () => Promise.resolve({ data: { id: rec.id, created_at: rec.created_at }, error: null }) }) };
         },
+        update: (patch: Partial<Row>) => ({ eq: (c: string, v: unknown) => (where(c, v).forEach((r) => Object.assign(r, patch)), Promise.resolve({ error: null })) }),
+        delete: () => ({
+          eq: (c: string, v: unknown) => {
+            for (const r of where(c, v)) inserted.splice(inserted.indexOf(r), 1);
+            return Promise.resolve({ error: null });
+          },
+        }),
       };
     },
   };
@@ -390,7 +403,7 @@ test("el texto cuenta en el tope diario: se mira antes de escribir y se apunta d
     const { db, inserted } = fakeDb([{ lead_id: "x", cost_cents: 85, created_at: now.toISOString() }]);
     assert.equal((await textRoom(db, "plan", claude, now)).ok, true, "85 + 12 caben en 100");
     await recordText(db, "plan", claude, 7.2);
-    assert.deepEqual({ ...inserted[0], created_at: undefined }, { lead_id: "texto:plan", kind: "story", provider: "anthropic", model: "claude-sonnet-5-5", cost_cents: 8, created_at: undefined });
+    assert.deepEqual({ ...inserted[0], id: undefined, created_at: undefined }, { lead_id: "texto:plan", kind: "story", provider: "anthropic", model: "claude-sonnet-5-5", cost_cents: 8, id: undefined, created_at: undefined });
     assert.equal((await textRoom(db, "plan", claude, now)).ok, false, "93 + 12 ya no");
     assert.equal((await textRoom(db, "page", claude, now)).ok, true, "una página (2 c) sí");
     await recordText(db, "page", claude, null);
@@ -463,5 +476,131 @@ test("aviso del 80 %: con varios gastos a la vez sale al menos una vez, y no vue
     const n = sent.length;
     await spend(4);
     assert.equal(sent.length, n);
+  });
+});
+
+test("reservar antes de pintar: dos imágenes a la vez ya no pasan el tope del libro; entra la que se apuntó antes", async () => {
+  await withEnv({ DAILY_CAP_CENTS: undefined }, async () => {
+    const { db, inserted } = fakeDb([{ lead_id: "libro-1", cost_cents: 290, created_at: new Date().toISOString() }]);
+    const reserve = () => reserveSpend(db, { leadId: "libro-1", kind: "page", provider: "gemini-images", cents: 6, paid: true, leadCap: 300 });
+    const [a, b] = await Promise.all([reserve(), reserve()]);
+    assert.deepEqual([a.ok, b.ok].sort(), [false, true], "antes entraban las dos: 302 c con el tope en 300");
+    const no = (a.ok ? b : a) as { ok: false; cap: string; reason: string };
+    assert.equal(no.cap, "lead");
+    assert.match(no.reason, /tope por lead \(300 c\)/);
+    // la reserva que no entra se quita; la otra queda apuntada con lo estimado
+    assert.deepEqual(inserted.map((r) => [r.model, r.cost_cents]), [["reserva", 6]]);
+    // y al pintar se cambia por lo que costó
+    const ok = (a.ok ? a : b) as { ok: true; reservation: { id: string; created_at: string } | null };
+    await settleSpend(db, ok.reservation, { leadId: "libro-1", kind: "page", provider: "gemini-images", model: "gemini-x", cents: 5 }, { notify: async () => ({ sent: true }) });
+    assert.deepEqual(inserted.map((r) => [r.model, r.cost_cents]), [["gemini-x", 5]]);
+  });
+});
+
+test("reservar antes de pintar: el tope del día también cuenta las reservas en curso", async () => {
+  await withEnv({ DAILY_CAP_CENTS: "20" }, async () => {
+    const { db } = fakeDb([{ lead_id: "otro", cost_cents: 10, created_at: new Date().toISOString() }]);
+    const reserve = (lead: string) => reserveSpend(db, { leadId: lead, kind: "sheet", provider: "gemini-images", cents: 6, leadCap: 60 });
+    const r = await Promise.all([reserve("libro-a"), reserve("libro-b")]);
+    assert.deepEqual(r.map((x) => x.ok).sort(), [false, true]);
+    assert.equal((r.find((x) => !x.ok) as { cap: string }).cap, "daily");
+  });
+});
+
+test("reservar: coste cero (dry-run) no apunta nada; sin base, no se gasta", async () => {
+  assert.deepEqual(await reserveSpend(null, { leadId: "x", kind: "page", provider: "dry-run", cents: 0 }), { ok: true, reservation: null });
+  assert.equal((await reserveSpend(null, { leadId: "x", kind: "page", provider: "gemini-images", cents: 6 })).ok, false);
+});
+
+test("una imagen que falla por algo pasajero (429) no deja su reserva: no cuenta como gastada", async () => {
+  const { memoryStore, newMemoryState } = await import("../../lib/generation/store");
+  const { runJob } = await import("../../lib/generation/service");
+  const { startBook } = await import("../../lib/book/service");
+  const { normalizeFicha } = await import("../../lib/plan/ficha");
+  const { mockPlan } = await import("../../lib/plan/mock");
+  const { EVAL_CASES } = await import("../../lib/plan/evalCases");
+  const { dryRunAdapter } = await import("../../lib/generation/adapter");
+  await withEnv({ DAILY_CAP_CENTS: undefined, FREE_BOOK_CAP_CENTS: undefined }, async () => {
+    const { db, inserted } = fakeDb([]);
+    const store = { ...memoryStore(newMemoryState()), db };
+    const ficha = normalizeFicha(EVAL_CASES[0]);
+    const start = await startBook(store, { email: "vera@example.com", ficha, plan: mockPlan(ficha), planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
+    assert.ok(start.ok, JSON.stringify(start));
+    const busy = {
+      ...dryRunAdapter,
+      name: "gemini-images",
+      generateImage: async () => {
+        throw Object.assign(new Error("gemini 429"), { status: 429 });
+      },
+    };
+    await runJob(store, start.sheetJobId, busy);
+    assert.equal((await store.getJob(start.sheetJobId))!.status, "failed");
+    assert.deepEqual(inserted, [], "sin reserva colgando");
+  });
+});
+
+test("el mismo job pedido dos veces a la vez (navegador y segundo plano) a 4 c del tope: lo pinta uno y el otro no lo toca", async () => {
+  const { memoryStore, newMemoryState } = await import("../../lib/generation/store");
+  const { runJob } = await import("../../lib/generation/service");
+  const { startBook } = await import("../../lib/book/service");
+  const { normalizeFicha } = await import("../../lib/plan/ficha");
+  const { mockPlan } = await import("../../lib/plan/mock");
+  const { EVAL_CASES } = await import("../../lib/plan/evalCases");
+  const { dryRunAdapter } = await import("../../lib/generation/adapter");
+  await withEnv({ DAILY_CAP_CENTS: undefined, FREE_BOOK_CAP_CENTS: "60" }, async () => {
+    const rows: Row[] = [];
+    const { db, inserted } = fakeDb(rows);
+    const store = { ...memoryStore(newMemoryState()), db };
+    const ficha = normalizeFicha(EVAL_CASES[0]);
+    const start = await startBook(store, { email: "vera@example.com", ficha, plan: mockPlan(ficha), planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
+    assert.ok(start.ok, JSON.stringify(start));
+    const bookUuid = (await store.getJob(start.sheetJobId))!.book_id;
+    rows.push({ lead_id: bookUuid, cost_cents: 56, created_at: new Date().toISOString() });
+    // lo que ve quien mira el job (el navegador lo consulta) mientras se pinta
+    const seen: string[] = [];
+    const slow = {
+      ...dryRunAdapter,
+      name: "gemini-images",
+      generateImage: async (...a: Parameters<typeof dryRunAdapter.generateImage>) => {
+        await new Promise((r) => setTimeout(r, 30));
+        seen.push((await store.getJob(start.sheetJobId))!.status);
+        return { ...(await dryRunAdapter.generateImage(...a)), provider: "gemini-images", costCents: 4 };
+      },
+    };
+    const [a, b] = await Promise.all([runJob(store, start.sheetJobId, slow), runJob(store, start.sheetJobId, slow)]);
+    assert.ok(a.ok && b.ok);
+    assert.deepEqual([a.ran, b.ran].sort(), [false, true]);
+    assert.deepEqual(seen, ["running"], "antes, mientras uno pintaba, el otro ya lo había dado por fallido");
+    const job = (await store.getJob(start.sheetJobId))!;
+    assert.equal(job.status, "done");
+    assert.equal(job.error, null);
+    assert.deepEqual(inserted.map((r) => [r.model === "reserva", r.cost_cents]), [[false, 4]], "una sola reserva, cambiada por lo que costó");
+  });
+});
+
+test("un job pagado sin presupuesto del día vuelve a esperar sin gastar el intento", async () => {
+  const { memoryStore, newMemoryState } = await import("../../lib/generation/store");
+  const { runJob } = await import("../../lib/generation/service");
+  const { startBook } = await import("../../lib/book/service");
+  const { normalizeFicha } = await import("../../lib/plan/ficha");
+  const { mockPlan } = await import("../../lib/plan/mock");
+  const { EVAL_CASES } = await import("../../lib/plan/evalCases");
+  const { dryRunAdapter } = await import("../../lib/generation/adapter");
+  await withEnv({ DAILY_CAP_CENTS: "20" }, async () => {
+    const { db, inserted } = fakeDb([{ lead_id: "otro", cost_cents: 18, created_at: new Date().toISOString() }]);
+    const state = newMemoryState();
+    const store = { ...memoryStore(state), db };
+    const ficha = normalizeFicha(EVAL_CASES[0]);
+    const start = await startBook(store, { email: "vera@example.com", ficha, plan: mockPlan(ficha), planMeta: { provider: "mock", model: "mock" } }, dryRunAdapter, MOCK_LLM);
+    assert.ok(start.ok, JSON.stringify(start));
+    state.jobs.get(start.sheetJobId)!.paid = true;
+    const paid = { ...dryRunAdapter, name: "gemini-images" };
+    const r = await runJob(store, start.sheetJobId, paid);
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.status, 429);
+    const job = (await store.getJob(start.sheetJobId))!;
+    assert.equal(job.status, "pending");
+    assert.equal(job.attempts, 0);
+    assert.deepEqual(inserted, [], "sin reserva colgando");
   });
 });
