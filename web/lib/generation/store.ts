@@ -182,7 +182,8 @@ export interface GenStore {
   /** Cambia el estado de imprenta solo si sigue en uno de `from` (dos peticiones a la vez no mandan dos pedidos). */
   claimPrint(id: string, from: PrintStatus[], to: PrintStatus): Promise<boolean>;
   /** Pedidos de tapa dura en alguno de estos estados (para el cron), los más antiguos primero. */
-  listPrintOrders(statuses: PrintStatus[], limit: number, live?: LiveFilter): Promise<PaidOrder[]>;
+  /** `sentMailPending`: solo los que tienen pendiente el email de «ya está en la imprenta» (lib/book/print.ts). */
+  listPrintOrders(statuses: PrintStatus[], limit: number, live?: LiveFilter, opts?: { sentMailPending?: boolean }): Promise<PaidOrder[]>;
   /** Pedidos pagados desde `since`, de cualquier edición, los más recientes primero (para el rescate, auditoría 26 oct, B4). */
   listPaidOrdersSince(since: string, limit: number, live?: LiveFilter): Promise<PaidOrder[]>;
   addFeedback(row: FeedbackRow): Promise<void>;
@@ -541,8 +542,9 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       if (error) throw new Error(`orders: ${error.message}`);
       return !!data;
     },
-    async listPrintOrders(statuses, limit, live) {
-      const q = db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").eq("edition", "hardcover").in("print_status", statuses);
+    async listPrintOrders(statuses, limit, live, opts) {
+      let q = db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").eq("edition", "hardcover").in("print_status", statuses);
+      if (opts?.sentMailPending) q = q.eq("print_info->>sentMailPending", "true");
       const { data, error } = await sessionFilter(q, live).order("created_at", { ascending: true }).limit(limit);
       if (error) throw new Error(`orders: ${error.message}`);
       return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
@@ -731,9 +733,10 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       o.updatedAt = stamp();
       return true;
     },
-    async listPrintOrders(statuses, limit, live) {
+    async listPrintOrders(statuses, limit, live, opts) {
       return [...(state.orders?.values() ?? [])]
         .filter((o) => paidRow(o) && o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus) && liveMatch(live, o.sessionId))
+        .filter((o) => !opts?.sentMailPending || o.info?.sentMailPending === true)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .slice(0, limit)
         .map((o) => ({ ...o }));

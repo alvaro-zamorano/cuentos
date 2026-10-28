@@ -2,6 +2,7 @@
  * Emails transaccionales con Resend (B5). Sin RESEND_API_KEY o sin MAIL_FROM no se envía nada y se devuelve
  * `{ sent: false }`: la app funciona igual (el enlace para volver se enseña en pantalla). Solo servidor.
  */
+import { createHash } from "node:crypto";
 import { dayMonth, eur } from "./print/prices";
 
 export interface MailResult {
@@ -15,19 +16,52 @@ export function mailEnabled(env: Record<string, string | undefined> = process.en
   return !!env.RESEND_API_KEY?.trim() && !!env.MAIL_FROM?.trim();
 }
 
-async function send(to: string, subject: string, html: string, text: string): Promise<MailResult> {
+/**
+ * La clave de idempotencia de Resend: el mismo aviso de un mismo hecho (un pedido que sale, un libro que termina, un
+ * evento de Stripe) dos veces en 24 horas sale una vez. Auditoría 26 oct, menores: dos segundos planos que acababan a la
+ * vez mandaban «listo» dos veces, y los dos avisos de Gelato al salir el paquete, dos «va de camino».
+ * La pone quien manda, a partir del hecho (revisión 27 oct): con el contenido como clave, un email que el padre vuelve a
+ * pedir (sus cuentos) o dos recibos iguales de compras distintas no salían. Sin clave, Resend manda siempre.
+ * Va con el destinatario: un aviso a dos buzones son dos envíos.
+ */
+export function mailKey(key: string, to: string): string {
+  return createHash("sha256").update(`${key}\n${to.trim().toLowerCase()}`).digest("hex");
+}
+
+async function send(to: string, subject: string, html: string, text: string, key?: string): Promise<MailResult> {
   if (!mailEnabled()) return { sent: false, reason: "sin_configurar" };
+  const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}` };
+  if (key) headers["idempotency-key"] = mailKey(key, to);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.RESEND_API_KEY!.trim()}` },
+      headers,
       body: JSON.stringify({ from: process.env.MAIL_FROM!.trim(), to: [to], subject, html, text }),
       signal: AbortSignal.timeout(15_000),
     });
-    return res.ok ? { sent: true } : { sent: false, reason: `resend_${res.status}` };
+    if (res.ok) return { sent: true };
+    if (res.status === 409) {
+      // el mismo email, ya mandado o mandándose: el que lo manda lo apunta; este no (si fallara, el siguiente reintento sale)
+      const name = ((await res.json().catch(() => null)) as { name?: string } | null)?.name ?? "";
+      return name === "concurrent_idempotent_requests" ? { sent: false, reason: "en_curso" } : { sent: true };
+    }
+    return { sent: false, reason: `resend_${res.status}` };
   } catch {
     return { sent: false, reason: "red" };
   }
+}
+
+/** Un fallo de envío que se arregla reintentando: red, Resend caído o saturado (no una dirección que rechaza). */
+export function transientMailFailure(r: MailResult): boolean {
+  return !r.sent && /^(red|error|resend_429|resend_5\d\d)$/.test(r.reason ?? "error");
+}
+
+/**
+ * Ya no hay que volver a intentarlo: salió, o falló por algo que reintentar no arregla (una dirección rechazada, el correo
+ * sin configurar). Con «en_curso» lo está mandando otro con la misma clave: lo decide ese.
+ */
+export function mailSettled(r: MailResult): boolean {
+  return r.sent || (!transientMailFailure(r) && r.reason !== "en_curso");
 }
 
 function layout(title: string, body: string, link: string, cta: string): string {
@@ -89,8 +123,8 @@ export function receiptLines(r: Receipt): { facts: [string, string][]; notes: st
   return { facts, notes };
 }
 
-/** Recibo de compra (I28): lo manda el webhook de Stripe cuando registra el pago, una vez por sesión. */
-export function sendOrderConfirmed(to: string, r: Receipt): Promise<MailResult> {
+/** Recibo de compra (I28): lo manda el webhook de Stripe cuando registra el pago, una vez por sesión. `key`: la sesión. */
+export function sendOrderConfirmed(to: string, r: Receipt, key?: string): Promise<MailResult> {
   const { facts, notes } = receiptLines(r);
   const rows = facts
     .map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#6f6457;vertical-align:top;white-space:nowrap">${esc(k)}</td><td style="padding:6px 0;color:#232036">${esc(v)}</td></tr>`)
@@ -108,7 +142,7 @@ export function sendOrderConfirmed(to: string, r: Receipt): Promise<MailResult> 
 ${paras}
 </div></body></html>`;
   const text = ["Pedido confirmado", "Hemos recibido tu pago. Gracias. Este es tu recibo: guárdalo.", facts.map(([k, v]) => `${k}: ${v}`).join("\n"), `Tu libro: ${r.link}`, ...notes].join("\n\n");
-  return send(to, `Pedido confirmado: «${r.title}»`, html, text);
+  return send(to, `Pedido confirmado: «${r.title}»`, html, text, key);
 }
 
 /** Tras el email del paso 4: el enlace para volver al libro. */
@@ -139,13 +173,17 @@ export function sendYourBooks(to: string, books: { title: string; link: string }
   return send(to, "Tus cuentos te esperan", html, text);
 }
 
-/** Cuando las 12 ilustraciones están pintadas tras el pago. Con la tapa dura, el libro espera a que el padre lo mande a imprimir. */
+/**
+ * Cuando las 12 ilustraciones están pintadas tras el pago. Con la tapa dura, el libro espera a que el padre lo mande a
+ * imprimir. `key`: el libro (sale una vez por libro).
+ */
 export function sendBookReady(
   to: string,
   bookTitle: string,
   link: string,
   edition: "hardcover" | "illustrated" = "illustrated",
   upgrade?: { cents: number; until: string } | null,
+  key?: string,
 ): Promise<MailResult> {
   const body =
     edition === "hardcover"
@@ -154,7 +192,13 @@ export function sendBookReady(
   // pagado en PDF y con imprenta: la oferta de pasar a tapa dura (lo decide la ruta)
   const extra = edition === "illustrated" && upgrade ? upgradeLine(upgrade) : "";
   const full = extra ? `${body} ${extra}` : body;
-  return send(to, `Tu libro está listo: «${bookTitle}»`, layout(bookTitle, esc(full), link, edition === "hardcover" ? "Revisar y mandar a imprimir" : "Ver mi libro"), `${bookTitle}\n\n${full}\n\nTu libro: ${link}`);
+  return send(
+    to,
+    `Tu libro está listo: «${bookTitle}»`,
+    layout(bookTitle, esc(full), link, edition === "hardcover" ? "Revisar y mandar a imprimir" : "Ver mi libro"),
+    `${bookTitle}\n\n${full}\n\nTu libro: ${link}`,
+    key,
+  );
 }
 
 /** «¿Lo quieres en tapa dura? …»: la mejora desde el PDF, con su precio y su fecha límite. */
@@ -163,31 +207,39 @@ export function upgradeLine({ cents, until }: { cents: number; until: string }):
 }
 
 /** Tapa dura pagada, ilustraciones hechas y sin mandar a imprimir (el cron diario, a los 2 y a los 7 días). */
-export function sendPrintReminder(to: string, bookTitle: string, link: string): Promise<MailResult> {
+export function sendPrintReminder(to: string, bookTitle: string, link: string, key?: string): Promise<MailResult> {
   const body = "Tu libro está terminado, pero todavía no nos has dicho que lo imprimamos. Revísalo y pulsa «Mandar a imprimir» cuando esté listo. Hasta entonces no sale hacia la imprenta.";
-  return send(to, `Falta un paso para imprimir «${bookTitle}»`, layout(bookTitle, body, link, "Revisar y mandar a imprimir"), `${bookTitle}\n\n${body}\n\n${link}`);
+  return send(to, `Falta un paso para imprimir «${bookTitle}»`, layout(bookTitle, body, link, "Revisar y mandar a imprimir"), `${bookTitle}\n\n${body}\n\n${link}`, key);
 }
 
-/** El pedido ya está en la imprenta. `link`: nuestra página de seguimiento. */
-export function sendSentToPrint(to: string, bookTitle: string, link: string, address: string): Promise<MailResult> {
+/** El pedido ya está en la imprenta. `link`: nuestra página de seguimiento. `key`: el pedido en la imprenta. */
+export function sendSentToPrint(to: string, bookTitle: string, link: string, address: string, key?: string): Promise<MailResult> {
   const body = `Tu libro ya está en la imprenta. Lo imprimimos, lo encuadernamos en tapa dura y lo enviamos a ${esc(address)}. Suele llegar en una o dos semanas. En el enlace de abajo ves cómo va y te escribimos cuando salga.`;
-  return send(to, `«${bookTitle}» ya está en la imprenta`, layout(bookTitle, body, link, "Ver cómo va mi pedido"), `${bookTitle}\n\nTu libro ya está en la imprenta. Lo enviamos a ${address}. Suele llegar en una o dos semanas.\n\nCómo va tu pedido: ${link}`);
+  return send(to, `«${bookTitle}» ya está en la imprenta`, layout(bookTitle, body, link, "Ver cómo va mi pedido"), `${bookTitle}\n\nTu libro ya está en la imprenta. Lo enviamos a ${address}. Suele llegar en una o dos semanas.\n\nCómo va tu pedido: ${link}`, key);
 }
 
-/** El libro ha salido de la imprenta. `link`: nuestra página de seguimiento, con el número y el enlace del transportista. */
-export function sendShipped(to: string, bookTitle: string, link: string): Promise<MailResult> {
+/**
+ * El libro ha salido de la imprenta. `link`: nuestra página de seguimiento, con el número y el enlace del transportista.
+ * `key`: el pedido en la imprenta.
+ */
+export function sendShipped(to: string, bookTitle: string, link: string, key?: string): Promise<MailResult> {
   const body = "Tu libro ha salido de la imprenta y va de camino. En el enlace de abajo ves cuándo llega y el seguimiento del transportista.";
-  return send(to, `«${bookTitle}» va de camino`, layout(bookTitle, body, link, "Seguir mi pedido"), `${bookTitle}\n\nTu libro va de camino. Seguimiento: ${link}`);
+  return send(to, `«${bookTitle}» va de camino`, layout(bookTitle, body, link, "Seguir mi pedido"), `${bookTitle}\n\nTu libro va de camino. Seguimiento: ${link}`, key);
 }
 
 /**
  * Aviso interno (no va al cliente): «Sigue sin estar bien» en una página. Va a MAIL_FORWARD_TO, el buzón de Álvaro;
  * no a hola@, porque el reenvío del correo entrante descarta lo que sale de nuestra propia dirección.
+ * `key`: el hecho que avisa, cuando se puede repetir (un evento de Stripe que vuelve), para que no salga dos veces.
  */
-export async function sendSupportNotice(subject: string, text: string, env: Record<string, string | undefined> = process.env): Promise<MailResult> {
+export async function sendSupportNotice(
+  subject: string,
+  text: string,
+  { key, env = process.env }: { key?: string; env?: Record<string, string | undefined> } = {},
+): Promise<MailResult> {
   const to = (env.MAIL_FORWARD_TO ?? "").split(",").map((s) => s.trim()).filter((s) => s.includes("@"));
   if (!to.length) return { sent: false, reason: "sin_destino" };
   const html = `<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;white-space:pre-wrap">${esc(text)}</pre>`;
-  const results = await Promise.all(to.map((t) => send(t, subject, html, text)));
+  const results = await Promise.all(to.map((t) => send(t, subject, html, text, key)));
   return results.every((r) => r.sent) ? { sent: true } : (results.find((r) => !r.sent) ?? { sent: false });
 }

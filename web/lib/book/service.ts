@@ -909,7 +909,8 @@ export async function mailReceipt(
   r: PaymentOutcome,
   event: PaidEvent,
   deps: {
-    send: (to: string, receipt: Receipt) => Promise<{ sent: boolean; reason?: string }>;
+    /** `key`: la sesión de Stripe, para que un reintento del evento no lo mande dos veces (lib/mail.ts, `mailKey`). */
+    send: (to: string, receipt: Receipt, key?: string) => Promise<{ sent: boolean; reason?: string }>;
     link: (publicId: string) => string;
     conditionsLink: string;
     seller: string;
@@ -940,7 +941,7 @@ export async function mailReceipt(
       conditionsLink: deps.conditionsLink,
       seller: deps.seller,
       contact: deps.contact,
-    })
+    }, `recibo:${s.id}`)
     .catch(() => ({ sent: false, reason: "red" }));
   if (!res.sent) {
     const reason = res.reason ?? "";
@@ -960,13 +961,14 @@ export async function mailReceipt(
 
 /**
  * Cuando las 12 páginas están pintadas, manda una vez el email de «tu libro está listo» (el envío se inyecta: Resend en
- * la ruta, un doble en los tests). Devuelve si lo ha mandado.
+ * la ruta, un doble en los tests). Devuelve si lo ha mandado. Dos segundos planos que terminan a la vez lo mandan con la
+ * misma clave (el libro): sale una vez.
  */
 export async function notifyBookReady(
   store: GenStore,
   bookId: string,
   link: (id: string) => string,
-  send: (to: string, title: string, link: string, edition: PaidEdition, upgrade?: UpgradeOffer | null) => Promise<{ sent: boolean }>,
+  send: (to: string, title: string, link: string, edition: PaidEdition, upgrade?: UpgradeOffer | null, key?: string) => Promise<{ sent: boolean }>,
 ): Promise<boolean> {
   const loaded = await loadBook(store, bookId);
   if (isFail(loaded)) return false;
@@ -974,7 +976,7 @@ export async function notifyBookReady(
   if (d.readyMailedAt || !book.email) return false;
   const view = await bookView(store, bookId);
   if (!view.ok || !view.paid || !Object.values(view.chosen.pages).every(Boolean)) return false;
-  const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated", view.upgrade);
+  const r = await send(book.email, d.plan.title, link(book.public_id), view.edition ?? "illustrated", view.upgrade, `listo:${book.id}`);
   if (!r.sent) return false;
   await mutate(store, book, (cur) => ({ ...cur, readyMailedAt: Date.now() }));
   return true;

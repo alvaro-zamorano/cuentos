@@ -45,7 +45,8 @@ export async function POST(req: Request) {
       console.log(`[stripe] ${event.type} → ${c.action}${c.action === "unmatched" || c.action === "ignored" ? ` (${c.reason})` : ""}`);
       const notice = chargeNotice(c, event as unknown as ChargeEvent);
       if (notice) {
-        const mail = await sendSupportNotice(notice.subject, notice.text).catch((): MailResult => ({ sent: false, reason: "error" }));
+        // una clave por evento: si Stripe lo vuelve a mandar y el aviso ya había salido, Resend no lo repite
+        const mail = await sendSupportNotice(notice.subject, notice.text, { key: `stripe:${event.id}:aviso` }).catch((): MailResult => ({ sent: false, reason: "error" }));
         if (retryUnsentNotice(mail)) {
           console.warn(`[stripe] aviso a soporte sin enviar (${mail.reason}): Stripe reintentará`);
           return NextResponse.json({ ok: false, error: "notice" }, { status: 500 });
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
     const notice = paymentNotice(r, event);
     if (notice) {
       console.error(`[stripe] ${notice.subject}: ${notice.text.split("\n")[0]} · sesión ${event.data.object.id ?? "?"}`);
-      const mail = await sendSupportNotice(notice.subject, notice.text).catch((): MailResult => ({ sent: false, reason: "error" }));
+      const mail = await sendSupportNotice(notice.subject, notice.text, { key: `stripe:${event.id}:aviso` }).catch((): MailResult => ({ sent: false, reason: "error" }));
       if (retryUnsentNotice(mail)) {
         console.warn(`[stripe] aviso a soporte sin enviar (${mail.reason}): Stripe reintentará`);
         return NextResponse.json({ ok: false, error: "notice" }, { status: 500 });
@@ -103,7 +104,7 @@ export async function POST(req: Request) {
         console.error(`[stripe] recibo rechazado (${receipt.reason})`);
         const book = await store.findBook({ publicId: r.bookId, includeExpired: true }).catch(() => null);
         const n = receiptNotice(receipt.to, receipt.reason, book?.id ?? null, event.data.object.id ?? null);
-        const mail = await sendSupportNotice(n.subject, n.text).catch((): MailResult => ({ sent: false, reason: "error" }));
+        const mail = await sendSupportNotice(n.subject, n.text, { key: `stripe:${event.id}:recibo` }).catch((): MailResult => ({ sent: false, reason: "error" }));
         // el reintento vuelve a probar el recibo, que se vuelve a rechazar, y vuelve a avisar
         if (retryUnsentNotice(mail)) {
           console.warn(`[stripe] aviso del recibo rechazado sin enviar (${mail.reason}): Stripe reintentará`);
