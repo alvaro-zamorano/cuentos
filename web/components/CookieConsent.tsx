@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { OPEN_CONSENT_EVENT, readConsent, saveConsent, startPostHog, withdrawConsent, type Consent } from "@/lib/analytics";
 
 /**
- * Consentimiento de analítica. Va en flujo normal (franja superior), no flotante: en el journey la barra de acciones
- * es fija abajo y un aviso flotante la taparía en móvil. PostHog (lib/analytics.ts) solo se carga tras «Aceptar»;
+ * Consentimiento de analítica. En /crear va en flujo normal (franja superior), no flotante: la barra de acciones es fija
+ * abajo y un aviso flotante la taparía en móvil. En el resto flota abajo (mirada de usuario de la auditoría): arriba
+ * empujaba la portada al aparecer y ocupaba un quinto de la primera pantalla del iPhone. PostHog (lib/analytics.ts) solo se carga tras «Aceptar»;
  * «Rechazar» tiene el mismo peso visual y no carga nada. La elección se guarda en este navegador y se puede cambiar
  * cuando se quiera desde «Cookies» en el pie (OPEN_CONSENT_EVENT). Sin NEXT_PUBLIC_POSTHOG_KEY en el build no hay nada
  * que consentir y no se muestra.
@@ -14,6 +16,7 @@ import { OPEN_CONSENT_EVENT, readConsent, saveConsent, startPostHog, withdrawCon
 export function CookieConsent({ enabled }: { enabled: boolean }) {
   const [choice, setChoice] = useState<Consent | null | "unknown">("unknown");
   const [reopened, setReopened] = useState(false);
+  const inFlow = usePathname()?.startsWith("/crear") ?? false;
 
   useEffect(() => {
     if (!enabled) return;
@@ -51,12 +54,16 @@ export function CookieConsent({ enabled }: { enabled: boolean }) {
       aria-live="polite"
       aria-label="Cookies de medición"
       data-testid="cookie-consent"
-      className="no-print border-b border-line bg-card px-4 py-3 text-sm text-ink"
+      className={
+        inFlow
+          ? "no-print border-b border-line bg-card px-4 py-3 text-sm text-ink"
+          : "no-print fixed inset-x-3 bottom-3 z-40 mx-auto max-w-3xl rounded-2xl border border-line bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-sm text-ink shadow-[0_18px_40px_-18px_rgba(35,32,54,0.55)]"
+      }
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-[60ch] leading-snug">
           Usamos cookies propias para medir cómo se usa la web y mejorarla. Solo si lo aceptas, y puedes cambiarlo cuando quieras desde «Cookies», al pie de la
-          página.{choice ? ` Ahora: ${choice === "accepted" ? "aceptadas" : "rechazadas"}.` : ""} Más detalle en la{" "}
+          página.{choice ? ` Ahora las tienes ${choice === "accepted" ? "aceptadas" : "rechazadas"}.` : ""} Más detalle en la{" "}
           <Link href="/privacidad" className="link">
             política de privacidad
           </Link>

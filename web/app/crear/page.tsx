@@ -14,7 +14,7 @@ import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, loadView, postJson, viewErrorMessage } from "@/lib/bookClient";
 import { fichaHash, TONES } from "@/lib/plan/ficha";
 import { STARTERS, starterIdea } from "@/lib/plan/starters";
-import { resetCrear, setCrear, useCrear, type CrearState, type Step } from "@/lib/crearStore";
+import { clearAside, getCrear, resetCrear, setAside, setCrear, unsavedWork, useAside, useCrear, type CrearState, type Step } from "@/lib/crearStore";
 import type { Plan } from "@/lib/plan/types";
 
 /**
@@ -48,6 +48,8 @@ function Crear() {
   const ideaParam = params.get("idea");
   const [recovering, setRecovering] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  // el cuento a medias que se guardó aparte al abrir el enlace de otro libro: se puede volver a él
+  const asideDraft = useAside();
 
   // recuperar un libro por enlace
   const tried = useRef<string | null>(null);
@@ -63,6 +65,11 @@ function Crear() {
         return;
       }
       const v = r.view;
+      // un cuento a medias, sin libro todavía, no se pierde: se guarda aparte y se ofrece volver a él
+      const before = getCrear();
+      if (unsavedWork(before) && before.bookId !== v.bookId) {
+        setAside(before);
+      }
       setCrear((prev) => ({
         v: 2,
         step: v.paid || v.approvedSheetJobId || pagado ? 5 : 4,
@@ -72,10 +79,37 @@ function Crear() {
         email: prev.email,
         // pagado: los pasos 1 y 2 se cierran también al volver con el enlace (revisión 27 oct)
         paid: v.paid || undefined,
+        genderChosen: true,
       }));
       setNotice(pagado ? null : { text: "Libro recuperado.", ok: true });
     });
   }, [b, pagado]);
+
+  // mientras se escribe, la barra de abajo deja de estar fija en el móvil (globals.css, `data-typing`). Se quita con un
+  // respiro al salir del campo, para que el botón que se toca no quede tapado entre que se pulsa y se suelta.
+  useEffect(() => {
+    const typing = (el: Element | null) => !!el?.matches('input:not([type="checkbox"], [type="radio"]), textarea, select');
+    let off: ReturnType<typeof setTimeout> | undefined;
+    const onIn = (e: FocusEvent) => {
+      if (!typing(e.target as Element)) return;
+      clearTimeout(off);
+      document.body.dataset.typing = "";
+    };
+    const onOut = () => {
+      clearTimeout(off);
+      off = setTimeout(() => {
+        if (!typing(document.activeElement)) delete document.body.dataset.typing;
+      }, 400);
+    };
+    document.addEventListener("focusin", onIn);
+    document.addEventListener("focusout", onOut);
+    return () => {
+      clearTimeout(off);
+      document.removeEventListener("focusin", onIn);
+      document.removeEventListener("focusout", onOut);
+      delete document.body.dataset.typing;
+    };
+  }, []);
 
   // el aviso de «recuperado» se va solo; el de error se queda
   useEffect(() => {
@@ -209,6 +243,41 @@ function Crear() {
               </button>
             </p>
           )}
+          {asideDraft && asideDraft.ficha !== s.ficha && (
+            <div className="rise mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-paper-deep px-4 py-3 text-[15px] text-ink" role="status" data-testid="aside">
+              <span>
+                Tienes guardado aparte el cuento a medias{asideDraft.ficha.hero.name.trim() ? ` de ${asideDraft.ficha.hero.name.trim()}` : ""}.
+              </span>
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="btn-soft btn-sm"
+                  onClick={() => {
+                    // el libro abierto tiene su enlace: no hace falta guardarlo aparte; si lo de ahora es otro cuento a medias,
+                    // se cambian de sitio y no se pierde ninguno
+                    const back = asideDraft;
+                    const now = getCrear();
+                    if (unsavedWork(now)) setAside(now);
+                    else clearAside();
+                    setNotice(null);
+                    window.history.replaceState(null, "", "/crear");
+                    setCrear(back);
+                  }}
+                  data-testid="aside-restore"
+                >
+                  Volver a ese cuento
+                </button>
+                <button
+                  type="button"
+                  aria-label="Descartar el cuento a medias"
+                  className="grid h-8 w-8 place-items-center rounded-full hover:bg-black/5"
+                  onClick={() => clearAside()}
+                >
+                  <Icon.close size={15} />
+                </button>
+              </span>
+            </div>
+          )}
           {saveError && (
             <p className="rise fixed inset-x-4 top-3 z-30 mx-auto flex max-w-xl items-start justify-between gap-3 rounded-2xl bg-[#f6ded6] px-4 py-3 text-[15px] text-danger shadow-[0_12px_30px_-18px_rgba(35,32,54,0.6)]" role="alert" data-testid="save-error">
               <span>No se ha guardado tu último cambio. {saveError}</span>
@@ -237,7 +306,15 @@ function Crear() {
             </p>
           )}
           <div key={s.step} className="rise">
-            {s.step === 1 && <StepIdea ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(2)} />}
+            {s.step === 1 && (
+              <StepIdea
+                ficha={s.ficha}
+                genderChosen={!!s.genderChosen}
+                onChange={(ficha) => update({ ficha })}
+                onGender={(gender) => update({ ficha: { ...s.ficha, hero: { ...s.ficha.hero, gender } }, genderChosen: true })}
+                onNext={() => go(2)}
+              />
+            )}
             {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
             {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} drawn={!!s.bookId} paid={!!s.paid} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(s.paid ? 5 : 4)} />}
             {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => {

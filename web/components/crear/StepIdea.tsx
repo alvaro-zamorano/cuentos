@@ -21,11 +21,24 @@ const TONE_LOOK: Record<ToneId, { icon: IconName; bg: string }> = {
 const FIRST_IDEAS = 7;
 
 /** Paso 1: para quién es y de qué va. Con el nombre y una frase basta para escribir el libro. */
-export function StepIdea({ ficha, onChange, onNext }: { ficha: Ficha; onChange: (f: Ficha) => void; onNext: () => void }) {
+export function StepIdea({
+  ficha,
+  genderChosen,
+  onChange,
+  onGender,
+  onNext,
+}: {
+  ficha: Ficha;
+  /** Ya ha dicho si es niño o niña: hasta entonces no se marca ninguno y no se sigue. */
+  genderChosen: boolean;
+  onChange: (f: Ficha) => void;
+  onGender: (gender: Ficha["hero"]["gender"]) => void;
+  onNext: () => void;
+}) {
   const hero = ficha.hero;
   const setHero = (patch: Partial<Ficha["hero"]>) => onChange({ ...ficha, hero: { ...hero, ...patch } });
   const name = hero.name.trim();
-  const canGo = name.length > 0;
+  const canGo = name.length > 0 && genderChosen;
   const [allIdeas, setAllIdeas] = useState(false);
   const shown = allIdeas ? STARTERS : STARTERS.filter((s, i) => i < FIRST_IDEAS || s.id === ficha.starter);
 
@@ -76,13 +89,18 @@ export function StepIdea({ ficha, onChange, onNext }: { ficha: Ficha; onChange: 
           </span>
         </p>
         <div className="grid gap-2.5">
-          <span className="field-label">Para escribirle bien en castellano</span>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Para escribirle bien en castellano">
-            {GENDERS.map((g) => (
-              <button type="button" key={g.id} aria-pressed={hero.gender === g.id} className={`chip ${hero.gender === g.id ? "chip-on" : ""}`} onClick={() => setHero({ gender: g.id })}>
-                {g.label}
-              </button>
-            ))}
+          <span className="field-label" id="genero">
+            ¿Es niño o niña? Así concordamos bien el texto
+          </span>
+          <div className="flex flex-wrap gap-2" role="group" aria-labelledby="genero">
+            {GENDERS.map((g) => {
+              const on = genderChosen && hero.gender === g.id;
+              return (
+                <button type="button" key={g.id} aria-pressed={on} className={`chip ${on ? "chip-on" : ""}`} onClick={() => onGender(g.id)}>
+                  {g.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -168,7 +186,9 @@ export function StepIdea({ ficha, onChange, onNext }: { ficha: Ficha; onChange: 
           {canGo ? `Seguir: cómo es ${name}` : "Seguir"}
           <Icon.arrow />
         </button>
-        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{canGo ? "Gratis hasta la portada · Sin fotos" : "Falta el nombre."}</p>
+        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">
+          {canGo ? "Gratis hasta la portada · Sin fotos" : !name ? (genderChosen ? "Falta el nombre." : "Faltan el nombre y si es niño o niña.") : "Falta decir si es niño o niña."}
+        </p>
       </div>
     </form>
   );

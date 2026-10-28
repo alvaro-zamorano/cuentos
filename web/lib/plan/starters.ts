@@ -37,5 +37,7 @@ export const STARTERS: Starter[] = [
 export function starterIdea(id: string, name: string): string | null {
   const s = STARTERS.find((x) => x.id === id);
   if (!s) return null;
-  return s.idea.replaceAll("{nombre}", name.trim() || "nuestro protagonista");
+  const idea = s.idea.replaceAll("{nombre}", name.trim() || "nuestro protagonista");
+  // sin nombre, una idea que empieza por él empezaba en minúscula: «nuestro protagonista pasa…» (mirada de usuario)
+  return idea.charAt(0).toUpperCase() + idea.slice(1);
 }

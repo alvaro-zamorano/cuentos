@@ -11,8 +11,8 @@ import { bad, paintLater, readJson, withContext } from "../_shared";
 
 /**
  * POST /api/libro/start { email, consent, marketing?, ficha, plan, planMeta?, bookId? } → { bookId, sheetJobId, coverJobId }
- * (o 429 { error: "free_limit", mailed?, contact? } si el buzón ya tiene sus cuentos gratis: mailed dice si han salido por
- * email y, si no, contact es el email al que escribirnos)
+ * (o 429 { error: "free_limit", mailed?, contact } si el buzón ya tiene sus cuentos gratis: mailed dice si han salido por
+ * email; contact, el email al que escribirnos si no llegan)
  * Paso 4: con el email y la declaración del adulto guarda el libro, prepara el reparto y encola hoja + portada.
  * Después de responder pinta hoja y portada en segundo plano y, si el libro es nuevo, manda el enlace por email.
  * El navegador también las pide con POST /api/generate/run (una por llamada).
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     // salido (auditoría 26 oct, menores). `mailed` no va sin el correo configurado: la pantalla dice lo de siempre
     if (r.error === "free_limit" && "books" in r) {
       const mailed = await mailYourBooks((r as FreeLimitFail).books, origin, sendYourBooks);
-      return { ok: false as const, status: 429, error: "free_limit", ...(mailed === null ? {} : { mailed }), ...(mailed === false ? { contact: titular().email ?? null } : {}) };
+      return { ok: false as const, status: 429, error: "free_limit", ...(mailed === null ? {} : { mailed }), contact: titular().email ?? null };
     }
     return r;
   });

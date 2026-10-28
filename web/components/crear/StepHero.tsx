@@ -81,7 +81,11 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
 
       <section className="card grid gap-6 p-5 sm:p-7" aria-label="La cara">
         <div className="grid gap-2.5">
-          <span className="field-label text-ink">Piel</span>
+          {/* el nombre del color elegido, a la vista: los círculos solo lo llevan para el lector de pantalla (mirada de usuario) */}
+          <span className="field-label text-ink">
+            Piel
+            {SKINS.find((c) => c.id === look.skin) && <span className="font-normal text-ink-soft"> · {SKINS.find((c) => c.id === look.skin)!.label}</span>}
+          </span>
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5" role="group" aria-label="Tono de piel">
             {SKINS.map((c) => (
               <button
@@ -99,7 +103,10 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
         </div>
 
         <div className="grid gap-3">
-          <span className="field-label text-ink">Pelo</span>
+          <span className="field-label text-ink">
+            Pelo
+            {HAIR_COLORS.find((c) => c.id === look.hair?.color) && <span className="font-normal text-ink-soft"> · {HAIR_COLORS.find((c) => c.id === look.hair?.color)!.label}</span>}
+          </span>
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5" role="group" aria-label="Color de pelo">
             {HAIR_COLORS.map((c) => (
               <button
@@ -173,7 +180,7 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
 
       <div className="grid gap-3">
         <Row icon={<Icon.glasses />} tint="bg-sky" title="Gafas" summary={look.glasses ? GLASSES.find((g) => g.id === look.glasses)?.label : "Si lleva, elige la montura"} done={!!look.glasses}>
-          <Tiles label="Gafas" picks={GLASSES_PICKS} value={look.glasses} tint={{ skin: tint.skin }} cols="grid-cols-4 sm:grid-cols-7" onPick={(id) => setLook({ glasses: toggle(look.glasses, id as Glasses) })} />
+          <Tiles label="Gafas" picks={GLASSES_PICKS} value={look.glasses} tint={{ skin: tint.skin }} cols="grid-cols-3 sm:grid-cols-7" onPick={(id) => setLook({ glasses: toggle(look.glasses, id as Glasses) })} />
         </Row>
 
         <Row icon={<Icon.star />} tint="bg-butter" title={unique} summary={look.unique?.trim() || "Pecas, un diente menos, su capa roja…"} done={!!look.unique?.trim()}>
@@ -187,7 +194,7 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
             picks={OUTFIT_PICKS}
             value={OUTFIT_PICKS.find((o) => o.text === hero.outfit)?.id}
             tall
-            cols="grid-cols-4 sm:grid-cols-8"
+            cols="grid-cols-3 sm:grid-cols-8"
             onPick={(id) => {
               const pick = OUTFIT_PICKS.find((o) => o.id === id)!;
               onChange({ ...ficha, hero: { ...hero, outfit: hero.outfit === pick.text ? "" : pick.text } });
@@ -227,7 +234,7 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
                   label={`Cómo es ${c.name.trim() || "la mascota"}`}
                   picks={PET_PICKS}
                   value={PET_PICKS.find((p) => p.text === c.look)?.id}
-                  cols="grid-cols-4 sm:grid-cols-8"
+                  cols="grid-cols-3 sm:grid-cols-8"
                   onPick={(id) => {
                     const pick = PET_PICKS.find((p) => p.id === id)!;
                     const off = c.look === pick.text;
@@ -244,7 +251,7 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
             </div>
           ))}
           {ficha.cast.length < LIMITS.cast && (
-            <button type="button" className="btn-soft btn-sm justify-self-start" onClick={() => setCast([...ficha.cast, { id: "c1", kind: "mascota", name: "", relation: "", look: "" }])} data-testid="add-cast">
+            <button type="button" className="btn-soft btn-sm justify-self-start" onClick={() => setCast([...ficha.cast, { id: "c1", kind: "persona", name: "", relation: "", look: "" }])} data-testid="add-cast">
               Añadir a alguien
             </button>
           )}

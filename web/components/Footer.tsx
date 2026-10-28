@@ -5,7 +5,11 @@ import { POSTHOG_ENABLED } from "@/lib/analytics";
 import { CookieSettingsLink } from "./CookieConsent";
 import { titular } from "@/lib/legal";
 
-/** Footer común con los enlaces legales. No sale al imprimir. */
+/**
+ * Footer común con los enlaces legales. No sale al imprimir. Cada enlace mide 44 px de alto, lo que pide un dedo
+ * (mirada de usuario de la auditoría: eran unos 20 px).
+ */
+const LINK = "inline-flex min-h-11 items-center hover:text-ink hover:underline";
 export function Footer() {
   // el email de contacto, a la vista en todas las páginas (auditoría 26 oct): antes solo estaba en el aviso legal
   const email = titular().email;
@@ -23,31 +27,31 @@ export function Footer() {
               </a>
             </p>
           )}
-          <nav aria-label="Ocasiones" className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
-            <Link href={OCASIONES_PATH} className="font-semibold hover:text-ink hover:underline">
+          <nav aria-label="Ocasiones" className="mt-1 flex flex-wrap gap-x-5">
+            <Link href={OCASIONES_PATH} className={`font-semibold ${LINK}`}>
               Cuentos personalizados
             </Link>
             {OCASIONES.map((o) => (
-              <Link key={o.slug} href={ocasionPath(o.slug)} className="hover:text-ink hover:underline">
+              <Link key={o.slug} href={ocasionPath(o.slug)} className={LINK}>
                 {o.name}
               </Link>
             ))}
           </nav>
         </div>
-        <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Legal">
-          <Link href="/#muestra" className="hover:text-ink hover:underline">
+        <nav className="flex flex-wrap gap-x-6" aria-label="Legal">
+          <Link href="/#muestra" className={LINK}>
             Libro de muestra
           </Link>
-          <Link href="/privacidad" className="hover:text-ink hover:underline">
+          <Link href="/privacidad" className={LINK}>
             Privacidad
           </Link>
-          <Link href="/condiciones" className="hover:text-ink hover:underline">
+          <Link href="/condiciones" className={LINK}>
             Condiciones
           </Link>
-          <Link href="/aviso-legal" className="hover:text-ink hover:underline">
+          <Link href="/aviso-legal" className={LINK}>
             Aviso legal
           </Link>
-          {POSTHOG_ENABLED && <CookieSettingsLink className="hover:text-ink hover:underline" />}
+          {POSTHOG_ENABLED && <CookieSettingsLink className={LINK} />}
         </nav>
       </div>
     </footer>

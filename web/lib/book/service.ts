@@ -327,7 +327,7 @@ export async function startBook(store: GenStore, input: StartInput, adapter: Pic
       const r = await reviveCast(store, book, d, existing, current[current.length - 1], adapter);
       if (r) return r.ok ? { ...r, freeLeft } : r;
     }
-    if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado las versiones de la hoja de este libro.");
+    if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado las versiones de los personajes de este libro.");
 
     // hoja + portada tienen que caber en el presupuesto del libro y en el del día
     const both = await gateSpendCents(store, book.id, sheetAndCoverCents(adapter.name));
@@ -474,7 +474,7 @@ export async function reviseSheet(
   const existing = await store.listJobs(book.id);
   const sheets = sheetJobs(existing);
   if (sheets.length === 0) return fail(409, "no_sheet");
-  if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado los dos cambios de la hoja.");
+  if (sheetsLeftOf(sheets) <= 0) return fail(409, "max_versions", "Ya has usado los dos cambios de los personajes.");
   const gate = await freeGate(store, book.email, book, sheets);
   if ("error" in gate) return gate;
   const castNow = d.castArt;
@@ -1554,7 +1554,7 @@ export function unsignedImages(view: Pick<BookView, "jobs" | "chosen">, { placeh
   for (const p of portraits) if (gap(p.job)) out.push(`retrato de ${p.name}`);
   // sin todos los retratos, la página de personajes es la hoja
   const allPortraits = portraits.length > 0 && portraits.every((p) => !!p.job && !!byId.get(p.job)?.url);
-  if (!allPortraits && gap(view.chosen.sheet)) out.push("hoja de personajes");
+  if (!allPortraits && gap(view.chosen.sheet)) out.push("dibujo de los personajes");
   for (let n = 1; n <= 12; n++) if (gap(view.chosen.pages[n] ?? null)) out.push(`página ${n}`);
   return out;
 }

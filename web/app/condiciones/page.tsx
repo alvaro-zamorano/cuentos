@@ -8,10 +8,10 @@ export const metadata: Metadata = { title: "Condiciones", alternates: { canonica
 export default function Condiciones() {
   const t = titular();
   return (
-    <LegalPage title="Condiciones de uso y de compra" updated="27 de octubre de 2026">
+    <LegalPage title="Condiciones de uso y de compra" updated="28 de octubre de 2026">
       <h2>1. Quién vende</h2>
       <p>
-        {holderLine(t)}, <ContactEmail value={t.email} />. Datos completos en el{" "}
+        {holderLine(t)}, <ContactEmail value={t.email} />. Más información en el{" "}
         <Link href="/aviso-legal" className="link">aviso legal</Link>.
       </p>
 
@@ -76,7 +76,8 @@ export default function Condiciones() {
       <p>
         El libro de tapa dura (apaisado, de unos 28 × 21 cm; la medida exacta es la del formato de la imprenta) se imprime cuando pulsas «Mandar a imprimir». Suele llegar en una o dos semanas desde entonces; el plazo
         es orientativo y te escribimos con el seguimiento cuando sale de la imprenta. Revisa bien la dirección: si el transportista no puede
-        entregarlo por un error en ella, el nuevo envío corre por tu cuenta.
+        entregarlo por un error en ella, el nuevo envío corre por tu cuenta. Si tres semanas después de mandarlo a imprimir no te ha llegado,
+        escríbenos: lo buscamos con la imprenta y el transportista y, si se ha perdido, lo volvemos a imprimir y te lo enviamos sin coste.
       </p>
 
       <h2>9. Garantía y reclamaciones</h2>

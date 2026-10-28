@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { BookJobView, BookView } from "@/lib/book/service";
 import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, loadView, postJson, runJobs, viewErrorMessage, type JobOutcome } from "@/lib/bookClient";
-import { MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
+import { MAX_BOOK_REDOS, MAX_PAGE_REDOS, REDO_NOTE_MAX, REDO_REASONS, type RedoReason } from "@/lib/book/feedback";
 import type { Plan, PlanPage } from "@/lib/plan/types";
 import { EDITION_LABEL, PRICE_CENTS, eur } from "@/lib/print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition } from "@/lib/print/types";
@@ -18,7 +18,7 @@ import { BookLink } from "./BookLink";
 import { PdfLink } from "./PdfLink";
 import { PrintPanel } from "./PrintPanel";
 import { UpgradeCard } from "./UpgradeCard";
-import { ShippingForm, type ShippingDraft } from "./ShippingForm";
+import { ShippingForm, isShippingField, type ShippingDraft } from "./ShippingForm";
 import { ErrorNote, LoadError, Status } from "./ui";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -251,6 +251,8 @@ export function StepBook({
   const showBusy = busy && !(view.paid && allDone && !busy.startsWith("Pintando otra versión"));
   const locked = !!view.print && LOCKED_PRINT_STATUSES.includes(view.print.status);
   const hardcover = view.edition === "hardcover";
+  // la oferta de pasar a tapa dura un libro pagado en PDF
+  const offerUpgrade = view.paid && !view.print && view.edition === "illustrated" && !!view.upgrade && !showBusy && !upgradePending;
   // El libro en 3D: antes de pagar, si se vende la tapa dura aquí (su portada y las páginas por pintar); con la tapa
   // dura pagada y las doce páginas hechas, la última revisión antes de mandarlo a la imprenta.
   const show3D = view.paid ? hardcover && allDone : !!view.printMode && view.printMode !== "none";
@@ -301,7 +303,7 @@ export function StepBook({
               ? locked
                 ? "Así va impreso. Ya no se puede cambiar."
                 : `Tu libro${hardcover ? " de tapa dura" : " ilustrado"}. Revisa cada página: el texto se puede retocar y, si una ilustración no te convence, dinos qué cambiar y pintamos otra.`
-              : "Portada, dedicatoria y doce páginas, que se pintarán con la hoja que has aprobado."}
+              : "Portada, dedicatoria y doce páginas, que se pintarán con los personajes que has aprobado."}
           </p>
         </div>
         {!show3D && coverEl(2, "w-[280px] justify-self-center sm:w-full")}
@@ -327,7 +329,7 @@ export function StepBook({
       {view.paid && view.print && (
         <PrintPanel view={view} allDone={allDone} onSend={sendToPrint} onShipping={(shipping) => setView({ ...view, print: { ...view.print!, shipping } })} />
       )}
-      {view.paid && !view.print && view.edition === "illustrated" && view.upgrade && !showBusy && !upgradePending && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
+      {offerUpgrade && <UpgradeCard view={view} onUpgraded={() => void refresh()} />}
 
       {view.paid && view.chosen.portraits.length > 0 && (!locked || view.chosen.portraits.every((p) => p.job)) && <CastPortraits view={view} />}
 
@@ -377,6 +379,13 @@ export function StepBook({
               </>
             )}
           </PdfLink>
+          {/* en el móvil esta barra tapaba «Quiero la tapa dura»: lleva a la tarjeta (mirada de usuario de la auditoría) */}
+          {offerUpgrade && (
+            <a href="#tapa-dura" className="btn-soft w-full sm:w-auto" data-testid="upgrade-jump">
+              <Icon.book size={18} />
+              En tapa dura
+            </a>
+          )}
           <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">{hardcover ? "A4 apaisado, para leerlo mientras llega el impreso" : "A4 apaisado, listo para imprimir en casa"}</p>
         </div>
       ) : (
@@ -548,8 +557,14 @@ function Paywall({
       "Suele llegar en una o dos semanas desde que lo mandas a imprimir",
       "Envío a casa incluido (Península y Baleares) y el PDF para leerlo ya",
     ],
-    illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, "Revisas cada página; si una ilustración no te convence, la repetimos una vez", "PDF en A4 apaisado: imprímelo en casa o en una copistería"],
+    illustrated: [`Doce ilustraciones con ${name || "tus personajes"} de protagonista`, `Revisas cada página; si una ilustración no te convence, te hacemos otra versión (hasta ${MAX_PAGE_REDOS} por página y ${MAX_BOOK_REDOS} en todo el libro)`, "PDF en A4 apaisado: imprímelo en casa o en una copistería"],
   };
+  // el botón apagado dice por qué (mirada de usuario de la auditoría)
+  const waiverHint = !waiver && !busy && (
+    <p className="mt-2 text-center text-[13px] text-moon-soft" data-testid="pay-waiver-hint">
+      Marca la casilla de arriba para pagar.
+    </p>
+  );
   return (
     <div className="relative overflow-hidden rounded-[28px] bg-night p-6 text-moon shadow-[0_40px_70px_-40px_rgba(29,39,71,0.9)] sm:p-9" data-testid="paywall">
       <Moon className="absolute top-6 right-7" size={42} />
@@ -585,7 +600,7 @@ function Paywall({
       </ul>
       {edition === "hardcover" && payment !== "none" && (
         <div className="mt-7 rounded-2xl bg-white/[0.07] p-4 text-ink">
-          <ShippingForm value={shipping} onChange={setShipping} field={field} tone="night" />
+          <ShippingForm value={shipping} onChange={setShipping} field={field} error={isShippingField(field) ? err : null} tone="night" />
         </div>
       )}
       {payment !== "none" && (
@@ -611,6 +626,7 @@ function Paywall({
           <button className="btn-primary btn-lg mt-4 w-full" disabled={busy || !waiver} data-testid="pay" onClick={() => void checkout()}>
             {busy ? "Abriendo el pago…" : `Pagar ${price} y pintar el libro`}
           </button>
+          {waiverHint}
           <p className="mt-3 flex items-start gap-2 text-[13px] text-moon-soft">
             <Icon.lock size={14} className="mt-0.5 shrink-0" />
             Pago seguro con Stripe. Al terminar vuelves aquí y empezamos a pintar.
@@ -627,8 +643,10 @@ function Paywall({
           {busy ? "Procesando…" : `Pagar ${price} (pago de prueba)`}
         </button>
       )}
+      {payment === "dry-run" && waiverHint}
       {payment === "none" && <p className="mt-6 text-sm text-moon-soft">El pago estará disponible muy pronto. Tu libro queda guardado 30 días en tu enlace.</p>}
-      {err && (
+      {/* un error de un campo de la dirección sale junto a ese campo (ShippingForm); los demás, aquí */}
+      {err && !(edition === "hardcover" && isShippingField(field)) && (
         <div className="mt-3 rounded-xl bg-[#f6ded6] px-3 py-2 text-sm text-danger" role="alert">
           <p>{err}</p>
           {castFirst && onCast && (
@@ -845,7 +863,7 @@ function CastPortraits({ view }: { view: BookView }) {
     <section className="grid gap-3" aria-label="Página de personajes" data-testid="cast-portraits">
       <h3 className="display text-[22px]">Así son los personajes</h3>
       <p className="m-0 text-sm text-ink-soft">
-        {failed ? "Algún retrato no ha salido: en el libro irá la hoja de personajes en esta página." : all ? "Esta página va al principio del libro." : "Se están pintando los retratos de esta página."}
+        {failed ? "Algún retrato no ha salido: en esta página del libro irá el dibujo de todos los personajes." : all ? "Esta página va al principio del libro." : "Se están pintando los retratos de esta página."}
       </p>
       <ul className="m-0 grid list-none grid-cols-2 gap-4 p-0 sm:grid-cols-3">
         {view.chosen.portraits.map((p, i) => (

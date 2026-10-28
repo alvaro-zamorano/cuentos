@@ -7,7 +7,7 @@ import { errorMessage, postJson } from "@/lib/bookClient";
 import { track } from "@/lib/analytics";
 import { dayMonth, eur } from "@/lib/print/prices";
 import { Icon, Sparkle } from "@/components/brand";
-import { ShippingForm, type ShippingDraft } from "./ShippingForm";
+import { ShippingForm, isShippingField, type ShippingDraft } from "./ShippingForm";
 import { ErrorNote } from "./ui";
 
 /**
@@ -62,7 +62,7 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
   };
 
   return (
-    <section className="grid gap-4 rounded-[28px] bg-card p-6 shadow-[0_2px_0_#e6d8c1,0_24px_40px_-32px_rgba(35,32,54,0.5)] sm:p-8" data-testid="upgrade-card">
+    <section id="tapa-dura" className="grid scroll-mt-4 gap-4 rounded-[28px] bg-card p-6 shadow-[0_2px_0_#e6d8c1,0_24px_40px_-32px_rgba(35,32,54,0.5)] sm:p-8" data-testid="upgrade-card">
       <div className="flex items-start gap-3">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach text-ink">
           <Icon.book size={22} />
@@ -83,7 +83,7 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
         </button>
       ) : (
         <div className="grid gap-4">
-          <ShippingForm value={shipping} onChange={setShipping} field={field} />
+          <ShippingForm value={shipping} onChange={setShipping} field={field} error={isShippingField(field) ? err : null} />
           <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-paper p-4 text-[14px] leading-snug text-ink">
             <input type="checkbox" checked={waiver} onChange={(e) => setWaiver(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--accent)]" data-testid="upgrade-waiver" />
             <span>
@@ -94,7 +94,8 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
               ).
             </span>
           </label>
-          {err && <ErrorNote>{err}</ErrorNote>}
+          {/* un error de un campo de la dirección sale junto a ese campo */}
+          {err && !isShippingField(field) && <ErrorNote>{err}</ErrorNote>}
           <div className="flex flex-wrap items-center gap-3">
             <button className="btn-primary btn-lg" disabled={busy || !waiver} onClick={() => void pay()} data-testid="upgrade-pay">
               {busy ? (payment === "stripe" ? "Abriendo el pago…" : "Procesando…") : payment === "stripe" ? `Pagar ${price}` : `Pagar ${price} (pago de prueba)`}
@@ -103,6 +104,11 @@ export function UpgradeCard({ view, onUpgraded }: { view: BookView; onUpgraded: 
               Ahora no
             </button>
           </div>
+          {!waiver && !busy && (
+            <p className="text-[13px] text-mute" data-testid="upgrade-waiver-hint">
+              Marca la casilla de arriba para pagar.
+            </p>
+          )}
           {payment === "stripe" && (
             <p className="flex items-start gap-2 text-[13px] text-mute">
               <Icon.lock size={14} className="mt-0.5 shrink-0" />
