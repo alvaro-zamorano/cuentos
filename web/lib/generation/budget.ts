@@ -18,6 +18,9 @@
  *                    control de calidad). Cuántos cuentos gratis empieza cada persona lo limita lib/book/freeLimit.ts
  *                    en la puerta, para que un cuento que empieza siempre termine.
  *
+ * Desde el 27 oct (menores de la auditoría 26 oct), cada imagen del flujo nuevo reserva su gasto antes de pintarse
+ * (`reserveSpend`, `settleSpend`): con varias a la vez, el tope por libro se pasaba (312 c con el tope en 300).
+ *
  * Sin cliente admin, o si la lectura falla, canSpend devuelve ok:false: nunca se gasta a ciegas.
  * Dónde se llama: lib/generation/service.ts (al crear los jobs en /api/generate/sample y /book, y antes de cada
  * imagen en /api/generate/run, que también registra el gasto) y el worker (scripts/worker.ts) para los jobs antiguos.
@@ -138,10 +141,12 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
  * Lo gastado hoy que cuenta para el tope diario (B2): todo menos lo pintado para libros cobrados de verdad (`cs_live_`)
  * después de cobrarlos. Lo de antes del pago (hoja y portada gratis) sí cuenta. null si falla la lectura.
  */
-export async function freeSpendToday(db: Db, now = new Date()): Promise<FreeSpendToday | null> {
+export async function freeSpendToday(db: Db, now = new Date(), upTo?: SpendRow): Promise<FreeSpendToday | null> {
   const dayStart = capDayStart(now);
-  const day = await allRows((from, to) => db.from("cuentos_spend").select("cost_cents, lead_id, created_at").gte("created_at", dayStart).order("created_at", { ascending: true }).range(from, to));
-  if (!day) return null;
+  const all = await allRows((from, to) => db.from("cuentos_spend").select("id, cost_cents, lead_id, created_at").gte("created_at", dayStart).order("created_at", { ascending: true }).range(from, to));
+  if (!all) return null;
+  // con una reserva: solo lo que se apuntó antes que ella (lo de después, si se pasa, es lo que no entra)
+  const day = upTo ? all.filter((r) => notAfter(r, upTo)) : all;
   const since = new Date(Date.parse(dayStart) - PAID_LOOKBACK_MS).toISOString();
   const orders = await allRows((from, to) =>
     db.from("cuentos_orders").select("book_id, stripe_session_id, created_at").eq("status", "paid").like("stripe_session_id", "cs_live_%").gte("created_at", since).order("created_at", { ascending: true }).range(from, to),
@@ -198,6 +203,94 @@ export async function canSpend(
 
 /** Aviso del 80 %: a esta fracción del tope diario llega un email a MAIL_FORWARD_TO (B2). */
 export const DAILY_ALERT_AT = 0.8;
+
+/** Una fila de cuentos_spend, para ordenarla. */
+export interface SpendRow {
+  id: string;
+  created_at: string;
+}
+
+/** `model` de una reserva que todavía no se ha pintado (o que se quedó a medias: cuenta como gastada). */
+export const RESERVED_MODEL = "reserva";
+
+/**
+ * Clave para ordenar filas por `created_at` con sus microsegundos (Postgres quita los ceros del final: «.1234» y
+ * «.12345» no se comparan bien como texto) y, si empatan, por id.
+ */
+function rowKey(r: SpendRow): string {
+  const m = /^(.*T\d\d:\d\d:\d\d)(?:\.(\d+))?(.*)$/.exec(r.created_at);
+  const t = m ? `${m[1]}.${(m[2] ?? "").padEnd(6, "0")}${m[3]}` : r.created_at;
+  return `${t} ${r.id}`;
+}
+const notAfter = (r: SpendRow, mine: SpendRow) => rowKey(r) <= rowKey(mine);
+
+export type Reservation = SpendRow;
+export type ReserveResult = { ok: true; reservation: Reservation | null } | { ok: false; reason: string; cap: "lead" | "daily" | "error" };
+
+/**
+ * Reserva el gasto estimado antes de pintar (menores de la auditoría 26 oct: con varias imágenes a la vez, un libro llegó
+ * a 312 c con el tope en 300, porque cada una miraba lo gastado antes de que las demás lo apuntaran). Primero se apunta
+ * lo estimado y después se miran los topes contando solo lo apuntado hasta esa fila: entre dos a la vez, entra la que se
+ * apuntó antes y la otra, si no cabe, no. Si no cabe, se quita la reserva.
+ * `leadCap`: el tope del lead (el del libro gratis, el del libro pagado o el del email en el flujo antiguo).
+ * Con lo que cueste de verdad se ajusta (`settleSpend`); si no se llega a pintar, se quita (`dropReservation`).
+ */
+export async function reserveSpend(
+  db: Db | null,
+  { leadId, kind, provider, cents, paid = false, leadCap, now = new Date() }: { leadId: string; kind: SpendKind; provider: string; cents: number; paid?: boolean; leadCap?: number; now?: Date },
+): Promise<ReserveResult> {
+  if (!Number.isFinite(cents) || cents < 0) return { ok: false, reason: "coste no válido", cap: "error" };
+  if (cents === 0) return { ok: true, reservation: null };
+  if (!db) return { ok: false, reason: "sin presupuesto configurado", cap: "error" };
+  if (!leadId) return { ok: false, reason: "lead sin identificar", cap: "error" };
+  const ins = await db.from("cuentos_spend").insert({ lead_id: leadId, kind, provider, model: RESERVED_MODEL, cost_cents: Math.round(cents) }).select("id, created_at").single();
+  if (ins.error || !ins.data) return { ok: false, reason: "no se pudo reservar el gasto", cap: "error" };
+  const mine: Reservation = ins.data;
+  const refuse = async (reason: string, cap: "lead" | "daily" | "error"): Promise<ReserveResult> => {
+    await dropReservation(db, mine);
+    return { ok: false, reason, cap };
+  };
+  if (!(paid && (await hasChargedOrder(db, leadId)))) {
+    const day = await freeSpendToday(db, now, mine);
+    if (!day) return refuse("no se pudo leer el gasto del día", "error");
+    const cap = dailyCapCents();
+    if (day.total > cap) return refuse(`tope diario (${cap} c) alcanzado: ${day.total - cents} c gastados hoy`, "daily");
+  }
+  if (leadCap !== undefined) {
+    const lead = await db.from("cuentos_spend").select("id, created_at, cost_cents").eq("lead_id", leadId);
+    if (lead.error || !lead.data) return refuse("no se pudo leer el gasto del lead", "error");
+    const spent = sum(lead.data.filter((r) => notAfter(r, mine)));
+    if (spent > leadCap) return refuse(`tope por lead (${leadCap} c) alcanzado: ${spent - cents} c gastados`, "lead");
+  }
+  return { ok: true, reservation: mine };
+}
+
+/** Quita una reserva que no se ha llegado a pintar. Si falla, la reserva se queda: cuenta como gastado, que frena de más. */
+export async function dropReservation(db: Db | null, r: Reservation | null): Promise<void> {
+  if (!db || !r) return;
+  await db.from("cuentos_spend").delete().eq("id", r.id).then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
+ * Cambia la reserva por lo que ha costado de verdad (también el gasto estimado de un tiempo agotado). Sin reserva (coste
+ * estimado cero), apunta el gasto como siempre.
+ */
+export async function settleSpend(db: Db | null, r: Reservation | null, rec: SpendRecord, opts: { now?: Date; notify?: Notify } = {}): Promise<SpendCheck> {
+  if (!r) return rec.cents > 0 ? recordSpend(db, rec, opts) : { ok: true };
+  if (!db) return { ok: false, reason: "sin presupuesto configurado" };
+  const cents = Math.max(0, Math.round(rec.cents));
+  if (cents === 0) {
+    await dropReservation(db, r);
+    return { ok: true };
+  }
+  const { error } = await db.from("cuentos_spend").update({ provider: rec.provider, model: rec.model, cost_cents: cents }).eq("id", r.id);
+  if (error) return { ok: false, reason: `no se pudo apuntar el gasto: ${error.message}` };
+  await dailyAlert(db, opts.now ?? new Date(), opts.notify ?? sendSupportNotice);
+  return { ok: true };
+}
 
 type Notify = (subject: string, text: string) => Promise<{ sent: boolean }>;
 
