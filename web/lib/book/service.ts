@@ -27,7 +27,7 @@ import { planFromClient } from "../plan/planner";
 import { dropOrphanFamilyExtras, validatePlan, type PlanValidation } from "../plan/validate";
 import type { Ficha, Plan } from "../plan/types";
 import { cleanShipping, shippingLine, shippingSummary } from "../print/shipping";
-import type { Receipt } from "../mail";
+import type { MailResult, Receipt } from "../mail";
 import { EDITION_LABEL, PRICE_CENTS as PRICES, paidEdition, upgradeCents, upgradeDeadline } from "../print/prices";
 import { LOCKED_PRINT_STATUSES, type PaidEdition, type PaidOrder, type PrintView, type Shipping, type ShippingSummary } from "../print/types";
 import { paidInEnv, printableInEnv } from "../stripe";
@@ -547,7 +547,9 @@ export async function payDryRun(store: GenStore, input: { bookId?: unknown; edit
     if (!up.ok) return up;
     const loaded = await loadBook(store, input.bookId);
     if (isFail(loaded)) return loaded;
-    await store.addPaidOrder(loaded.book.id, newOrder("hardcover", up.amountCents, `dry-run-mejora:${loaded.book.public_id}`, loaded.d.shipping));
+    const added = await store.addPaidOrder(loaded.book.id, newOrder("hardcover", up.amountCents, `dry-run-mejora:${loaded.book.public_id}`, loaded.d.shipping));
+    // como en el webhook (0014): si entretanto entró otra tapa dura, esta no
+    if (added === "hardcover_taken") return fail(409, "already_hardcover");
     await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
     return { ok: true };
   }
@@ -689,8 +691,11 @@ export interface PaidEvent {
 export type PaymentOutcome =
   | { action: "paid"; bookId: string; mismatch?: string }
   | { action: "upgraded"; bookId: string; mismatch?: string }
-  /** La misma sesión otra vez (Stripe reintenta): nada que hacer. */
-  | { action: "duplicate"; bookId: string }
+  /**
+   * La misma sesión otra vez (Stripe reintenta): nada que hacer. `mismatch`: el importe que no cuadraba, otra vez, para
+   * volver a avisar si el aviso no salió la primera vez (revisión 27 oct).
+   */
+  | { action: "duplicate"; bookId: string; mismatch?: string }
   /** Otra sesión pagada para un libro ya pagado: cobro doble que hay que devolver (el webhook avisa). `already`: la
    * edición que ya estaba pagada. */
   | { action: "double_charge"; bookId: string; already?: PaidEdition }
@@ -769,7 +774,10 @@ async function recordCharge(
     // Stripe reintenta si la vez anterior falló después de guardar el pedido (por ejemplo, al alargar el libro): se
     // vuelve a alargar, que nunca acorta (revisión 26 oct)
     if ((same.status ?? "paid") === "paid") await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
-    return { action: "duplicate", bookId: publicId };
+    // el importe que no cuadraba se vuelve a mirar. En una mejora solo la moneda: su precio sale del pedido de base
+    const expected = s.metadata?.upgrade === "1" ? null : (PRICES[same.edition] ?? null);
+    const mismatch = (same.status ?? "paid") === "paid" ? paymentMismatch(expected, s) : undefined;
+    return { action: "duplicate", bookId: publicId, ...(mismatch ? { mismatch } : {}) };
   }
   if (s.metadata?.upgrade === "1") return recordUpgrade(store, loaded, s, env);
   if (await paidHere(store, loaded.book.id, env)) {
@@ -778,12 +786,22 @@ async function recordCharge(
   }
   const edition = paidEdition(s.metadata?.edition) ?? "illustrated";
   const amount = typeof s.amount_total === "number" ? s.amount_total : PRICES[edition];
-  await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
+  const added = await store.addPaidOrder(loaded.book.id, newOrder(edition, amount, s.id ?? null, loaded.d.shipping));
+  // la red de la base (0014) para cuando el bloqueo no basta: otra tapa dura pagada del libro, cobro doble. Si esta
+  // misma sesión ya entró (dos entregas del mismo evento a la vez), la base puede quejarse por cualquiera de los dos
+  // índices: es un duplicado
+  if (added === "same_session" || (added === "hardcover_taken" && (await sameSessionIn(store, s.id)))) return { action: "duplicate", bookId: publicId };
+  if (added === "hardcover_taken") return { action: "double_charge", bookId: publicId, already: "hardcover" };
   await store.extendBook(loaded.book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
   const mismatch = paymentMismatch(PRICES[edition], s);
   return { action: "paid", bookId: publicId, ...(mismatch ? { mismatch } : {}) };
 }
 
+
+/** ¿Ya hay un pedido de esta sesión de Stripe? */
+async function sameSessionIn(store: GenStore, sessionId: string | undefined): Promise<boolean> {
+  return !!sessionId && !!(await store.getOrderBySession(sessionId));
+}
 
 /**
  * La mejora a tapa dura pagada: un segundo pedido, de tapa dura, que espera a «Mandar a imprimir» como cualquier otro.
@@ -802,7 +820,11 @@ async function recordUpgrade(
   if (!printableInEnv(order.sessionId, env)) return { action: "ignored", reason: "upgrade:test_order" };
   const expected = upgradeCents(order.amountCents);
   const amount = typeof s.amount_total === "number" ? s.amount_total : (expected ?? 0);
-  await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
+  const added = await store.addPaidOrder(book.id, newOrder("hardcover", amount, s.id ?? null, d.shipping));
+  // otra mejora del mismo libro entró antes (0014): como si ya fuera de tapa dura, con aviso para devolverla. La misma
+  // sesión, otra vez, es un duplicado (ver `recordCharge`)
+  if (added === "same_session" || (added === "hardcover_taken" && (await sameSessionIn(store, s.id)))) return { action: "duplicate", bookId: book.public_id };
+  if (added === "hardcover_taken") return { action: "ignored", reason: "upgrade:already_hardcover" };
   // 25 oct: pagada la tapa dura, el libro tiene que seguir ahí hasta «Mandar a imprimir», aunque faltara poco para que
   // caducara al pedir la mejora
   await store.extendBook(book.id, new Date(Date.now() + KEEP_AFTER_PAYMENT_MS).toISOString());
@@ -823,6 +845,17 @@ export function receiptNotice(to: string, reason: string, bookUuid: string | nul
       bookUuid ? bookLine(bookUuid) : `Sesión de Stripe: ${sessionId ?? "?"} (el libro va en sus metadatos)`,
     ].join("\n\n"),
   };
+}
+
+/**
+ * ¿Responder 500 a Stripe porque el aviso a soporte no ha salido? Revisión 27 oct (Álvaro: sí): antes, si fallaba el
+ * correo, un cobro doble solo quedaba en los registros. El reintento vuelve a dar el mismo aviso: los que no cambian nada
+ * en la base salen igual, y los que sí (pago con importe que no cuadra, devolución, disputa) se rehacen desde la base al
+ * verlos repetidos (`duplicate`). Solo con fallos pasajeros (red, Resend caído o saturado): sin destino o sin correo
+ * configurado, reintentar no arregla nada.
+ */
+export function retryUnsentNotice(mail: MailResult): boolean {
+  return !mail.sent && /^(red|error|resend_429|resend_5\d\d)$/.test(mail.reason ?? "error");
 }
 
 /**
@@ -854,7 +887,7 @@ export function paymentNotice(r: PaymentOutcome, event: PaidEvent): { subject: s
       }`,
     };
   }
-  if ((r.action === "paid" || r.action === "upgraded") && r.mismatch) {
+  if ((r.action === "paid" || r.action === "upgraded" || r.action === "duplicate") && r.mismatch) {
     return { subject: "Cobro con un importe que no cuadra", text: `El pedido se ha registrado, pero ${r.mismatch}.\n${facts}\n\nRevísalo en el panel de Stripe.` };
   }
   return null;

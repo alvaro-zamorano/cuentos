@@ -167,8 +167,12 @@ export interface GenStore {
   saveBookIf(b: SaveBookIf): Promise<BookRecord | null>;
   /** Retrasa la caducidad del libro hasta `until` (nunca la adelanta). */
   extendBook(bookId: string, until: string): Promise<void>;
-  /** Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`. */
-  addPaidOrder(bookId: string, o: NewPaidOrder): Promise<void>;
+  /**
+   * Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`.
+   * `same_session`: esa sesión de Stripe ya tenía pedido. `hardcover_taken`: el libro ya tiene una tapa dura pagada en
+   * este entorno (migración 0014) y esta no entra: es un cobro doble.
+   */
+  addPaidOrder(bookId: string, o: NewPaidOrder): Promise<AddOrderResult>;
   /** El pedido pagado del libro (el más reciente), con su estado en la imprenta. */
   getOrder(bookId: string): Promise<PaidOrder | null>;
   getOrderById(id: string): Promise<PaidOrder | null>;
@@ -197,6 +201,11 @@ export interface FeedbackRow {
   note: string | null;
   style_id: string | null;
 }
+
+export type AddOrderResult = "added" | "same_session" | "hardcover_taken";
+
+/** Para la 0014: los cobros reales y los de prueba (la preview, el pago simulado) no chocan entre sí. */
+const liveSession = (sessionId: string | null | undefined) => (sessionId ?? "").startsWith("cs_live_");
 
 export interface NewPaidOrder {
   amountCents: number;
@@ -503,8 +512,10 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
         ...(shipping ? { shipping: shipping as unknown as Json } : {}),
         ...(printStatus ? { print_status: printStatus, print_updated_at: new Date().toISOString() } : {}),
       });
-      // la misma sesión de Stripe dos veces (reintento del webhook): ya está registrada
-      if (error && error.code !== "23505") throw new Error(`orders: ${error.message}`);
+      if (!error) return "added";
+      if (error.code !== "23505") throw new Error(`orders: ${error.message}`);
+      // otra tapa dura pagada del mismo libro (0014); si no, la misma sesión de Stripe dos veces (reintento del webhook)
+      return /cuentos_orders_una_tapa_dura/.test(`${error.message} ${error.details ?? ""}`) ? "hardcover_taken" : "same_session";
     },
     async getOrder(bookId) {
       const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("book_id", bookId).eq("status", "paid").order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -672,7 +683,9 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       (state.paid ??= new Set()).add(bookId);
       const orders = (state.orders ??= new Map());
       // como el `unique` de stripe_session_id; sin sesión, un pedido por edición (la mejora a tapa dura es un segundo pedido)
-      if ([...orders.values()].some((x) => (o.sessionId ? x.sessionId === o.sessionId : x.bookId === bookId && x.edition === o.edition))) return;
+      if ([...orders.values()].some((x) => (o.sessionId ? x.sessionId === o.sessionId : x.bookId === bookId && x.edition === o.edition))) return "same_session";
+      // como el índice de la 0014: una tapa dura pagada por libro y entorno
+      if (o.edition === "hardcover" && [...orders.values()].some((x) => x.bookId === bookId && x.edition === "hardcover" && paidRow(x) && liveSession(x.sessionId) === liveSession(o.sessionId))) return "hardcover_taken";
       const id = crypto.randomUUID();
       orders.set(id, {
         id,
@@ -693,6 +706,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
         updatedAt: null,
         info: null,
       });
+      return "added";
     },
     async getOrder(bookId) {
       const o = [...(state.orders?.values() ?? [])].reverse().find((x) => x.bookId === bookId && paidRow(x));
