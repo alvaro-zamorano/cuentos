@@ -392,6 +392,7 @@ test("PDF primero y después tapa dura: pagas la diferencia, el panel de imprent
 test("Ficha pobre: tres preguntas rápidas antes de escribir; lo contestado llega al cuento y no se repiten", async ({ page }) => {
   await page.getByTestId("hero-name").fill("Olivia");
   await page.getByTestId("hero-age").selectOption("2");
+  await page.getByRole("button", { name: "Niña" }).click();
   await page.getByTestId("idea").fill("Olivia acaba de llegar a la tierra y conquista el mundo");
   await page.getByTestId("next-1").click();
   await page.getByTestId("next-2").click();
@@ -419,6 +420,7 @@ test("Ficha pobre: tres preguntas rápidas antes de escribir; lo contestado lleg
 
 test("Ficha pobre: «Escríbelo ya» salta las preguntas", async ({ page }) => {
   await page.getByTestId("hero-name").fill("Hugo");
+  await page.getByRole("button", { name: "Niño" }).click();
   await page.getByTestId("surprise").click();
   await page.getByTestId("next-1").click();
   await page.getByTestId("next-2").click();
@@ -456,18 +458,37 @@ test("Recuperar un libro con el enlace /crear?b=", async ({ page }) => {
   await expect(page.getByTestId("cover")).toHaveAttribute("data-state", "placeholder", { timeout: 30_000 });
   const bookId = await page.evaluate(() => JSON.parse(localStorage.getItem("cuentos:crear:v2") ?? "{}").bookId as string);
   await page.evaluate(() => localStorage.clear());
+  // un cuento a medias, sin email, no se pierde al abrir el enlace de otro libro: se guarda aparte (mirada de usuario)
+  await page.goto("/crear");
+  await page.getByTestId("hero-name").fill("Martina");
+  await page.getByTestId("idea").fill("Martina encuentra un mapa en el desván de la abuela.");
   await page.goto(`/crear?b=${bookId}`);
   await expect(page.getByText("Libro recuperado.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Así será Vera" })).toBeVisible();
+  await expect(page.getByTestId("aside")).toContainText("El cuento a medias de Martina");
+  await page.getByTestId("aside-restore").click();
+  await expect(page.getByTestId("hero-name")).toHaveValue("Martina");
+  await expect(page.getByTestId("idea")).toHaveValue("Martina encuentra un mapa en el desván de la abuela.");
+  await expect(page).toHaveURL(/\/crear$/);
+  // el libro que estaba abierto no se pierde: queda aparte y se vuelve a él por su enlace (revisión independiente)
+  await expect(page.getByTestId("aside-item")).toHaveCount(1);
+  await expect(page.getByTestId("aside")).toContainText("El libro de Vera");
+  await page.getByTestId("aside-restore").click();
+  await expect(page.getByRole("heading", { name: "Así será Vera" })).toBeVisible();
+  await expect(page.getByTestId("aside")).toContainText("El cuento a medias de Martina");
+  // descartar pide confirmación
+  await page.getByTestId("aside-discard").click();
+  await page.getByTestId("aside-discard-yes").click();
+  await expect(page.getByTestId("aside")).toHaveCount(0);
   await page.goto("/crear?b=noexiste00");
-  await expect(page.getByText("Este enlace ya no es válido")).toBeVisible();
+  await expect(page.getByText("Este enlace ya no abre ningún libro")).toBeVisible();
 
   // con el servidor fallando no dice que el enlace no vale: reintenta y, si sigue, dice que el libro sigue guardado (I9)
   await page.evaluate(() => localStorage.clear());
   await page.route(/\/api\/libro\/view\?/, (r) => r.fulfill({ status: 500, json: { ok: false, error: "server" } }));
   await page.goto(`/crear?b=${bookId}`);
   await expect(page.getByText("No hemos podido abrir tu libro ahora mismo")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Este enlace ya no es válido")).toHaveCount(0);
+  await expect(page.getByText("Este enlace ya no abre ningún libro")).toHaveCount(0);
   await page.unroute(/\/api\/libro\/view\?/);
   errors.splice(0, errors.length); // los 500 provocados
 });

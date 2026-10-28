@@ -46,7 +46,7 @@ test("loadView: un 404 es «no existe» enseguida; un 500 o sin red se reintenta
   let calls = fakeFetch(json(404, { ok: false, error: "not_found" }));
   assert.deepEqual(await loadView("abc12345", { wait: 1 }), { ok: false, error: "not_found" });
   assert.equal(calls.length, 1);
-  assert.match(viewErrorMessage("not_found"), /ya no es válido/);
+  assert.match(viewErrorMessage("not_found"), /ya no abre ningún libro/);
 
   calls = fakeFetch(json(500, { ok: false, error: "server" }), new TypeError("Failed to fetch"), json(200, view));
   const r = await loadView("abc12345", { wait: 1 });

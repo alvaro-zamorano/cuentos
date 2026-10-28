@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { TOO_LONG, tooLongMessage } from "@/lib/print/shipping";
 import type { Shipping } from "@/lib/print/types";
 
@@ -11,6 +11,8 @@ import type { Shipping } from "@/lib/print/types";
  * sin aviso. Se cuenta lo que se lleva y, si no cabe, se dice qué hacer, con el mismo texto que el servidor.
  * El contador y el aviso van fuera de la etiqueta (revisión 27 oct): dentro, formaban parte del nombre del campo y el
  * lector de pantalla los repetía en cada letra. Ahora describen el campo y el aviso se anuncia una vez.
+ * Si el servidor rechaza un campo (`field` y `error`), el mensaje sale debajo de ese campo y el foco va a él (mirada de
+ * usuario de la auditoría: salía bajo el botón de pagar, con el campo fuera de la pantalla).
  */
 export type ShippingDraft = Partial<Record<keyof Omit<Shipping, "country">, string>>;
 
@@ -23,9 +25,35 @@ const FIELDS: { key: keyof ShippingDraft; label: string; auto: string; max: numb
   { key: "phone", label: "Teléfono para el transportista (opcional)", auto: "tel", max: 20, optional: true, mode: "tel" },
 ];
 
-export function ShippingForm({ value, onChange, field, tone = "light" }: { value: ShippingDraft; onChange: (v: ShippingDraft) => void; field?: string | null; tone?: "light" | "night" }) {
+/** ¿Es un campo de este formulario? (para saber si un error del servidor va junto al campo o junto al botón) */
+export const isShippingField = (key: string | null | undefined): boolean => !!key && FIELDS.some((f) => f.key === key);
+
+export function ShippingForm({
+  value,
+  onChange,
+  field,
+  error,
+  onEdit,
+  tone = "light",
+}: {
+  value: ShippingDraft;
+  onChange: (v: ShippingDraft) => void;
+  field?: string | null;
+  /** El mensaje del servidor para `field`. */
+  error?: string | null;
+  /** Se ha tocado un campo: si era el del error, el padre lo quita (revisión independiente: se quedaba ya corregido). */
+  onEdit?: (key: string) => void;
+  tone?: "light" | "night";
+}) {
   const uid = useId();
   const warn = tone === "night" ? "text-[#ffb4a2]" : "text-danger";
+  const errorFor = error && isShippingField(field) ? field! : null;
+  useEffect(() => {
+    if (!errorFor) return;
+    const el = document.getElementById(`${uid}-${errorFor}`);
+    el?.focus();
+    el?.scrollIntoView({ block: "center" });
+  }, [uid, errorFor, error]);
   return (
     <fieldset className="grid grid-cols-2 gap-x-3 gap-y-3" data-testid="shipping-form">
       <legend className={`col-span-2 mb-2 text-[15px] font-semibold ${tone === "night" ? "text-moon" : "text-ink"}`}>¿A dónde lo enviamos?</legend>
@@ -54,10 +82,18 @@ export function ShippingForm({ value, onChange, field, tone = "light" }: { value
               inputMode={f.mode}
               required={!f.optional}
               aria-invalid={field === f.key || over || undefined}
-              aria-describedby={limited ? `${id}-count ${id}-long` : undefined}
-              onChange={(e) => onChange({ ...value, [f.key]: e.target.value })}
+              aria-describedby={[limited ? `${id}-count ${id}-long` : "", errorFor === f.key ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined}
+              onChange={(e) => {
+                onChange({ ...value, [f.key]: e.target.value });
+                onEdit?.(f.key);
+              }}
               data-testid={`ship-${f.key}`}
             />
+            {errorFor === f.key && (
+              <span id={`${id}-error`} className={`text-[12.5px] leading-snug ${warn}`} data-testid={`ship-${f.key}-error`}>
+                {error}
+              </span>
+            )}
             {/* siempre en la página, para que el aviso se anuncie al aparecer; el texto no cambia con cada letra */}
             {limited && (
               <span id={`${id}-long`} className={over ? `text-[12.5px] leading-snug ${warn}` : "sr-only"} aria-live="polite">

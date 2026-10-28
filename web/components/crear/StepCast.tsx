@@ -72,7 +72,8 @@ export function StepCast({
     async (id: string, sheetJobId: string, coverJobId: string) => {
       setError(null);
       setStalled(false);
-      setPainting("Dibujando a los personajes. Tarda alrededor de un minuto.");
+      // el mismo tiempo que en el resto del paso (mirada de usuario de la auditoría: había cuatro distintos)
+      setPainting("Dibujando a los personajes. Tarda uno o dos minutos.");
       const outcomes: JobOutcome[] = [];
       await runJobs([sheetJobId], 1, (_, o) => outcomes.push(o), cancel.current);
       await refresh(id);
@@ -316,7 +317,7 @@ function ChangeSheet({ left, onAsk }: { left: number; onAsk: (instruction: strin
   const [ask, setAsk] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  if (left <= 0) return <p className="notice">Ya has usado los dos cambios de la hoja. Puedes elegir cualquiera de las versiones.</p>;
+  if (left <= 0) return <p className="notice">Ya has usado los dos cambios de los personajes. Puedes elegir cualquiera de las versiones.</p>;
   return (
     <form
       className="card grid gap-3 p-5 sm:p-6"
@@ -538,7 +539,20 @@ function EmailGate({
           </p>
           <p className="m-0 text-[15px] leading-relaxed">
             Con este email ya tienes tres cuentos con sus personajes dibujados. Te los acabamos de mandar para que elijas el que más te guste y lo termines.
-            En cuanto tengas uno, puedes empezar otro.
+            Cuando compres uno, puedes empezar otros tres; si no, cada uno vuelve a quedar libre a los 30 días de empezarlo.
+          </p>
+          <p className="m-0 text-[15px] leading-relaxed">
+            ¿No te llega? Mira en el correo no deseado
+            {contact ? (
+              <>
+                {" "}
+                o escríbenos a{" "}
+                <a className="link [overflow-wrap:anywhere]" href={`mailto:${contact}`}>
+                  {contact}
+                </a>
+              </>
+            ) : null}
+            .
           </p>
           <p className="m-0 text-[13px]">Este cuento escrito no se pierde: se queda guardado en este navegador.</p>
         </div>
@@ -569,7 +583,9 @@ function EmailGate({
           {busy ? <Sparkle className="twinkle" size={16} color="#fff" /> : <Icon.brush />}
           {busy ? "Preparando…" : `Dibujar a ${name}`}
         </button>
-        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">Gratis · Tarda alrededor de un minuto</p>
+        <p className="w-full text-center text-[13px] text-mute sm:w-auto sm:text-left">
+          {limit === "sent" ? "Ya tienes tus tres cuentos gratis: termina uno desde tu correo." : "Gratis · Tarda uno o dos minutos"}
+        </p>
       </div>
     </form>
   );

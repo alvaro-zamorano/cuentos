@@ -139,9 +139,9 @@ test("página de personajes: un retrato sin URL cuenta como hueco, y la hoja sol
   assert.deepEqual(unsignedImages(view([...base, job("sheet", null), job("r1", "u")], [{ name: "Vera", job: "r1" }])), []);
   // un retrato sin URL: hueco (el libro pasaría a la hoja sin avisar) y, si la hoja tampoco tiene, también la hoja
   assert.deepEqual(unsignedImages(view([...base, job("sheet", "u"), job("r1", null)], [{ name: "Vera", job: "r1" }])), ["retrato de Vera"]);
-  assert.deepEqual(unsignedImages(view([...base, job("sheet", null), job("r1", null)], [{ name: "Vera", job: "r1" }])), ["retrato de Vera", "hoja de personajes"]);
+  assert.deepEqual(unsignedImages(view([...base, job("sheet", null), job("r1", null)], [{ name: "Vera", job: "r1" }])), ["retrato de Vera", "dibujo de los personajes"]);
   // sin retratos encargados, la hoja es la página de personajes
-  assert.deepEqual(unsignedImages(view([...base, job("sheet", null)], [])), ["hoja de personajes"]);
+  assert.deepEqual(unsignedImages(view([...base, job("sheet", null)], [])), ["dibujo de los personajes"]);
   // modo sin coste: no cuentan, salvo en un pedido real a la imprenta (saldrían en blanco)
   const free = view([...base.map((j) => (j.id === "p3" ? job("p3", null, true) : j)), job("sheet", "u")], []);
   assert.deepEqual(unsignedImages(free), []);

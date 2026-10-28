@@ -71,7 +71,7 @@ function layout(title: string, body: string, link: string, cta: string): string 
 <h1 style="font-size:26px;font-weight:500;margin:0 0 16px">${esc(title)}</h1>
 <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">${body}</p>
 <p style="margin:28px 0"><a href="${esc(link)}" style="background:#c8492c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:bold;font-family:Helvetica,Arial,sans-serif;font-size:15px">${esc(cta)}</a></p>
-<p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6f6457">Guardamos el libro 30 días. Si no lo has pedido tú, ignora este mensaje.</p>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6f6457">Guardamos el libro 30 días. Si este correo no era para ti, puedes borrarlo sin más.</p>
 </div></body></html>`;
 }
 
@@ -168,11 +168,11 @@ export function sendYourBooks(to: string, books: { title: string; link: string }
 <div style="max-width:520px;margin:0 auto;padding:32px 24px">
 <p style="font-style:italic;font-size:22px;margin:0 0 24px"><span style="color:#f2b84b">&#10022;</span> Érase su vez</p>
 <h1 style="font-size:26px;font-weight:500;margin:0 0 16px">Tus cuentos te esperan</h1>
-<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">${intro}: en cuanto ${one ? "lo tengas" : "tengas uno"}, puedes empezar otro.</p>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#5d566c">${intro}. Cuando compres uno, puedes empezar otros tres.</p>
 <ul style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;padding-left:18px;margin:20px 0">${list}</ul>
-<p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6f6457">Guardamos cada libro 30 días. Si no lo has pedido tú, ignora este mensaje.</p>
+<p style="font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6f6457">Guardamos cada libro 30 días. Si este correo no era para ti, puedes borrarlo sin más.</p>
 </div></body></html>`;
-  const text = `Tus cuentos te esperan\n\n${intro}:\n\n${books.map((b) => `${b.title}: ${b.link}`).join("\n")}\n\nGuardamos cada libro 30 días.`;
+  const text = `Tus cuentos te esperan\n\n${intro}:\n\n${books.map((b) => `${b.title}: ${b.link}`).join("\n")}\n\nCuando compres uno, puedes empezar otros tres. Guardamos cada libro 30 días.`;
   return send(to, "Tus cuentos te esperan", html, text);
 }
 

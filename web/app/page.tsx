@@ -12,6 +12,7 @@ import { UPGRADE_CENTS, eur } from "@/lib/print/prices";
 import { appOpen } from "@/lib/appOpen";
 import { titular } from "@/lib/legal";
 import { ocasionForStarter, ocasionPath } from "@/lib/ocasiones";
+import { MAX_BOOK_REDOS, MAX_PAGE_REDOS } from "@/lib/book/feedback";
 
 export const metadata: Metadata = {
   title: { absolute: "Cuento personalizado para niños, escrito e ilustrado con su historia · Érase su vez" },
@@ -98,7 +99,7 @@ const FAQ = [
   },
   {
     q: "¿Se puede devolver?",
-    a: "Lees el cuento y ves la portada antes de pagar. Como cada libro se hace a medida, no admite devolución (art. 103.c TRLGDCU). Si el libro llega dañado o con un fallo de impresión, lo volvemos a imprimir; si el PDF no se abre, lo reponemos.",
+    a: "Lees el cuento y ves la portada antes de pagar. Como cada libro se hace a medida, no se puede devolver por haber cambiado de idea: lo explica el apartado 7 de las condiciones. Si el libro llega dañado o con un fallo de impresión, lo volvemos a imprimir; si el PDF no se abre, lo reponemos.",
   },
 ];
 
@@ -156,7 +157,7 @@ export default function Landing() {
           <div className="grid gap-6">
             <span className="inline-flex items-center gap-2 justify-self-start rounded-full border border-star/40 bg-star/15 px-3.5 py-1.5 text-sm font-semibold text-star">
               <Sparkle size={12} />
-              {open ? "Su cuento, esta misma noche" : "Muy pronto"}
+              {open ? "El cuento escrito, en medio minuto" : "Muy pronto"}
             </span>
             <h1 className="display m-0 text-[44px] leading-[1.04] text-moon sm:text-[58px] lg:text-[74px]">
               Una frase tuya. <span className="text-star">Un libro suyo.</span>
@@ -181,7 +182,10 @@ export default function Landing() {
             <ul className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[15px] text-[#b9c1da]">
               <li className="flex items-center gap-2">{CHECK}Sin subir fotos</li>
               <li className="flex items-center gap-2">{CHECK}El cuento y la portada, gratis</li>
-              <li className="flex items-center gap-2">{CHECK}Tapa dura con envío a casa</li>
+              <li className="flex items-center gap-2">
+                {CHECK}Tapa dura con envío: {PRICE_HARDCOVER}
+                {hardcoverStatus === "Muy pronto" ? " (muy pronto)" : ""}
+              </li>
             </ul>
           </div>
 
@@ -229,7 +233,7 @@ export default function Landing() {
               Empezar su cuento
             </Link>
           )}
-          <span className="text-[15px] text-ink-soft">Lees el cuento entero y ves su portada gratis. Pagas solo por las doce ilustraciones.</span>
+          <span className="text-[15px] text-ink-soft">Lees el cuento entero y ves su portada gratis. Pagas cuando quieras el libro.</span>
         </div>
       </section>
 
@@ -366,7 +370,7 @@ export default function Landing() {
                 <p className="display m-0 mt-1.5 text-[44px] leading-none">{PRICE_ILLUSTRATED}</p>
               </div>
               <ul className="m-0 grid list-none gap-2.5 p-0 text-[16px]">
-                {["Las doce páginas ilustradas con sus personajes", "Si una ilustración no te convence, la repetimos una vez", "PDF en A4 apaisado: imprímelo en casa o en una copistería"].map((x) => (
+                {["Las doce páginas ilustradas con sus personajes", `Si una ilustración no te convence, te hacemos otra versión (hasta ${MAX_PAGE_REDOS} por página y ${MAX_BOOK_REDOS} en todo el libro)`, "PDF en A4 apaisado: imprímelo en casa o en una copistería"].map((x) => (
                   <li key={x} className="flex gap-2.5">
                     <Icon.check size={20} className="mt-0.5 shrink-0 text-accent" />
                     {x}

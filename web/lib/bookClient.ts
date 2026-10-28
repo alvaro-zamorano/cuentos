@@ -149,7 +149,8 @@ export async function fetchView(bookId: string): Promise<BookView | null> {
 
 /** Lo que se le dice al padre cuando su libro no se puede abrir. */
 export function viewErrorMessage(error: Exclude<ViewResult, { ok: true }>["error"]): string {
-  if (error === "not_found") return "Este enlace ya no es válido. Guardamos los libros 30 días.";
+  // qué hacer, no solo qué pasa (mirada de usuario de la auditoría): quien pagó puede llegar aquí
+  if (error === "not_found") return "Este enlace ya no abre ningún libro: los guardamos 30 días (desde la compra, si lo compraste). Si lo pagaste y no lo encuentras, escríbenos a la dirección del pie y lo miramos. Puedes empezar otro cuento cuando quieras.";
   if (error === "network") return "No hemos podido abrir tu libro: parece que no hay conexión. Recarga la página cuando vuelva. Tu libro sigue guardado.";
   return "No hemos podido abrir tu libro ahora mismo. Recarga la página en un momento. Tu libro sigue guardado.";
 }

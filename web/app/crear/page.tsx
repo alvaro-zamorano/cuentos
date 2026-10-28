@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
 import { Wordmark } from "@/components/SiteHeader";
 import { StepIdea } from "@/components/crear/StepIdea";
@@ -14,7 +14,7 @@ import { track } from "@/lib/analytics";
 import { errorMessage, fetchView, loadView, postJson, viewErrorMessage } from "@/lib/bookClient";
 import { fichaHash, TONES } from "@/lib/plan/ficha";
 import { STARTERS, starterIdea } from "@/lib/plan/starters";
-import { resetCrear, setCrear, useCrear, type CrearState, type Step } from "@/lib/crearStore";
+import { addAside, getCrear, removeAside, resetCrear, sameDraft, setCrear, useAsides, useCrear, worthKeeping, type CrearState, type Step } from "@/lib/crearStore";
 import type { Plan } from "@/lib/plan/types";
 
 /**
@@ -30,6 +30,9 @@ const STEPS: { n: Step; label: string }[] = [
   { n: 4, label: "Personajes" },
   { n: 5, label: "El libro" },
 ];
+
+/** ¿Abre el teclado? La edad es un desplegable: no lo abre. */
+const typing = (el: Element | null) => !!el?.matches?.('input:not([type="checkbox"], [type="radio"]), textarea');
 
 export default function CrearPage() {
   return (
@@ -48,10 +51,18 @@ function Crear() {
   const ideaParam = params.get("idea");
   const [recovering, setRecovering] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  const router = useRouter();
+  // lo que se guardó aparte al abrir el enlace de otro libro: se puede volver a ello
+  const asides = useAsides();
+  // la X solo esconde el aviso en esta visita; descartar uno pide confirmación (revisión independiente)
+  const [asideHidden, setAsideHidden] = useState(false);
+  const [discarding, setDiscarding] = useState<string | null>(null);
 
   // recuperar un libro por enlace
   const tried = useRef<string | null>(null);
   useEffect(() => {
+    // sin enlace en la dirección se puede volver a abrir el mismo (al volver a un libro guardado aparte)
+    if (!b) tried.current = null;
     if (!b || !/^[a-z0-9]{8,16}$/.test(b) || tried.current === b) return;
     tried.current = b;
     setRecovering(b);
@@ -63,6 +74,10 @@ function Crear() {
         return;
       }
       const v = r.view;
+      // lo que había (un cuento a medias u otro libro) no se pierde: se guarda aparte y se ofrece volver a ello
+      const before = getCrear();
+      if (worthKeeping(before) && before.bookId !== v.bookId) addAside(before);
+      removeAside({ v: 2, step: 1, ficha: v.ficha, bookId: v.bookId });
       setCrear((prev) => ({
         v: 2,
         step: v.paid || v.approvedSheetJobId || pagado ? 5 : 4,
@@ -72,10 +87,40 @@ function Crear() {
         email: prev.email,
         // pagado: los pasos 1 y 2 se cierran también al volver con el enlace (revisión 27 oct)
         paid: v.paid || undefined,
+        genderChosen: true,
       }));
       setNotice(pagado ? null : { text: "Libro recuperado.", ok: true });
     });
   }, [b, pagado]);
+
+  // mientras se escribe, la barra de abajo deja de estar fija en el móvil (globals.css, `data-typing`). Se quita con un
+  // respiro al salir del campo, para que el botón que se toca no quede tapado entre que se pulsa y se suelta.
+  useEffect(() => {
+    let off: ReturnType<typeof setTimeout> | undefined;
+    const onIn = (e: FocusEvent) => {
+      if (!typing(e.target as Element)) return;
+      clearTimeout(off);
+      document.body.dataset.typing = "";
+    };
+    const onOut = () => {
+      clearTimeout(off);
+      off = setTimeout(() => {
+        if (!typing(document.activeElement)) delete document.body.dataset.typing;
+      }, 400);
+    };
+    document.addEventListener("focusin", onIn);
+    document.addEventListener("focusout", onOut);
+    return () => {
+      clearTimeout(off);
+      document.removeEventListener("focusin", onIn);
+      document.removeEventListener("focusout", onOut);
+      delete document.body.dataset.typing;
+    };
+  }, []);
+  // al cambiar de paso, el campo con el foco puede haber desaparecido sin avisar (Firefox no lanza focusout)
+  useEffect(() => {
+    if (!typing(document.activeElement)) delete document.body.dataset.typing;
+  }, [s?.step]);
 
   // el aviso de «recuperado» se va solo; el de error se queda
   useEffect(() => {
@@ -102,6 +147,8 @@ function Crear() {
   const plan = s?.record?.plan;
   const bookId = s?.bookId;
   const saved = useRef<string>("");
+  // de qué libro es `saved`: al cambiar de libro, lo que llega es lo guardado de ese otro, no un cambio
+  const savedFor = useRef<string | undefined>(undefined);
   // si un cambio no se guarda, se dice (auditoría 26 oct, B6): antes se perdía sin aviso y el PDF llevaba el texto viejo
   const [saveError, setSaveError] = useState<string | null>(null);
   // solo cuenta la respuesta del último guardado: una vieja que llega tarde no pisa a la nueva (revisión 26 oct)
@@ -116,7 +163,8 @@ function Crear() {
   useEffect(() => {
     if (!bookId || !plan) return;
     const json = JSON.stringify(plan);
-    if (!saved.current) {
+    if (savedFor.current !== bookId || !saved.current) {
+      savedFor.current = bookId;
       saved.current = json;
       return;
     }
@@ -168,6 +216,17 @@ function Crear() {
     return () => clearTimeout(t);
   }, [saveState]);
 
+  /** Manda ya el cambio que esperaba su respiro: al cambiar de libro, la espera se cancela y se perdía (revisión independiente). */
+  const flushSave = () => {
+    if (!bookId || !plan) return;
+    const json = JSON.stringify(plan);
+    if (json === saved.current) return;
+    const id = bookId;
+    const p = plan;
+    saveSeq.current++;
+    saveChain.current = saveChain.current.then(() => postJson("/api/libro/plan", { bookId: id, plan: p }).catch(() => null));
+  };
+
   // embudo (lib/analytics.ts): un evento cada vez que se ve un paso; sin datos del niño
   const step = s?.step;
   useEffect(() => {
@@ -189,7 +248,8 @@ function Crear() {
     window.scrollTo({ top: 0 });
   };
   const update = (patch: Partial<CrearState>) => setCrear((x) => ({ ...x, ...patch }));
-  const maxStep: Step = s.bookId ? 5 : s.record ? 3 : s.ficha.hero.name ? 2 : 1;
+  // sin decir si es niño o niña no se pasa del paso 1, tampoco desde la cabecera (revisión independiente)
+  const maxStep: Step = s.bookId ? 5 : s.record ? 3 : s.ficha.hero.name.trim() && s.genderChosen ? 2 : 1;
   // pagado, los pasos 1 y 2 ya no se abren: cambiar la ficha vuelve a escribir el cuento (I2)
   const reachable = (n: Step) => n <= Math.max(maxStep, s.step) && !(n >= 4 && !s.record) && !(s.paid && n < 3);
   const dirty = !!(s.ficha.hero.name || s.ficha.idea || s.record);
@@ -208,6 +268,82 @@ function Crear() {
                 <Icon.close size={15} />
               </button>
             </p>
+          )}
+          {!asideHidden && asides.some((d) => !sameDraft(d, s)) && (
+            <div className="rise mb-6 grid gap-2 rounded-2xl bg-paper-deep px-4 py-3 text-[15px] text-ink" role="status" data-testid="aside">
+              <div className="flex items-start justify-between gap-3">
+                <p className="pt-2.5">Tienes guardado aparte en este navegador:</p>
+                <button type="button" aria-label="Ocultar este aviso" className="grid h-11 w-11 shrink-0 place-items-center rounded-full hover:bg-black/5" onClick={() => setAsideHidden(true)}>
+                  <Icon.close size={15} />
+                </button>
+              </div>
+              <ul className="m-0 grid list-none gap-1 p-0">
+                {asides
+                  .filter((d) => !sameDraft(d, s))
+                  .map((d) => {
+                    const key = d.bookId ?? String(d.savedAt);
+                    const who = d.ficha.hero.name.trim();
+                    const label = d.bookId ? (who ? `El libro de ${who}` : "Un libro") : who ? `El cuento a medias de ${who}` : "Un cuento a medias";
+                    return (
+                      <li key={key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1" data-testid="aside-item">
+                        <span className="font-semibold">{label}</span>
+                        {discarding === key ? (
+                          <span className="flex items-center gap-1">
+                            <span className="text-sm text-ink-soft">¿Lo borramos? No se puede deshacer.</span>
+                            <button
+                              type="button"
+                              className="btn-soft btn-sm"
+                              onClick={() => {
+                                removeAside(d);
+                                setDiscarding(null);
+                              }}
+                              data-testid="aside-discard-yes"
+                            >
+                              Sí, borrarlo
+                            </button>
+                            <button type="button" className="btn-ghost btn-sm" onClick={() => setDiscarding(null)}>
+                              No
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="btn-soft btn-sm"
+                              onClick={() => {
+                                // lo de ahora no se pierde: se guarda aparte en su lugar. Un libro vuelve por su enlace, como
+                                // esté en el servidor; un cuento a medias, tal como se dejó
+                                flushSave();
+                                setNotice(null);
+                                setSaveError(null);
+                                setSaveState("idle");
+                                setDiscarding(null);
+                                if (d.bookId) {
+                                  // sale de la lista al abrirse (efecto de recuperar); si no abre, sigue en ella
+                                  router.push(`/crear?b=${d.bookId}`);
+                                  return;
+                                }
+                                const now = getCrear();
+                                removeAside(d);
+                                addAside(now);
+                                window.history.replaceState(null, "", "/crear");
+                                setCrear({ ...d, savedAt: undefined });
+                                window.scrollTo({ top: 0 });
+                              }}
+                              data-testid="aside-restore"
+                            >
+                              Volver a {d.bookId ? "él" : "ese cuento"}
+                            </button>
+                            <button type="button" className="btn-ghost btn-sm" onClick={() => setDiscarding(key)} data-testid="aside-discard">
+                              Descartar
+                            </button>
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
           )}
           {saveError && (
             <p className="rise fixed inset-x-4 top-3 z-30 mx-auto flex max-w-xl items-start justify-between gap-3 rounded-2xl bg-[#f6ded6] px-4 py-3 text-[15px] text-danger shadow-[0_12px_30px_-18px_rgba(35,32,54,0.6)]" role="alert" data-testid="save-error">
@@ -237,7 +373,15 @@ function Crear() {
             </p>
           )}
           <div key={s.step} className="rise">
-            {s.step === 1 && <StepIdea ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(2)} />}
+            {s.step === 1 && (
+              <StepIdea
+                ficha={s.ficha}
+                genderChosen={!!s.genderChosen}
+                onChange={(ficha) => update({ ficha })}
+                onGender={(gender) => update({ ficha: { ...s.ficha, hero: { ...s.ficha.hero, gender } }, genderChosen: true })}
+                onNext={() => go(2)}
+              />
+            )}
             {s.step === 2 && <StepHero ficha={s.ficha} onChange={(ficha) => update({ ficha })} onNext={() => go(3)} asked={!!s.quickAsked} onAsked={() => update({ quickAsked: true })} />}
             {s.step === 3 && <StepStory ficha={s.ficha} record={s.record} drawn={!!s.bookId} paid={!!s.paid} onRecord={(record) => update({ record })} onFicha={(ficha) => update({ ficha })} onBack={() => go(2)} onNext={() => go(s.paid ? 5 : 4)} />}
             {s.step === 4 && s.record && <StepCast ficha={s.ficha} record={s.record} bookId={s.bookId} email={s.email} onBook={(id, email) => {
@@ -347,6 +491,8 @@ function NewBook({ compact = false }: { compact?: boolean }) {
               className="btn-primary btn-sm"
               onClick={() => {
                 setOpen(false);
+                // sin el enlace en la dirección: al recargar no se vuelve a abrir ese libro encima del nuevo (revisión independiente)
+                window.history.replaceState(null, "", "/crear");
                 resetCrear();
                 window.scrollTo({ top: 0 });
               }}
