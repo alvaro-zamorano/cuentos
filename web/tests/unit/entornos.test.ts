@@ -17,6 +17,7 @@ import { isLiveSession, orderBelongsToEnv, paidInEnv } from "../../lib/stripe";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { approveLast } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -82,7 +83,8 @@ test("qué cobro cuenta en cada entorno: en producción, solo cs_live_; fuera, c
 
 test("producción: un libro pagado con la tarjeta de prueba en la preview no está pagado en www, y el cobro real se registra", async () => {
   const { store, bookId } = await book();
-  // pagado en la preview con la tarjeta 4242 (la base es la misma)
+  // aprobados en el paso 4 y pagado en la preview con la tarjeta 4242 (la base es la misma)
+  await approveLast(store, bookId);
   assert.deepEqual(await recordStripePayment(store, session("cs_test_1", bookId, "illustrated", 1490), PREVIEW), { action: "paid", bookId });
   const inPreview = await bookView(store, bookId, PREVIEW);
   assert.ok(inPreview.ok && inPreview.paid && inPreview.edition === "illustrated");
@@ -107,6 +109,7 @@ test("producción: un libro pagado con la tarjeta de prueba en la preview no est
 
 test("preview: no manda a la imprenta un pedido real ni le escribe; producción no le escribe a uno de prueba", async () => {
   const { store, bookId } = await book();
+  await approveLast(store, bookId);
   assert.ok((await prepareCheckout(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
   assert.deepEqual(await recordStripePayment(store, session("cs_live_hc", bookId, "hardcover", 3490)), { action: "paid", bookId });
   const r = await requestPages(store, { bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
@@ -126,6 +129,7 @@ test("preview: no manda a la imprenta un pedido real ni le escribe; producción 
 
 test("producción no recuerda pedidos de prueba", async () => {
   const { store, bookId } = await book();
+  await approveLast(store, bookId);
   assert.ok((await prepareCheckout(store, { bookId, edition: "hardcover", shipping: ADDRESS })).ok);
   assert.deepEqual(await recordStripePayment(store, session("cs_test_hc", bookId, "hardcover", 3490)), { action: "paid", bookId });
   const r = await requestPages(store, { bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);

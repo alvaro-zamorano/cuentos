@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { selectLlm } from "@/lib/llm";
-import { fichaHash, normalizeFicha, planCacheKey } from "@/lib/plan/ficha";
+import { fichaHash, normalizeFicha, storyCacheKey } from "@/lib/plan/ficha";
 import { planBook } from "@/lib/plan/planner";
 import { TEXT_BUDGET_MESSAGE, recordText, textRoom } from "@/lib/plan/textBudget";
 import type { PlanRecord } from "@/lib/plan/types";
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   const ficha = normalizeFicha(body.ficha);
   const hash = fichaHash(ficha);
   // la caché va por todo lo que entra en el prompt, no por la huella de la historia (I25)
-  const cacheKey = `plan:${planCacheKey(ficha)}`;
+  const cacheKey = storyCacheKey(ficha);
   const llm = selectLlm("plan");
   const db = supabaseAdmin();
 

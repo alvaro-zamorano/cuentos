@@ -3,7 +3,9 @@
  *
  * - Libro caducado sin pagar: se borran sus imágenes del bucket y la fila (los jobs caen en cascada).
  * - Libro caducado pagado: el pedido se conserva (contabilidad), así que la fila queda vacía: sin ficha ni plan
- *   (draft = {}), sin jobs y sin imágenes, con estado `expired`. Se queda el email del cliente junto al pedido.
+ *   (draft = {}), sin jobs y sin imágenes, con estado `expired`. Se queda el email del cliente junto al pedido. En
+ *   producción solo cuenta un cobro real: un libro pagado con la tarjeta de prueba de la preview se borra entero, como uno
+ *   sin pagar (un cobro de prueba no hay que guardarlo; 28 oct, ESTADO §4.38).
  * - Cuentos escritos (cuentos_stories) con más de 30 días: se borra la fila entera (auditoría 26 oct, I24). Antes se vaciaban
  *   la ficha y el cuento, pero quedaban los avisos del modelo, con nombres, y una huella que se revertía. El coste ya
  *   está en cuentos_spend.
@@ -257,9 +259,10 @@ export function supabasePurgeDb(db: SupabaseClient<Database>, env: Record<string
       }
     },
     async hasPaidOrder(bookId) {
-      const { data, error } = await db.from("cuentos_orders").select("id").eq("book_id", bookId).eq("status", "paid").limit(1);
+      const { data, error } = await db.from("cuentos_orders").select("stripe_session_id").eq("book_id", bookId).eq("status", "paid");
       must(error, "orders");
-      return !!data && data.length > 0;
+      // en producción, solo un cobro real (como `printPending` y `keepForReprint`)
+      return (data ?? []).some((o) => paidInEnv(o.stripe_session_id, env));
     },
     async printPending(bookId) {
       const { data, error } = await db
@@ -345,20 +348,28 @@ export function supabasePurgeDb(db: SupabaseClient<Database>, env: Record<string
           must(up.error, "orders.shipping");
         }
       }
-      // 2. borradores con dirección que nadie toca desde hace un día: pago abandonado, o ya copiada en el pedido
-      const { data: books, error: bErr } = await db
-        .from("cuentos_books")
-        .select("id, draft, updated_at")
-        .not("draft->shipping", "is", null)
-        .lt("updated_at", draftBefore.toISOString())
-        .neq("status", "expired")
-        .limit(500);
-      must(bErr, "books.shipping");
-      n += books?.length ?? 0;
+      // 2. borradores con dirección que nadie toca desde hace un día: pago abandonado, o ya copiada en el pedido. También
+      // las de las sesiones de pago abiertas (`checkoutShipping`, 27 oct)
+      const drafts = async (key: "shipping" | "checkoutShipping") => {
+        const { data, error } = await db
+          .from("cuentos_books")
+          .select("id, draft, updated_at")
+          .not(`draft->${key}`, "is", null)
+          .lt("updated_at", draftBefore.toISOString())
+          .neq("status", "expired")
+          .limit(500);
+        must(error, "books.shipping");
+        return data ?? [];
+      };
+      const byId = new Map<string, Awaited<ReturnType<typeof drafts>>[number]>();
+      for (const b of [...(await drafts("shipping")), ...(await drafts("checkoutShipping"))]) byId.set(b.id, b);
+      const books = [...byId.values()];
+      n += books.length;
       if (!dryRun) {
-        for (const b of books ?? []) {
+        for (const b of books) {
           const draft = { ...(b.draft as Record<string, unknown>) };
           delete draft.shipping;
+          delete draft.checkoutShipping;
           // solo si nadie lo ha tocado entre medias (el padre puede estar justo editándolo)
           const up = await db.from("cuentos_books").update({ draft: draft as Json }).eq("id", b.id).eq("updated_at", b.updated_at);
           must(up.error, "books.shipping");

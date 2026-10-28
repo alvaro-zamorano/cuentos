@@ -11,7 +11,7 @@ Se fotografía en vez de usar `page.pdf()` porque los filtros SVG del acabado pi
 
 ## Chromium
 
-- **Vercel**: `@sparticuz/chromium-min` descarga el paquete (~60 MB) de `CHROMIUM_PACK_URL` (por defecto la release v140 de Sparticuz) en el primer arranque de la función y lo deja en `/tmp`. `maxDuration = 60`. `next.config.ts` lo marca en `serverExternalPackages`.
+- **Vercel**: desde el 27 oct, `@sparticuz/chromium` 153 viaja dentro de las funciones que maquetan PDF y se descomprime en `/tmp` en el primer arranque (antes, `@sparticuz/chromium-min` descargaba de GitHub el paquete de `CHROMIUM_PACK_URL`, que ya no se usa). `maxDuration = 60`. `next.config.ts` lo marca en `serverExternalPackages`.
 - **Local y tests**: `CHROME_PATH` o, si no, el Chromium de Playwright (`/opt/pw-browsers/...`). Sin ninguno, la ruta responde 503 `no_chromium` y la interfaz ofrece la vista de impresión.
 
 ## Límites

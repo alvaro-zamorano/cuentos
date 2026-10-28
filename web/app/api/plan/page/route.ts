@@ -14,6 +14,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
+  const t0 = Date.now();
   let body: { ficha?: unknown; plan?: unknown; n?: unknown; instruction?: unknown };
   try {
     body = await req.json();
@@ -30,7 +31,8 @@ export async function POST(req: Request) {
     console.warn(`[plan/page] sin presupuesto: ${room.reason}`);
     return NextResponse.json({ ok: false, error: "budget", message: TEXT_BUDGET_MESSAGE }, { status: 503 });
   }
-  const result = await rewritePage(body.ficha, body.plan, body.n, body.instruction, llm);
+  // los dos intentos caben en la ruta (menores de la auditoría 26 oct: cada uno podía esperar 120 s en una ruta de 120)
+  const result = await rewritePage(body.ficha, body.plan, body.n, body.instruction, llm, { deadline: t0 + (maxDuration - 10) * 1000 });
   // también si falla después de llamar al modelo: ese gasto existe (revisión 26 oct)
   if (result.ok || result.costCents) await recordText(db, "page", llm, result.costCents ?? null);
   return NextResponse.json(result, { status: result.ok ? 200 : result.status });

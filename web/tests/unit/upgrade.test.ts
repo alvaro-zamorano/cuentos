@@ -8,7 +8,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { bookView, notifyBookReady, payDryRun, pendingPageJobs, prepareUpgrade, recordStripePayment, requestPages, startBook, upgradeOffer } from "../../lib/book/service";
+import { bookView, notifyBookReady, pendingPageJobs, prepareUpgrade, recordStripePayment, requestPages, startBook, upgradeOffer } from "../../lib/book/service";
 import { startPrint } from "../../lib/book/print";
 import { PRICE_CENTS, UPGRADE_CENTS, dayMonth, upgradeCents, upgradeDeadline } from "../../lib/print/prices";
 import { upgradeLine } from "../../lib/mail";
@@ -16,6 +16,7 @@ import { checkoutBody } from "../../lib/stripe";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -117,7 +118,7 @@ test("Stripe: la mejora lleva su marca, su nombre, la diferencia y la vuelta con
 test("preparar la mejora: solo con el PDF pagado, con dirección válida y antes del plazo", async () => {
   const { state, store, bookId } = await book();
   assert.equal(((await prepareUpgrade(store, { bookId, shipping: ADDRESS })) as { error: string }).error, "not_paid");
-  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "illustrated" })).ok);
 
   const sin = await prepareUpgrade(store, { bookId });
   assert.ok(!sin.ok && sin.error === "shipping");
@@ -160,7 +161,7 @@ test("webhook: la mejora crea el pedido de tapa dura una vez y lo deja esperando
 
 test("recorrido: PDF, email con la oferta, mejora de prueba y a la imprenta sin repintar", async () => {
   const { store, bookId } = await book();
-  assert.ok((await payDryRun(store, { bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId, edition: "illustrated" })).ok);
   await paintPages(store, bookId);
   const jobs = (await bookView(store, bookId) as { jobs: unknown[] }).jobs.length;
 
@@ -174,8 +175,8 @@ test("recorrido: PDF, email con la oferta, mejora de prueba y a la imprenta sin 
   assert.match(line, /pagas solo la diferencia, 20,00 €/);
   assert.match(line, new RegExp(`hasta el ${dayMonth(offer.until)}\\.$`));
 
-  assert.ok((await payDryRun(store, { bookId, upgrade: true, shipping: ADDRESS })).ok);
-  assert.equal(((await payDryRun(store, { bookId, upgrade: true, shipping: ADDRESS })) as { error: string }).error, "already_hardcover");
+  assert.ok((await payApproved(store, { bookId, upgrade: true, shipping: ADDRESS })).ok);
+  assert.equal(((await payApproved(store, { bookId, upgrade: true, shipping: ADDRESS })) as { error: string }).error, "already_hardcover");
   const v = await bookView(store, bookId);
   assert.ok(v.ok && v.edition === "hardcover" && v.print?.status === "awaiting_approval");
   assert.equal(v.jobs.length, jobs, "no se pinta nada nuevo");

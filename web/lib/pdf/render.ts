@@ -12,10 +12,14 @@ import { oneAtATime } from "./queue";
  * Se fotografía en vez de usar page.pdf porque los filtros SVG del acabado pintado hacen que Chrome rasterice cada capa
  * por separado a 300 ppp: 80 bitmaps y 86 MB por libro. Con una foto por hoja el libro pesa unos pocos MB.
  *
- * Chromium: en Vercel, @sparticuz/chromium-min descarga el paquete de `CHROMIUM_PACK_URL` en el primer arranque;
- * en local, `CHROME_PATH` o el Chromium de Playwright.
+ * Chromium: en Vercel, el de @sparticuz/chromium, que viaja dentro de la función (next.config.ts) y se descomprime en
+ * /tmp en el primer arranque, sin bajar nada (auditoría 26 oct). Si la función no lo trae, se baja el paquete de la
+ * misma versión de GitHub, como se hacía antes, y queda un error en los logs. En local, `CHROME_PATH` o el Chromium de
+ * Playwright.
  */
-const PACK_URL = process.env.CHROMIUM_PACK_URL ?? "https://github.com/Sparticuz/chromium/releases/download/v140.0.0/chromium-v140.0.0-pack.x64.tar";
+// la release va con las versiones exactas de @sparticuz/chromium y de puppeteer-core en package.json: si se sube una, se
+// suben las tres. Ya no se lee `CHROMIUM_PACK_URL`: una que se quedara en Vercel con otra versión bajaría otro Chromium
+const PACK_URL = "https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar";
 const LOCAL_CANDIDATES = [
   process.env.CHROME_PATH,
   "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
@@ -26,17 +30,34 @@ const LOCAL_CANDIDATES = [
 ].filter((p): p is string => !!p);
 
 /**
- * La descarga y extracción del paquete, una vez por instancia: con dos arranques en frío a la vez, el segundo daba el
- * binario por listo sin haberlo escrito entero (auditoría 26 oct, I10).
+ * La extracción del binario, una vez por instancia: con dos arranques en frío a la vez, el segundo daba el binario por
+ * listo sin haberlo escrito entero (auditoría 26 oct, I10).
  */
 let packPath: Promise<string> | null = null;
+
+type Sparticuz = (typeof import("@sparticuz/chromium"))["default"];
+
+/** El Chromium de la propia función. Si su carpeta bin/ no viajó con ella, el paquete de GitHub (lo de antes). */
+async function chromiumPath(chromium: Sparticuz): Promise<string> {
+  try {
+    return await chromium.executablePath();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // solo cuando falta la carpeta: cualquier otro fallo (sin sitio en /tmp, archivo roto) se cuenta tal cual
+    if (!/does not exist/.test(msg)) throw e;
+    // no debería pasar: la ruta que maqueta no está en `outputFileTracingIncludes` (next.config.ts). Funciona, pero cada
+    // arranque en frío baja unos 60 MB
+    console.error(`[pdf] la función no trae Chromium; se baja de ${PACK_URL}. Añade su ruta a outputFileTracingIncludes`);
+    return chromium.executablePath(PACK_URL);
+  }
+}
 
 export async function launch(): Promise<Browser> {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const t = Date.now();
-    const chromium = (await import("@sparticuz/chromium-min")).default;
+    const chromium = (await import("@sparticuz/chromium")).default;
     chromium.setGraphicsMode = false; // sin WebGL: menos memoria y arranque más rápido
-    packPath ??= chromium.executablePath(PACK_URL).catch((e: unknown) => {
+    packPath ??= chromiumPath(chromium).catch((e: unknown) => {
       packPath = null;
       throw e;
     });

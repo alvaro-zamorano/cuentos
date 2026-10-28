@@ -195,6 +195,19 @@ test("I11 en Supabase: los leads que se quedan (con libro vigente) no tapan a lo
   assert.equal(del.url.searchParams.get("id"), "in.(201)");
 });
 
+test("en producción, un libro pagado solo con la tarjeta de prueba se borra entero; con un cobro real, se vacía (ESTADO §4.38)", async () => {
+  const orders = (rows: { stripe_session_id: string | null }[]) => recording((url) => (url.pathname.endsWith("/cuentos_orders") ? rows : []));
+  const prod = { VERCEL_ENV: "production" };
+  const test = orders([{ stripe_session_id: "cs_test_1" }, { stripe_session_id: "dry-run:abc12345" }]);
+  assert.equal(await supabasePurgeDb(test.db, prod).hasPaidOrder("b1"), false, "antes se vaciaba y el email se quedaba en la fila");
+  assert.equal(test.calls[0].url.searchParams.get("status"), "eq.paid");
+  const live = orders([{ stripe_session_id: "cs_test_1" }, { stripe_session_id: "cs_live_1" }]);
+  assert.equal(await supabasePurgeDb(live.db, prod).hasPaidOrder("b1"), true);
+  // fuera de producción, como antes: cualquier pedido pagado
+  assert.equal(await supabasePurgeDb(orders([{ stripe_session_id: "cs_test_1" }]).db, {}).hasPaidOrder("b1"), true);
+  assert.equal(await supabasePurgeDb(orders([]).db, prod).hasPaidOrder("b1"), false);
+});
+
 test("I29 en Supabase: la fecha sale del pedido de este entorno (salida y entrega)", async () => {
   const rows = [
     { stripe_session_id: "cs_live_1", print_sent_at: "2026-10-01T10:00:00Z", print_info: { steps: { delivered: "2026-10-09T10:00:00Z" } } },

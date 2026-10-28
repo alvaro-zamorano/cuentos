@@ -84,6 +84,11 @@ export interface FreeBook {
   freeClaimedAt: string | null;
   /** El título del cuento, para el email con los que tiene empezados. */
   title: string | null;
+  /**
+   * El email guardado en el libro, tal como se escribió. Su enlace va solo ahí, nunca a otro alias del mismo buzón
+   * (auditoría 26 oct, menores).
+   */
+  email: string | null;
   /** Sus pedidos pagados (estado `paid`). */
   paid: { sessionId: string | null; createdAt: string }[];
   /** Sus hojas de personajes. */
@@ -167,8 +172,12 @@ export interface GenStore {
   saveBookIf(b: SaveBookIf): Promise<BookRecord | null>;
   /** Retrasa la caducidad del libro hasta `until` (nunca la adelanta). */
   extendBook(bookId: string, until: string): Promise<void>;
-  /** Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`. */
-  addPaidOrder(bookId: string, o: NewPaidOrder): Promise<void>;
+  /**
+   * Pedido pagado (pago de prueba o webhook de Stripe). La tapa dura lleva la dirección y empieza en `awaiting_approval`.
+   * `same_session`: esa sesión de Stripe ya tenía pedido. `hardcover_taken`: el libro ya tiene una tapa dura pagada en
+   * este entorno (migración 0014) y esta no entra: es un cobro doble.
+   */
+  addPaidOrder(bookId: string, o: NewPaidOrder): Promise<AddOrderResult>;
   /** El pedido pagado del libro (el más reciente), con su estado en la imprenta. */
   getOrder(bookId: string): Promise<PaidOrder | null>;
   getOrderById(id: string): Promise<PaidOrder | null>;
@@ -178,7 +187,8 @@ export interface GenStore {
   /** Cambia el estado de imprenta solo si sigue en uno de `from` (dos peticiones a la vez no mandan dos pedidos). */
   claimPrint(id: string, from: PrintStatus[], to: PrintStatus): Promise<boolean>;
   /** Pedidos de tapa dura en alguno de estos estados (para el cron), los más antiguos primero. */
-  listPrintOrders(statuses: PrintStatus[], limit: number, live?: LiveFilter): Promise<PaidOrder[]>;
+  /** `sentMailPending`: solo los que tienen pendiente el email de «ya está en la imprenta» (lib/book/print.ts). */
+  listPrintOrders(statuses: PrintStatus[], limit: number, live?: LiveFilter, opts?: { sentMailPending?: boolean }): Promise<PaidOrder[]>;
   /** Pedidos pagados desde `since`, de cualquier edición, los más recientes primero (para el rescate, auditoría 26 oct, B4). */
   listPaidOrdersSince(since: string, limit: number, live?: LiveFilter): Promise<PaidOrder[]>;
   addFeedback(row: FeedbackRow): Promise<void>;
@@ -196,6 +206,11 @@ export interface FeedbackRow {
   note: string | null;
   style_id: string | null;
 }
+
+export type AddOrderResult = "added" | "same_session" | "hardcover_taken";
+
+/** Para la 0014: los cobros reales y los de prueba (la preview, el pago simulado) no chocan entre sí. */
+const liveSession = (sessionId: string | null | undefined) => (sessionId ?? "").startsWith("cs_live_");
 
 export interface NewPaidOrder {
   amountCents: number;
@@ -346,14 +361,14 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       // del borrador, solo el título (PostgREST lo saca en la base): nada de leer los borradores enteros (I7)
       const { data, error } = await db
         .from("cuentos_books")
-        .select("id, public_id, created_at, free_claimed_at, title:draft->plan->>title")
+        .select("id, public_id, email, created_at, free_claimed_at, title:draft->plan->>title")
         .eq("email_norm", emailNorm)
         .not("free_claimed_at", "is", null)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(FREE_BOOKS_SCAN);
       if (error) throw new Error(`books: ${error.message}`);
-      const books = (data ?? []) as unknown as { id: string; public_id: string; created_at: string; free_claimed_at: string | null; title: string | null }[];
+      const books = (data ?? []) as unknown as { id: string; public_id: string; email: string | null; created_at: string; free_claimed_at: string | null; title: string | null }[];
       if (books.length === 0) return [];
       const ids = books.map((b) => b.id);
       const [orders, sheets] = await Promise.all([
@@ -368,6 +383,7 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
         createdAt: b.created_at,
         freeClaimedAt: b.free_claimed_at ?? null,
         title: typeof b.title === "string" ? b.title : null,
+        email: b.email ?? null,
         paid: (orders.data ?? []).filter((o) => o.book_id === b.id).map((o) => ({ sessionId: o.stripe_session_id ?? null, createdAt: o.created_at })),
         sheets: (sheets.data ?? []).filter((j) => j.book_id === b.id).map((j) => ({ status: asJob(j as Record<string, unknown>).status, updatedAt: j.updated_at })),
       }));
@@ -502,8 +518,10 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
         ...(shipping ? { shipping: shipping as unknown as Json } : {}),
         ...(printStatus ? { print_status: printStatus, print_updated_at: new Date().toISOString() } : {}),
       });
-      // la misma sesión de Stripe dos veces (reintento del webhook): ya está registrada
-      if (error && error.code !== "23505") throw new Error(`orders: ${error.message}`);
+      if (!error) return "added";
+      if (error.code !== "23505") throw new Error(`orders: ${error.message}`);
+      // otra tapa dura pagada del mismo libro (0014); si no, la misma sesión de Stripe dos veces (reintento del webhook)
+      return /cuentos_orders_una_tapa_dura/.test(`${error.message} ${error.details ?? ""}`) ? "hardcover_taken" : "same_session";
     },
     async getOrder(bookId) {
       const { data, error } = await db.from("cuentos_orders").select(ORDER_COLUMNS).eq("book_id", bookId).eq("status", "paid").order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -530,8 +548,9 @@ export function supabaseStore(db: SupabaseClient<Database>): GenStore {
       if (error) throw new Error(`orders: ${error.message}`);
       return !!data;
     },
-    async listPrintOrders(statuses, limit, live) {
-      const q = db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").eq("edition", "hardcover").in("print_status", statuses);
+    async listPrintOrders(statuses, limit, live, opts) {
+      let q = db.from("cuentos_orders").select(ORDER_COLUMNS).eq("status", "paid").eq("edition", "hardcover").in("print_status", statuses);
+      if (opts?.sentMailPending) q = q.eq("print_info->>sentMailPending", "true");
       const { data, error } = await sessionFilter(q, live).order("created_at", { ascending: true }).limit(limit);
       if (error) throw new Error(`orders: ${error.message}`);
       return (data ?? []).map((r) => asOrder(r as Record<string, unknown>));
@@ -618,6 +637,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
           createdAt: created(b),
           freeClaimedAt: state.freeClaims?.get(b.id) ?? null,
           title: title(b),
+          email: b.email,
           paid: [...(state.orders?.values() ?? [])].filter((o) => o.bookId === b.id && paidRow(o)).map((o) => ({ sessionId: o.sessionId ?? null, createdAt: o.createdAt })),
           sheets: [...state.jobs.values()].filter((j) => j.book_id === b.id && j.kind === "sheet").map((j) => ({ status: j.status, updatedAt: j.updated_at })),
         }));
@@ -670,7 +690,9 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       (state.paid ??= new Set()).add(bookId);
       const orders = (state.orders ??= new Map());
       // como el `unique` de stripe_session_id; sin sesión, un pedido por edición (la mejora a tapa dura es un segundo pedido)
-      if ([...orders.values()].some((x) => (o.sessionId ? x.sessionId === o.sessionId : x.bookId === bookId && x.edition === o.edition))) return;
+      if ([...orders.values()].some((x) => (o.sessionId ? x.sessionId === o.sessionId : x.bookId === bookId && x.edition === o.edition))) return "same_session";
+      // como el índice de la 0014: una tapa dura pagada por libro y entorno
+      if (o.edition === "hardcover" && [...orders.values()].some((x) => x.bookId === bookId && x.edition === "hardcover" && paidRow(x) && liveSession(x.sessionId) === liveSession(o.sessionId))) return "hardcover_taken";
       const id = crypto.randomUUID();
       orders.set(id, {
         id,
@@ -691,6 +713,7 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
         updatedAt: null,
         info: null,
       });
+      return "added";
     },
     async getOrder(bookId) {
       const o = [...(state.orders?.values() ?? [])].reverse().find((x) => x.bookId === bookId && paidRow(x));
@@ -717,9 +740,10 @@ export function memoryStore(state: MemoryState = memoryState()): GenStore {
       o.updatedAt = stamp();
       return true;
     },
-    async listPrintOrders(statuses, limit, live) {
+    async listPrintOrders(statuses, limit, live, opts) {
       return [...(state.orders?.values() ?? [])]
         .filter((o) => paidRow(o) && o.edition === "hardcover" && o.printStatus && statuses.includes(o.printStatus) && liveMatch(live, o.sessionId))
+        .filter((o) => !opts?.sentMailPending || o.info?.sentMailPending === true)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .slice(0, limit)
         .map((o) => ({ ...o }));

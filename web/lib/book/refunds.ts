@@ -84,14 +84,40 @@ export type ChargeOutcome =
   | (Found & { action: "disputed"; print: PrintEffect; dueBy: string | null; reason: string | null })
   /** `already_refunded`: se cerró a favor, pero el cobro ya se había devuelto: no se reabre nada. */
   | (Found & { action: "dispute_won"; print: "reopened" | "none" | "already_refunded" })
-  /** El mismo cambio otra vez (Stripe reintenta o manda dos eventos): nada que hacer ni que avisar. */
-  | { action: "duplicate"; orderId: string }
+  /**
+   * El mismo cambio otra vez (Stripe reintenta o manda dos eventos): nada que hacer. `seen`: lo que se avisó la primera
+   * vez, rehecho con lo que hay en la base, para volver a avisar. Stripe solo reintenta si la vez anterior falló (el
+   * aviso no salió o la base falló a medias), así que el aviso no se pierde (revisión 27 oct).
+   */
+  | { action: "duplicate"; orderId: string; seen?: Announced }
   /** No sabemos de qué pedido es: aviso a soporte con lo que trae el evento. */
   | { action: "unmatched"; reason: string }
   | { action: "ignored"; reason: string };
 
 /** Qué ha pasado con la tapa dura: parada aquí, ya en la imprenta (a mano) o nada que parar. */
 type PrintEffect = "held" | "at_printer" | "none";
+
+/** Los cambios que se avisan a soporte. */
+type Announced = Extract<ChargeOutcome, { action: "refunded" | "disputed" }>;
+
+/** Como `holdPrint`, pero sin tocar nada: lo que quedó de la primera vez. */
+function printNow(order: PaidOrder, why: string): PrintEffect {
+  if (order.edition !== "hardcover" || !order.printStatus) return "none";
+  if (order.printStatus === "canceled" && order.printError === why) return "held";
+  return AT_PRINTER.includes(order.printStatus) ? "at_printer" : "none";
+}
+
+/** Como `holdLinked`, sin tocar nada. */
+async function linkedNow(store: GenStore, order: PaidOrder, why: string): Promise<Linked | null> {
+  const other = await otherPaid(store, order);
+  return other ? { orderId: other.id, edition: other.edition, amountCents: other.amountCents, print: printNow(other, why) } : null;
+}
+
+/** Lo que se avisó al registrar la devolución (o la disputa perdida), rehecho para un reintento. */
+async function refundedAgain(store: GenStore, found: Found, order: PaidOrder, via: "refund" | "dispute_lost"): Promise<Announced> {
+  const linked = await linkedNow(store, order, REFUND_HOLD);
+  return { ...found, action: "refunded", via, print: printNow(order, REFUND_HOLD), linked, stillPaid: !!linked };
+}
 
 async function holdPrint(store: GenStore, order: PaidOrder, why: string): Promise<PrintEffect> {
   if (order.edition !== "hardcover" || !order.printStatus) return "none";
@@ -162,7 +188,7 @@ export async function recordChargeEvent(store: GenStore, event: ChargeEvent, dep
     const total = o.amount ?? order.amountCents;
     const full = o.refunded === true || (typeof o.amount_refunded === "number" && o.amount_refunded >= total);
     if (!full) return { ...found, action: "partial_refund", refundedCents: o.amount_refunded ?? 0 };
-    if (refunded) return { action: "duplicate", orderId: order.id };
+    if (refunded) return { action: "duplicate", orderId: order.id, seen: await refundedAgain(store, found, order, "refund") };
     await store.updateOrder(order.id, { status: "refunded" });
     const print = await holdPrint(store, order, REFUND_HOLD);
     const linked = await holdLinked(store, order, REFUND_HOLD);
@@ -170,22 +196,18 @@ export async function recordChargeEvent(store: GenStore, event: ChargeEvent, dep
   }
 
   if (event.type === "charge.dispute.created") {
-    if (order.printStatus === "canceled" && order.printError === DISPUTE_HOLD) return { action: "duplicate", orderId: order.id };
     const due = o.evidence_details?.due_by;
+    const dispute = { dueBy: typeof due === "number" ? new Date(due * 1000).toISOString() : null, reason: o.reason ?? null };
+    if (order.printStatus === "canceled" && order.printError === DISPUTE_HOLD) {
+      return { action: "duplicate", orderId: order.id, seen: { ...found, action: "disputed", print: "held", linked: await linkedNow(store, order, DISPUTE_HOLD), ...dispute } };
+    }
     const print = await holdPrint(store, order, DISPUTE_HOLD);
-    return {
-      ...found,
-      action: "disputed",
-      print,
-      linked: await holdLinked(store, order, DISPUTE_HOLD),
-      dueBy: typeof due === "number" ? new Date(due * 1000).toISOString() : null,
-      reason: o.reason ?? null,
-    };
+    return { ...found, action: "disputed", print, linked: await holdLinked(store, order, DISPUTE_HOLD), ...dispute };
   }
 
   // charge.dispute.closed
   if (o.status === "lost") {
-    if (refunded) return { action: "duplicate", orderId: order.id };
+    if (refunded) return { action: "duplicate", orderId: order.id, seen: await refundedAgain(store, found, order, "dispute_lost") };
     await store.updateOrder(order.id, { status: "refunded" });
     const print = await holdPrint(store, order, REFUND_HOLD);
     const linked = await holdLinked(store, order, REFUND_HOLD);
@@ -273,6 +295,8 @@ export function chargeNotice(r: ChargeOutcome, event: ChargeEvent): { subject: s
           .filter(Boolean)
           .join("\n\n"),
       };
+    case "duplicate":
+      return r.seen ? chargeNotice(r.seen, event) : null;
     case "unmatched":
       return {
         subject: "Devolución o disputa sin pedido",

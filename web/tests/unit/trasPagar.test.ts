@@ -8,11 +8,12 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { paintAll } from "../../lib/book/background";
-import { approveSheet, bookView, payDryRun, requestPages, reviseSheet, savePlan, startBook } from "../../lib/book/service";
+import { approveSheet, bookView, requestPages, reviseSheet, savePlan, startBook } from "../../lib/book/service";
 import { MAX_BOOK_REDOS } from "../../lib/book/feedback";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
 import { EVAL_CASES } from "../../lib/plan/evalCases";
+import { payApproved } from "./pagar";
 
 const ficha = normalizeFicha(EVAL_CASES[0]);
 const plan = mockPlan(ficha);
@@ -30,7 +31,7 @@ async function paidWithTwoSheets() {
   assert.ok(s2.ok);
   await paintAll(store, dryRunAdapter, [s2.sheetJobId, s2.coverJobId], { concurrency: 1, deadline: soon() });
   assert.ok((await approveSheet(store, { bookId: s1.bookId, sheetJobId: s2.sheetJobId })).ok);
-  assert.ok((await payDryRun(store, { bookId: s1.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: s1.bookId, edition: "illustrated" })).ok);
   const pages = await requestPages(store, { bookId: s1.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(pages.ok && pages.created === 12);
   return { state, store, bookId: s1.bookId, sheet1: s1.sheetJobId, sheet2: s2.sheetJobId };
@@ -86,10 +87,10 @@ test("no se paga con unos personajes nuevos todavía dibujándose; la hoja de la
   const s2 = await reviseSheet(store, { bookId: s1.bookId, instruction: "más rizos" }, dryRunAdapter, MOCK_LLM);
   assert.ok(s2.ok);
   // la versión 2 sigue en cola: pagar ahora pintaría con la 1 y, al terminar la 2, repintaría todo
-  const early = await payDryRun(store, { bookId: s1.bookId, edition: "illustrated" });
+  const early = await payApproved(store, { bookId: s1.bookId, edition: "illustrated" });
   assert.equal(!early.ok && early.error, "sheet_not_ready");
   await paintAll(store, dryRunAdapter, [s2.sheetJobId, s2.coverJobId], { concurrency: 1, deadline: soon() });
-  assert.ok((await payDryRun(store, { bookId: s1.bookId, edition: "illustrated" })).ok);
+  assert.ok((await payApproved(store, { bookId: s1.bookId, edition: "illustrated" })).ok);
   const pages = await requestPages(store, { bookId: s1.bookId }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(pages.ok && pages.created === 12);
   const v = await bookView(store, s1.bookId);
