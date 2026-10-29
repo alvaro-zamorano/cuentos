@@ -62,7 +62,7 @@ export const PERSON_PICKS: (Pick & { text: string; relation: string })[] = [
   { id: "abuelo", label: "Abuelo", text: "pelo gris corto, barba corta gris, piel morena y jersey azul marino con cremallera", relation: "su abuelo" },
   { id: "abuela", label: "Abuela", text: "media melena gris, piel morena clara, pendientes pequeños y camisa vaquera", relation: "su abuela" },
   { id: "madre-rizos", label: "Mamá", text: "melena rizada negra, piel morena y camiseta verde", relation: "su mamá" },
-  { id: "padre-gafas", label: "Papá", text: "pelo negro muy corto, gafas redondas, piel oscura y sudadera gris", relation: "su papá" },
+  { id: "padre-barba", label: "Papá", text: "pelo castaño corto, barba corta, piel clara y camisa de cuadros", relation: "su papá" },
   { id: "hermana", label: "Hermana", text: "niña de unos 10 años con coleta alta castaña clara, piel clara y camiseta roja", relation: "su hermana mayor" },
   { id: "bebe", label: "Bebé", text: "bebé de un año con un mechón de pelo claro, piel clara y pelele amarillo", relation: "el bebé de la casa" },
 ].map((p) => ({ ...p, src: `/crear/person/${p.id}.webp` }));
