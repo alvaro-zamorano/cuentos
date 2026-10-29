@@ -631,3 +631,31 @@ test("Pago que volvió de Stripe sin confirmar: al volver con el enlace no se of
   await expect(page.getByTestId("paywall")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("«Quién más sale»: primero se escribe cómo es; los ejemplos rellenan el texto y se puede cambiar", async ({ page }) => {
+  await page.getByTestId("hero-name").fill("Vera");
+  await page.getByRole("button", { name: "Niña" }).click();
+  await page.getByTestId("idea").fill("Vera construye un cohete con una caja de cartón.");
+  await page.getByTestId("next-1").click();
+  await page.locator("summary", { hasText: "Quién más sale" }).click();
+  await page.getByTestId("add-cast").click();
+  const cast = page.getByTestId("cast-0");
+  const look = cast.getByLabel("Cómo es, en una línea");
+  // el campo libre va antes que los ejemplos (Álvaro, 29 oct: no son un catálogo cerrado)
+  const fieldY = (await look.boundingBox())!.y;
+  const examples = cast.getByRole("group", { name: "Ejemplos de personas" });
+  expect((await examples.boundingBox())!.y).toBeGreaterThan(fieldY);
+  await expect(cast).toContainText("O empieza con un ejemplo y cámbialo a tu gusto");
+  await expect(examples.getByRole("button")).toHaveText(["Abuelo", "Abuela", "Mamá", "Papá", "Hermana", "Bebé"]);
+  await examples.getByRole("button", { name: "Abuela" }).click();
+  await expect(look).toHaveValue(/piel morena clara/);
+  await expect(cast.getByPlaceholder("su abuela")).toHaveValue("su abuela");
+  await expect(cast.getByTestId("cast-0-edit-hint")).toContainText("Cámbialo como quieras");
+  // al retocarlo deja de ser el ejemplo: ni marcado ni el aviso
+  await look.fill("media melena gris, piel clara y gafas rojas");
+  await expect(examples.getByRole("button", { name: "Abuela" })).toHaveAttribute("aria-pressed", "false");
+  await expect(cast.getByTestId("cast-0-edit-hint")).toHaveCount(0);
+  await cast.getByRole("button", { name: "Mascota" }).click();
+  await expect(cast.getByRole("group", { name: "Ejemplos de mascotas" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
