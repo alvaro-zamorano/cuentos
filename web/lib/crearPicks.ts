@@ -51,3 +51,19 @@ const PET_TEXT: Record<string, { text: string; relation: string }> = {
 };
 
 export const PET_PICKS: (Pick & { text: string; relation: string })[] = PETS.map((p) => ({ id: p.id, label: p.label, src: `/crear/pet/${p.id}.webp`, ...PET_TEXT[p.id] }));
+
+/**
+ * Personas de ejemplo para «Quién más sale» (26 oct): solo dan contexto al elegir. Como en las mascotas, la miniatura
+ * rellena «Cómo es» con lo que se ve y la relación si está vacía; el texto se puede retocar. Abuelos de unos 60 y
+ * activos (GRANDPARENT_RULE): las piezas de abuelos del catálogo eran más mayores.
+ */
+export const PERSON_PICKS: (Pick & { text: string; relation: string })[] = [
+  { id: "abuela", label: "Abuela", text: "media melena gris, piel morena clara, pendientes pequeños y camisa vaquera", relation: "su abuela" },
+  { id: "abuelo", label: "Abuelo", text: "pelo gris corto, barba corta gris, piel morena y jersey azul marino con cremallera", relation: "su abuelo" },
+  { id: "madre-coleta", label: "Mamá con coleta", text: "pelo castaño oscuro en coleta baja, piel clara y jersey mostaza", relation: "su mamá" },
+  { id: "madre-rizos", label: "Mamá con rizos", text: "melena rizada negra, piel morena y camiseta verde", relation: "su mamá" },
+  { id: "padre-barba", label: "Papá con barba", text: "pelo castaño corto, barba corta, piel clara y camisa de cuadros", relation: "su papá" },
+  { id: "padre-gafas", label: "Papá con gafas", text: "pelo negro muy corto, gafas redondas, piel oscura y sudadera gris", relation: "su papá" },
+  { id: "hermana", label: "Hermana", text: "niña de unos 10 años con coleta alta castaña clara, piel clara y camiseta roja", relation: "su hermana mayor" },
+  { id: "bebe", label: "Bebé", text: "bebé de un año con un mechón de pelo claro, piel clara y pelele amarillo", relation: "el bebé de la casa" },
+].map((p) => ({ ...p, src: `/crear/person/${p.id}.webp` }));

@@ -1,7 +1,10 @@
 /**
  * Miniaturas del paso 2 de /crear (pelo, gafas, ropa, mascotas) a partir del catálogo gouache ya existente
  * (public/catalog/gouache). Salida: public/crear/<grupo>/<id>.webp, ~10–20 KB cada una.
- * Uso: node scripts/crear-thumbs.mjs (si cambian los peinados, después: python3 scripts/crear_hair_masks.py desde la raíz)
+ * Las personas de «Quién más sale» salen de assets/crear/person (generadas con Nano Banana Pro el 26 oct, no son del
+ * catálogo de piezas).
+ * Uso: node scripts/crear-thumbs.mjs [grupo]   (sin grupo, todas; si cambian los peinados, después:
+ * python3 scripts/crear_hair_masks.py desde la raíz)
  */
 import sharp from "sharp";
 import fs from "node:fs";
@@ -18,6 +21,10 @@ for (const f of fs.readdirSync(`${SRC}/glasses`)) square("glasses", `${SRC}/glas
 square("glasses", `${SRC}/eyes/redondos.png`, "no"); // el mismo niño sin gafas
 for (const f of fs.readdirSync(`${SRC}/outfit`)) tall("outfit", `${SRC}/outfit/${f}`);
 for (const f of fs.readdirSync(`${SRC}/pet`)) square("pet", `${SRC}/pet/${f}`);
+for (const f of fs.readdirSync("../assets/crear/person")) square("person", `../assets/crear/person/${f}`);
+
+const only = process.argv[2];
+if (only) jobs.splice(0, jobs.length, ...jobs.filter((j) => j.group === only));
 
 let total = 0;
 for (const j of jobs) {
