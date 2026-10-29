@@ -640,22 +640,47 @@ test("«Quién más sale»: primero se escribe cómo es; los ejemplos rellenan e
   await page.locator("summary", { hasText: "Quién más sale" }).click();
   await page.getByTestId("add-cast").click();
   const cast = page.getByTestId("cast-0");
-  const look = cast.getByLabel("Cómo es, en una línea");
+  const look = cast.getByRole("textbox", { name: "Cómo es, en una línea" });
+  const relation = cast.getByPlaceholder("su abuela");
   // el campo libre va antes que los ejemplos (Álvaro, 29 oct: no son un catálogo cerrado)
   const fieldY = (await look.boundingBox())!.y;
   const examples = cast.getByRole("group", { name: "Ejemplos de personas" });
   expect((await examples.boundingBox())!.y).toBeGreaterThan(fieldY);
   await expect(cast).toContainText("O empieza con un ejemplo y cámbialo a tu gusto");
   await expect(examples.getByRole("button")).toHaveText(["Abuelo", "Abuela", "Mamá", "Papá", "Hermana", "Bebé"]);
+
+  // elegir: marca el ejemplo, rellena texto y relación, y dice que se puede cambiar (fuera del nombre del campo)
   await examples.getByRole("button", { name: "Abuela" }).click();
+  await expect(examples.getByRole("button", { name: "Abuela" })).toHaveAttribute("aria-pressed", "true");
   await expect(look).toHaveValue(/piel morena clara/);
-  await expect(cast.getByPlaceholder("su abuela")).toHaveValue("su abuela");
+  await expect(relation).toHaveValue("su abuela");
   await expect(cast.getByTestId("cast-0-edit-hint")).toContainText("Cámbialo como quieras");
-  // al retocarlo deja de ser el ejemplo: ni marcado ni el aviso
-  await look.fill("media melena gris, piel clara y gafas rojas");
-  await expect(examples.getByRole("button", { name: "Abuela" })).toHaveAttribute("aria-pressed", "false");
+  await expect(look).toHaveAccessibleName("Cómo es, en una línea");
+  await expect(look).toHaveAccessibleDescription(/Cámbialo como quieras/);
+  // de Abuela a Abuelo, la relación sigue al ejemplo (antes se quedaba «su abuela»)
+  await examples.getByRole("button", { name: "Abuelo" }).click();
+  await expect(relation).toHaveValue("su abuelo");
+  // segundo toque: lo quita, también la relación que puso
+  await examples.getByRole("button", { name: "Abuelo" }).click();
+  await expect(look).toHaveValue("");
+  await expect(relation).toHaveValue("");
+
+  // lo escrito a mano no se pierde al pulsar un ejemplo, y la relación del padre no se toca
+  await relation.fill("la yaya Pili");
+  await look.fill("pelo blanco, gafas rojas y bastón");
   await expect(cast.getByTestId("cast-0-edit-hint")).toHaveCount(0);
+  await examples.getByRole("button", { name: "Abuela" }).click();
+  await expect(relation).toHaveValue("la yaya Pili");
+  await cast.getByTestId("cast-0-own-look").click();
+  await expect(look).toHaveValue("pelo blanco, gafas rojas y bastón");
+  await expect(examples.getByRole("button", { name: "Abuela" })).toHaveAttribute("aria-pressed", "false");
+
+  // una mascota no hereda lo que puso un ejemplo de persona
+  await relation.fill("");
+  await examples.getByRole("button", { name: "Mamá" }).click();
   await cast.getByRole("button", { name: "Mascota" }).click();
+  await expect(look).toHaveValue("");
+  await expect(cast.getByPlaceholder("su perro")).toHaveValue("");
   await expect(cast.getByRole("group", { name: "Ejemplos de mascotas" })).toBeVisible();
   expect(errors).toEqual([]);
 });

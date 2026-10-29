@@ -62,7 +62,39 @@ export const PERSON_PICKS: (Pick & { text: string; relation: string })[] = [
   { id: "abuelo", label: "Abuelo", text: "pelo gris corto, barba corta gris, piel morena y jersey azul marino con cremallera", relation: "su abuelo" },
   { id: "abuela", label: "Abuela", text: "media melena gris, piel morena clara, pendientes pequeños y camisa vaquera", relation: "su abuela" },
   { id: "madre-rizos", label: "Mamá", text: "melena rizada negra, piel morena y camiseta verde", relation: "su mamá" },
-  { id: "padre-barba", label: "Papá", text: "pelo castaño corto, barba corta, piel clara y camisa de cuadros", relation: "su papá" },
-  { id: "hermana", label: "Hermana", text: "niña de unos 10 años con coleta alta castaña clara, piel clara y camiseta roja", relation: "su hermana mayor" },
-  { id: "bebe", label: "Bebé", text: "bebé de un año con un mechón de pelo claro, piel clara y pelele amarillo", relation: "el bebé de la casa" },
+  { id: "padre-barba", label: "Papá", text: "pelo castaño corto, barba corta castaña, piel clara y camisa de cuadros rojos y azules", relation: "su papá" },
+  { id: "hermana", label: "Hermana", text: "niña de unos 8 años con coleta alta castaña clara, piel clara y camiseta roja", relation: "su hermana" },
+  // «su hermanito» cuenta como familia del padre (lib/plan/validate.ts): «el bebé de la casa» no, y el cuento podía
+  // fallar si el modelo lo llamaba hermanito (revisión independiente)
+  { id: "bebe", label: "Bebé", text: "bebé de un año con un mechón de pelo claro, piel clara y pelele amarillo", relation: "su hermanito" },
 ].map((p) => ({ ...p, src: `/crear/person/${p.id}.webp` }));
+
+/** Los ejemplos con imagen de «Quién más sale», personas y mascotas. */
+const CAST_EXAMPLES = [...PET_PICKS, ...PERSON_PICKS];
+
+/** ¿Es el texto de algún ejemplo (persona o mascota)? */
+export const isExampleLook = (look: string): boolean => CAST_EXAMPLES.some((p) => p.text === look);
+
+/** ¿Es la relación de algún ejemplo? (la puso un ejemplo, no el padre) */
+export const isExampleRelation = (relation: string): boolean => CAST_EXAMPLES.some((p) => p.relation === relation.trim());
+
+interface CastFields {
+  kind: string;
+  look: string;
+  relation: string;
+}
+
+/**
+ * Pulsar un ejemplo: pone su texto y su relación; un segundo toque lo quita. La relación solo cambia si está vacía o la
+ * puso otro ejemplo (revisión independiente: de Abuela a Abuelo se quedaba «su abuela»); la que escribió el padre, no.
+ */
+export function pickCastExample<T extends CastFields>(c: T, pick: { text: string; relation: string }): T {
+  if (c.look === pick.text) return { ...c, look: "", relation: c.relation.trim() === pick.relation ? "" : c.relation };
+  return { ...c, look: pick.text, relation: !c.relation.trim() || isExampleRelation(c.relation) ? pick.relation : c.relation };
+}
+
+/** Cambiar entre persona y mascota: lo que puso un ejemplo se vacía (una mascota no se queda «su abuela»). */
+export function switchCastKind<T extends CastFields>(c: T, kind: T["kind"]): T {
+  if (c.kind === kind) return c;
+  return { ...c, kind, look: isExampleLook(c.look) ? "" : c.look, relation: isExampleRelation(c.relation) ? "" : c.relation };
+}
