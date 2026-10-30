@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Icon } from "@/components/brand";
 import { EYES, GLASSES, HAIR_COLORS, SKINS } from "@/lib/traits";
-import { GLASSES_PICKS, HAIR_PICKS, OUTFIT_PICKS, PET_PICKS } from "@/lib/crearPicks";
+import { GLASSES_PICKS, HAIR_PICKS, OUTFIT_PICKS, PERSON_PICKS, PET_PICKS, isExampleLook, pickCastExample, switchCastKind } from "@/lib/crearPicks";
 import { LIMITS } from "@/lib/plan/ficha";
 import type { CastMember, Ficha, Look } from "@/lib/plan/types";
 import { mergeDetails, needsQuickQuestions } from "@/lib/plan/quick";
@@ -32,6 +32,10 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
   const setCast = (cast: CastMember[]) => onChange({ ...ficha, cast: cast.map((c, i) => ({ ...c, id: i === 0 ? "c1" : "c2" })) });
   const details = [...ficha.details, ...Array(Math.max(0, 3 - ficha.details.length)).fill("")].slice(0, LIMITS.details);
   const [allHair, setAllHair] = useState(false);
+  // lo que había escrito el padre antes de pulsar un ejemplo, por miembro del reparto: se puede recuperar (revisión
+  // independiente: pulsar un ejemplo lo borraba sin aviso)
+  const [ownLook, setOwnLook] = useState<Record<number, string>>({});
+  const uid = useId();
   const [quick, setQuick] = useState(false);
   const hairPicks = allHair ? HAIR_PICKS : HAIR_PICKS.filter((p, i) => i < FIRST_HAIR || p.id === look.hair?.shape);
 
@@ -210,12 +214,19 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex gap-2" role="group" aria-label="Persona o mascota">
                   {(["persona", "mascota"] as const).map((k) => (
-                    <button type="button" key={k} aria-pressed={c.kind === k} className={`chip ${c.kind === k ? "chip-on" : ""}`} onClick={() => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, kind: k } : x)))}>
+                    <button type="button" key={k} aria-pressed={c.kind === k} className={`chip ${c.kind === k ? "chip-on" : ""}`} onClick={() => setCast(ficha.cast.map((x, j) => (j === i ? switchCastKind(x, k) : x)))}>
                       {k === "persona" ? "Persona" : "Mascota"}
                     </button>
                   ))}
                 </div>
-                <button type="button" className="text-sm font-semibold text-ink-soft hover:text-ink" onClick={() => setCast(ficha.cast.filter((_, j) => j !== i))}>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-ink-soft hover:text-ink"
+                  onClick={() => {
+                    setOwnLook({});
+                    setCast(ficha.cast.filter((_, j) => j !== i));
+                  }}
+                >
                   Quitar
                 </button>
               </div>
@@ -229,25 +240,64 @@ export function StepHero({ ficha, onChange, onNext, asked, onAsked }: { ficha: F
                   <input className="input" value={c.relation} maxLength={LIMITS.castRelation} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, relation: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "su perro" : "su abuela"} />
                 </label>
               </div>
-              {c.kind === "mascota" && (
-                <Tiles
-                  label={`Cómo es ${c.name.trim() || "la mascota"}`}
-                  picks={PET_PICKS}
-                  value={PET_PICKS.find((p) => p.text === c.look)?.id}
-                  cols="grid-cols-3 sm:grid-cols-8"
-                  onPick={(id) => {
-                    const pick = PET_PICKS.find((p) => p.id === id)!;
-                    const off = c.look === pick.text;
-                    setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: off ? "" : pick.text, relation: x.relation.trim() || off ? x.relation : pick.relation } : x)));
-                  }}
-                />
-              )}
-              <label className="grid gap-1.5">
-                <span className="field-label">Cómo es, en una línea</span>
-                <input className="input" value={c.look} maxLength={LIMITS.castLook} onChange={(e) => setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)))} placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "media melena gris, gafas de pasta y zapatillas blancas"} />
-              </label>
+              {/* primero lo que se escribe y debajo los ejemplos, como «O empieza con una idea» en el paso 1: las caras no son un
+                  catálogo cerrado, se describe a quien sea (Álvaro, 29 oct) */}
+              <div className="grid gap-1.5">
+                <label className="grid gap-1.5">
+                  <span className="field-label">Cómo es, en una línea</span>
+                  <input
+                    className="input"
+                    value={c.look}
+                    maxLength={LIMITS.castLook}
+                    aria-describedby={isExampleLook(c.look) ? `${uid}-hint-${i}` : undefined}
+                    onChange={(e) => {
+                      setOwnLook((o) => ({ ...o, [i]: "" }));
+                      setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: e.target.value } : x)));
+                    }}
+                    placeholder={c.kind === "mascota" ? "perro blanco con manchas marrones y collar rojo" : "media melena gris, gafas de pasta y zapatillas blancas"}
+                  />
+                </label>
+                {/* fuera de la etiqueta: describe el campo, no forma parte de su nombre */}
+                {isExampleLook(c.look) && (
+                  <p id={`${uid}-hint-${i}`} className="m-0 text-[13px] leading-snug text-ink-soft" data-testid={`cast-${i}-edit-hint`}>
+                    {c.kind === "mascota" ? "Cámbialo como quieras: el color, el tamaño, lo que lleve." : "Cámbialo como quieras: el pelo, la ropa, lo que lleve."}
+                    {ownLook[i] && (
+                      <>
+                        {" "}
+                        <button
+                          type="button"
+                          className="font-semibold text-ink underline underline-offset-2"
+                          onClick={() => {
+                            const back = ownLook[i];
+                            setOwnLook((o) => ({ ...o, [i]: "" }));
+                            setCast(ficha.cast.map((x, j) => (j === i ? { ...x, look: back } : x)));
+                          }}
+                          data-testid={`cast-${i}-own-look`}
+                        >
+                          Volver a lo que habías escrito
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
               {/* también el aspecto del reparto: «la abuela va en silla de ruedas» (revisión 27 oct) */}
               {c.kind !== "mascota" && <HealthNote cast />}
+              <div className="grid gap-2">
+                <span className="field-label">O empieza con un ejemplo y cámbialo a tu gusto</span>
+                <Tiles
+                  label={`Ejemplos de ${c.kind === "mascota" ? "mascotas" : "personas"}${c.name.trim() ? ` para ${c.name.trim()}` : ficha.cast.length > 1 ? ` (${i + 1})` : ""}`}
+                  picks={castPicks(c.kind)}
+                  value={castPicks(c.kind).find((p) => p.text === c.look)?.id}
+                  cols="grid-cols-3 sm:grid-cols-8"
+                  onPick={(id) => {
+                    const pick = castPicks(c.kind).find((p) => p.id === id)!;
+                    // lo escrito a mano no se pierde: se guarda para «Volver a lo que habías escrito»
+                    if (c.look.trim() && !isExampleLook(c.look)) setOwnLook((o) => ({ ...o, [i]: c.look }));
+                    setCast(ficha.cast.map((x, j) => (j === i ? pickCastExample(x, pick) : x)));
+                  }}
+                />
+              </div>
             </div>
           ))}
           {ficha.cast.length < LIMITS.cast && (
@@ -307,6 +357,9 @@ function HealthNote({ cast = false }: { cast?: boolean }) {
     </p>
   );
 }
+
+/** Ejemplos con imagen de «Quién más sale»: mascotas o personas. */
+const castPicks = (kind: CastMember["kind"]) => (kind === "mascota" ? PET_PICKS : PERSON_PICKS);
 
 /** Fila plegable: icono, título y resumen de lo elegido; check si ya tiene algo. */
 function Row({ icon, tint, title, summary, done, children }: { icon: React.ReactNode; tint: string; title: string; summary?: string; done: boolean; children: React.ReactNode }) {
