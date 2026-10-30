@@ -11,6 +11,7 @@ import { normalizeFicha } from "@/lib/plan/ficha";
 import type { Ficha, PlanRecord } from "@/lib/plan/types";
 import { BookCover, Icon, Sparkle } from "@/components/brand";
 import { BookImage } from "./BookImage";
+import { PaintingOverlay, useFreshVersion, versionLabel } from "./NewVersion";
 import { BookLink } from "./BookLink";
 import { PdfLink } from "./PdfLink";
 import { WaitCard } from "./Waiting";
@@ -54,6 +55,9 @@ export function StepCast({
   // el libro no se ha podido cargar al volver a este paso (I9)
   const [loadError, setLoadError] = useState<string | null>(null);
   const cancel = useRef({ cancelled: false });
+  // el cambio que se está pintando, para decirlo encima del dibujo (30 oct; al recargar ya no se sabe y no se dice)
+  const [asked, setAsked] = useState<string | null>(null);
+  const freshSheet = useFreshVersion(view?.jobs.filter((j) => j.kind === "sheet") ?? []);
   useEffect(() => {
     const c = cancel.current;
     return () => {
@@ -161,6 +165,8 @@ export function StepCast({
   };
 
   const ready = shownSheet?.status === "done";
+  // un cambio pintándose con el dibujo anterior a la vista: el aviso va encima del dibujo, no en la tarjeta de espera
+  const changing = ready && going(current) && current?.id !== shownSheet?.id;
   // pagado: los personajes ya no cambian (I2). Ni otra versión, ni elegir otra hoja: repintaba el libro entero
   const paid = !!view?.paid;
   return (
@@ -179,6 +185,7 @@ export function StepCast({
       {/* la tarjeta de espera, solo hasta que estén los personajes: la portada (otro minuto) se espera ya viéndolos */}
       {painting &&
         current?.status !== "done" &&
+        !changing &&
         (view ? (
           <WaitCard sheet={current} cover={currentCover} pages={record.plan.pages} background={view.background} mail={view.mail} testId="painting" />
         ) : (
@@ -190,7 +197,10 @@ export function StepCast({
 
       <figure className="m-0 grid gap-3">
         <Taped>
-          <BookImage job={shownSheet} alt={`Así será ${name} en el libro: varias poses y caras`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
+          <div className="relative">
+            <BookImage key={shownSheet?.id} job={shownSheet} alt={`Así será ${name} en el libro: varias poses y caras`} testId="sheet" box="relative aspect-[3/2] w-full overflow-hidden rounded-[3px] bg-paper-deep" />
+            {changing && <PaintingOverlay variant={versionOf(current?.id)} asked={asked} testId="sheet-painting" />}
+          </div>
         </Taped>
         <figcaption className="text-sm text-mute">Sus personajes{versions.length > 1 && !paid ? ` · versión ${versionOf(shownSheet?.id)}` : ""}</figcaption>
       </figure>
@@ -202,15 +212,21 @@ export function StepCast({
               aria-pressed={s.id === shownSheet?.id}
               className={`chip ${s.id === shownSheet?.id ? "chip-on" : ""}`}
               disabled={s.status !== "done"}
+              data-testid={`sheet-version-${versionOf(s.id)}`}
               onClick={async () => {
                 const r = await postJson("/api/libro/approve", { bookId, sheetJobId: s.id });
                 if (r.status === 200) await refresh(bookId);
               }}
             >
-              Versión {versionOf(s.id)}
+              {versionLabel(s, versionOf(s.id), freshSheet)}
             </button>
           ))}
         </div>
+      )}
+      {freshSheet && freshSheet === shownSheet?.id && (
+        <p className="sr-only" role="status">
+          Ya está la versión {versionOf(freshSheet)} de los personajes.
+        </p>
       )}
 
       {view && !paid && current?.status === "done" && !painting && (
@@ -219,8 +235,10 @@ export function StepCast({
           onAsk={async (instruction) => {
             const r = await postJson<{ sheetJobId?: string; coverJobId?: string }>("/api/libro/sheet", { bookId, instruction });
             if (r.status !== 200 || !r.json.sheetJobId) return errorMessage(r.json);
+            setAsked(instruction);
             await refresh(bookId);
             await paint(bookId, r.json.sheetJobId, r.json.coverJobId!);
+            setAsked(null);
             return null;
           }}
         />

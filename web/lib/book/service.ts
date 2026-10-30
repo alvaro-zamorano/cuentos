@@ -1407,7 +1407,7 @@ export async function requestPages(
 
   const wanted: NewJob[] = [];
   const reopenedIds: string[] = [];
-  let redo: { reason: RedoReason; note: string | null } | null = null;
+  let redo: { page: number; reason: RedoReason; note: string | null } | null = null;
   if (input.page !== undefined) {
     const n = Number(input.page);
     if (!Number.isInteger(n) || n < 1 || n > 12) return fail(400, "page");
@@ -1437,7 +1437,7 @@ export async function requestPages(
     // la última versión posible de la página, con la escena simplificada
     const simple = current.length + 1 === 1 + MAX_PAGE_REDOS;
     wanted.push(pageRow(book, d, n, all.length + 1, sheet.id, { ...fix, simple }));
-    redo = { reason, note };
+    redo = { page: n, reason, note };
   } else {
     for (let n = 1; n <= 12; n++) {
       const cur = currentPageJobs(jobs, d, n, sheet.id);
@@ -1464,6 +1464,16 @@ export async function requestPages(
   const after = await store.listJobs(book.id);
   const created = after.filter((j) => keys.has(j.job_key));
   if (redo && created[0]) {
+    // la versión nueva es la que va al libro en cuanto esté (30 oct): si el padre había elegido otra, se olvida, como al
+    // cambiar los personajes. Puede volver a la anterior con sus botones de versión.
+    const n = redo.page;
+    if (d.pageChoice?.[n]) {
+      ({ book, d } = await mutate(store, book, (cur) => {
+        const pageChoice = { ...(cur.pageChoice ?? {}) };
+        delete pageChoice[n];
+        return { ...cur, pageChoice };
+      }));
+    }
     // el motivo se apunta aunque falle el guardado: no puede impedir la versión nueva
     await store
       .addFeedback({ book_id: book.id, job_id: created[0].id, kind: "redo", page_n: created[0].page_n!, variant: created[0].variant, reason: redo.reason, note: redo.note, style_id: created[0].style_id })
@@ -1533,6 +1543,8 @@ export interface BookJobView {
   sheetJobId: string | null;
   /** Encargada tras el pago (las páginas, los retratos y una portada que faltaba). */
   paid: boolean;
+  /** «Otra versión» de una página: lo que pidió el padre (el motivo en castellano y su nota), para decirlo mientras se pinta. */
+  redo: { reason: string; note: string | null } | null;
 }
 
 /**
@@ -1638,6 +1650,8 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   // todas en una llamada, y la misma URL que la consulta anterior mientras siga valiendo (I20)
   const urls = sign ? await store.signedUrls(jobs.filter(shown).map((j) => j.storage_path!), VIEW_URL_SECONDS) : new Map<string, string>();
   const out: BookJobView[] = [];
+  const feedback = await store.listFeedback(book.id).catch(() => []);
+  const redoOf = new Map(feedback.filter((f) => f.kind === "redo" && f.job_id).map((f) => [f.job_id!, { reason: REDO_REASONS[f.reason as RedoReason] ?? REDO_REASONS.otro, note: f.note }]));
   for (const j of jobs) {
     const sheetId = sheetRefOf(j);
     const current =
@@ -1658,6 +1672,7 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
       current,
       sheetJobId: sheetId,
       paid: !!j.paid,
+      redo: redoOf.get(j.id) ?? null,
     });
   }
   const doneSheets = out.filter((j) => j.kind === "sheet" && j.status === "done");
@@ -1677,7 +1692,6 @@ export async function bookView(store: GenStore, bookId: unknown, env: Env = proc
   // en producción, un pedido de prueba de la preview no existe: ni pagado, ni edición, ni panel de imprenta
   const lastOrder = await store.getOrder(book.id);
   const order = lastOrder && paidInEnv(lastOrder.sessionId, env) ? lastOrder : null;
-  const feedback = await store.listFeedback(book.id).catch(() => []);
   // ya enviado a la imprenta, el libro no cambia: no se piden retratos que no van a ir en él
   const portraitsToRequest =
     !!order &&

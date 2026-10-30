@@ -98,10 +98,43 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await expect(page.getByTestId("book-link")).toContainText("Guárdalo.");
 
   // un cambio con palabras: hoja y portada nuevas
+  // mientras se pinta, el aviso va encima del dibujo y la versión 2 sale ya en los botones (30 oct). El dry-run pinta al
+  // instante en el servidor: se retiene la llamada que pinta desde el navegador y la vista dice que la versión 2 sigue
+  // pintándose, con la 1 elegida
+  let releaseSheet!: () => void;
+  const sheetHeld = new Promise<void>((r) => (releaseSheet = r));
+  await page.route("**/api/generate/run", async (route) => {
+    await sheetHeld;
+    await route.fallback();
+  });
+  await page.route(/\/api\/libro\/view\?/, async (route) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    const sheets = (json.jobs as { id: string; kind: string; variant: number }[]).filter((j) => j.kind === "sheet");
+    const [first, second] = [sheets.find((j) => j.variant === 1), sheets.find((j) => j.variant === 2)];
+    if (first && second) {
+      for (const j of json.jobs) if (j.id === second.id || (j.kind === "cover" && j.sheetJobId === second.id)) Object.assign(j, { status: "pending", url: null, placeholder: false });
+      // una imagen de verdad debajo (la de la muestra) para ver en la captura cómo queda el aviso encima
+      Object.assign(json.jobs.find((j: { id: string }) => j.id === first.id), { url: "/muestra/hoja-vera.webp" });
+      json.chosen = { ...json.chosen, sheet: first.id, cover: (json.jobs as { id: string; kind: string; sheetJobId: string }[]).find((j) => j.kind === "cover" && j.sheetJobId === first.id)?.id ?? null };
+    }
+    await route.fulfill({ response: res, json });
+  });
   await page.getByPlaceholder(/más rizos/).fill("más rizos");
   await page.getByRole("button", { name: "Pedir el cambio" }).click();
+  await expect(page.getByTestId("sheet-painting")).toContainText("pintando la versión 2…", { timeout: 30_000 });
+  await expect(page.getByTestId("sheet-painting")).toContainText("Has pedido: más rizos");
+  await expect(page.getByTestId("sheet-version-2")).toContainText("pintando…");
+  await expect(page.getByTestId("sheet-version-2")).toBeDisabled();
+  await expect(page.getByTestId("painting")).toHaveCount(0);
+  await page.getByRole("figure").first().screenshot({ path: test.info().outputPath("personajes-pintando.png") });
+  await page.unroute(/\/api\/libro\/view\?/);
+  // la retención se queda puesta ya suelta: quitarla con una llamada a medias rompe esa llamada
+  releaseSheet();
   await expect(page.getByText("te quedan 1")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("button", { name: "Versión 2" })).toBeVisible();
+  await expect(page.getByTestId("sheet-painting")).toHaveCount(0);
+  await expect(page.getByTestId("sheet-version-2")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("sheet-version-2")).toContainText("nueva");
 
   await page.getByTestId("approve").click();
   await expect(page.getByTestId("paywall")).toBeVisible();
@@ -145,8 +178,37 @@ test("Personajes y libro sin coste: email, hoja + portada, cambio con palabras, 
   await page.getByTestId("another-3").click();
   await expect(page.getByTestId("redo-submit")).toBeDisabled();
   await page.getByTestId("redo-form").getByRole("button", { name: "Postura o cuerpo raro" }).click();
+  // el aviso, encima de la ilustración que se va a sustituir, con lo que pidió (30 oct)
+  let releasePage!: () => void;
+  const pageHeld = new Promise<void>((r) => (releasePage = r));
+  await page.route("**/api/generate/run", async (route) => {
+    await pageHeld;
+    await route.fallback();
+  });
+  await page.route(/\/api\/libro\/view\?/, async (route) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    const p3jobs = (json.jobs as { id: string; kind: string; page: number | null; variant: number }[]).filter((j) => j.kind === "page" && j.page === 3);
+    const [first, second] = [p3jobs.find((j) => j.variant === 1), p3jobs.find((j) => j.variant === 2)];
+    if (first && second) {
+      for (const j of json.jobs) if (j.id === second.id) Object.assign(j, { status: "pending", url: null, placeholder: false });
+      Object.assign(json.jobs.find((j: { id: string }) => j.id === first.id), { url: "/muestra/luna-01.webp" });
+      json.chosen = { ...json.chosen, pages: { ...json.chosen.pages, 3: first.id } };
+    }
+    await route.fulfill({ response: res, json });
+  });
   await page.getByTestId("redo-submit").click();
-  await expect(p3.getByRole("button", { name: "Versión 2" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("painting-3")).toContainText("pintando la versión 2…", { timeout: 30_000 });
+  await expect(page.getByTestId("painting-3")).toContainText("Has pedido: Postura o cuerpo raro");
+  await expect(page.getByTestId("version-3-2")).toContainText("pintando…");
+  await expect(page.getByTestId("version-3-2")).toBeDisabled();
+  await p3.screenshot({ path: test.info().outputPath("pagina-pintando.png") });
+  await page.unroute(/\/api\/libro\/view\?/);
+  releasePage();
+  await expect(page.getByTestId("painting-3")).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.getByTestId("version-3-2")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("version-3-2")).toContainText("nueva");
+  await p3.screenshot({ path: test.info().outputPath("pagina-nueva.png") });
   await page.getByTestId("another-3").click();
   await page.getByTestId("redo-form").getByLabel("Qué cambiarías").fill("que el perro esté sentado");
   await page.getByTestId("redo-submit").click();

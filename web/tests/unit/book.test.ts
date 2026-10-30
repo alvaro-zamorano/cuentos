@@ -4,7 +4,7 @@ import { MOCK_LLM } from "../../lib/llm";
 import { dryRunAdapter } from "../../lib/generation/adapter";
 import { memoryStore, newMemoryState } from "../../lib/generation/store";
 import { runJob, v2Of } from "../../lib/generation/service";
-import { approveSheet, bookView, reportPage, requestPages, reviseSheet, savePlan, startBook, MAX_SHEETS } from "../../lib/book/service";
+import { approveSheet, bookView, choosePage, reportPage, requestPages, reviseSheet, savePlan, startBook, MAX_SHEETS } from "../../lib/book/service";
 import { coverPrompt, pagePrompt, sheetPrompt, castArt } from "../../lib/plan/art";
 import { normalizeFicha } from "../../lib/plan/ficha";
 import { mockPlan } from "../../lib/plan/mock";
@@ -83,8 +83,21 @@ test("flujo nuevo en memoria: hoja + portada tras el email, cambios con palabras
   // otra versión de la página 3: con motivo, dos como máximo, la segunda simplificada; queda apuntado
   const noReason = await requestPages(store, { bookId: start.bookId, page: 3 }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.equal(!noReason.ok && noReason.error, "reason", "sin motivo no hay versión nueva");
+  const first3 = (await store.listJobs(start.bookId)).find((j) => j.kind === "page" && j.page_n === 3)!;
+  assert.ok((await choosePage(store, { bookId: start.bookId, jobId: first3.id })).ok, "el padre había elegido la primera");
   const v2 = await requestPages(store, { bookId: start.bookId, page: 3, reason: "cuerpo", note: "el perro atraviesa el sofá" }, dryRunAdapter, { dryRunPayment: false }, MOCK_LLM);
   assert.ok(v2.ok && v2.created === 1);
+  if (!v2.ok) return;
+  // mientras se pinta, la vista dice qué pidió; al terminar, la nueva es la del libro (30 oct)
+  const painting = await bookView(store, start.bookId);
+  assert.ok(painting.ok);
+  if (!painting.ok) return;
+  assert.deepEqual(painting.jobs.find((j) => j.id === v2.jobs[0])?.redo, { reason: "Postura o cuerpo raro", note: "el perro atraviesa el sofá" });
+  assert.equal(painting.jobs.find((j) => j.id === first3.id)?.redo, null, "la primera no tiene motivo");
+  assert.equal(painting.chosen.pages[3], first3.id, "mientras, se sigue viendo la que había");
+  await runJob(store, v2.jobs[0], dryRunAdapter);
+  const after = await bookView(store, start.bookId);
+  assert.ok(after.ok && after.chosen.pages[3] === v2.jobs[0], "la versión nueva pasa a ser la del libro");
   const p3 = () => store.listJobs(start.bookId).then((js) => js.filter((j) => j.kind === "page" && j.page_n === 3).sort((a, b) => a.variant - b.variant));
   const [, second] = await p3();
   assert.match(second.prompt, /Correction from the previous version: Use simple, natural poses with correct anatomy/);
