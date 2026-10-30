@@ -366,7 +366,7 @@ La memoria entre sesiones. Se actualiza en el momento, no al final. El log de de
 
 ## 5. Próxima sesión: empezar por
 
-- **30 oct: aviso de versión pintándose (PR de `feat/aviso-version-pintando`).** Revisarlo y unirlo; mirarlo en la preview con una versión real de una página (pinta con Gemini: avisar antes de gastar).
+- **30 oct: aviso de versión pintándose, PR #100 unido a la rama de trabajo.** Álvaro lo prueba en la preview de la rama de trabajo; una versión real de una página pinta con Gemini (unos 6 céntimos). Producción sigue igual hasta el PR a `main`.
 - **30 oct: ejemplos de personas en el #98, unido.** Mirarlo en el iPhone en la preview de la rama de trabajo. Lo demás sigue como en la entrada del 28 oct (noche).
 - **Auditoría, 28 oct (noche): la «Mirada de usuario» en el #96, unido.** Siguiente: en la preview, el recibo una sola vez con un libro nuevo con el email de Álvaro (pinta con Gemini, alrededor de 1 $: avisar antes) y mirar en el iPhone el paso 1 (niño o niña), la barra al escribir y lo guardado aparte. Para Álvaro: §4.39, §4.40 y §4.42 (textos legales), la fecha límite de Navidad cuando llegue la muestra y «quién está detrás». Para abrir, los puntos 4 a 6 de abajo.
 - **Auditoría, 28 oct (tarde): todos los menores unidos, con la 0015 aplicada.** Siguiente: probar en la preview lo nuevo de pago (pinta con Gemini: avisar antes de gastar). Para Álvaro: §4.39 (texto de `/privacidad`) y §4.40 (confirmación de novedades).
