@@ -14,6 +14,7 @@ import { AutoTextarea } from "./AutoTextarea";
 import { Book3D } from "@/components/book3d/Book3D";
 import type { Book3DData } from "@/lib/book3d/scene";
 import { BookImage } from "./BookImage";
+import { PaintingOverlay, useFreshVersion, versionLabel } from "./NewVersion";
 import { BookLink } from "./BookLink";
 import { PdfLink } from "./PdfLink";
 import { PrintPanel } from "./PrintPanel";
@@ -719,6 +720,12 @@ function PageView({
   const shown = current.find((j) => j.id === chosen) ?? current[current.length - 1];
   const done = current.filter((j) => j.status === "done");
   const busyHere = current.some(inFlight);
+  // otra versión pintándose con una ya hecha a la vista: el aviso va encima de esa imagen y la nueva sale en los botones
+  const coming = shown?.status === "done" ? current.find(inFlight) : undefined;
+  const fresh = useFreshVersion(current);
+  const lastTry = current[current.length - 1];
+  const newFailed = done.length > 0 && lastTry?.status === "failed" && lastTry.variant > 1;
+  const choices = coming ? [...done, coming] : done;
   const canAnother = !locked && jobs.length < 2 + MAX_PAGE_REDOS && done.length > 0 && current.filter((j) => j.status !== "failed").length < 1 + MAX_PAGE_REDOS && redosLeft > 0;
   // sin versiones (de la página o del libro) y con alguna hecha: nos avisa y la arreglamos a mano. También si no ha salido
   // ninguna y no se está pintando: antes no había ni «Otra versión» ni «Avísanos» y el padre se quedaba sin salida (I3)
@@ -729,19 +736,37 @@ function PageView({
     <BookSpread
       as="li"
       testId={`book-page-${page.n}`}
-      left={<BookImage job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} failedText="Esta ilustración no ha salido." box="absolute inset-0 overflow-hidden bg-paper-deep" />}
+      left={
+        <>
+          <BookImage key={shown?.id} job={shown} alt={`Ilustración de la página ${page.n}`} scene={page.scene} tint={page.n} failedText="Esta ilustración no ha salido." box="absolute inset-0 overflow-hidden bg-paper-deep" />
+          {coming && <PaintingOverlay variant={coming.variant} asked={coming.redo?.note ?? coming.redo?.reason} testId={`painting-${page.n}`} />}
+        </>
+      }
       right={
         <div className="grid flex-1 content-between gap-3 px-5 pt-5 pb-4 sm:px-8 sm:pt-7">
           <div className="grid gap-3">
-            {done.length > 1 && (
+            {choices.length > 1 && (
               <div className="flex flex-wrap gap-2" role="group" aria-label={`Versiones de la página ${page.n}`}>
-                {done.map((j) => (
-                  <button key={j.id} aria-pressed={j.id === shown?.id} disabled={locked} className={`chip btn-sm ${j.id === shown?.id ? "chip-on" : ""}`} onClick={() => onChoose(j.id)}>
-                    Versión {j.variant}
+                {choices.map((j) => (
+                  <button
+                    key={j.id}
+                    aria-pressed={j.id === shown?.id}
+                    disabled={locked || inFlight(j)}
+                    className={`chip btn-sm ${j.id === shown?.id ? "chip-on" : ""}`}
+                    onClick={() => onChoose(j.id)}
+                    data-testid={`version-${page.n}-${j.variant}`}
+                  >
+                    {versionLabel(j, j.variant, fresh)}
                   </button>
                 ))}
               </div>
             )}
+            {fresh && done.some((j) => j.id === fresh) && (
+              <p className="sr-only" role="status">
+                Ya está la versión {done.find((j) => j.id === fresh)!.variant} de la página {page.n}.
+              </p>
+            )}
+            {newFailed && !coming && <p className="m-0 text-[13px] text-mute">La versión {lastTry.variant} no ha salido.</p>}
             <AutoTextarea
               className="story -mx-2 block w-[calc(100%+1rem)] resize-none rounded-xl border-2 border-transparent bg-transparent px-2 py-1 text-[18px] leading-[1.6] text-ink outline-none focus:border-[#e5d7c1] focus:bg-white focus-visible:outline-none"
               value={page.text}
